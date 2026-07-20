@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Начни здесь — окружение для хакатона на Codex</title>
+<style>
+  :root {
+    --ground:#f6f5f1; --panel:#ffffff; --panel-2:#efece4;
+    --ink:#1b1e23; --ink-soft:#5b616a; --ink-faint:#8b8f98;
+    --line:#e4dfd4; --line-strong:#d3ccbd;
+    --accent:#b0631a; --accent-ink:#8a4d12; --accent-soft:#f4e6d2;
+    --go:#2b8a57; --go-soft:#dcefe3;
+    --shadow:0 1px 2px rgba(30,25,15,.05), 0 8px 24px rgba(30,25,15,.06);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"Helvetica Neue",sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:#0f121a; --panel:#161a22; --panel-2:#1d222c;
+      --ink:#e8eaef; --ink-soft:#a2aab6; --ink-faint:#6b7280;
+      --line:#272e39; --line-strong:#333c49;
+      --accent:#e2a24d; --accent-ink:#eab766; --accent-soft:#31281a;
+      --go:#54b581; --go-soft:#16271e;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); line-height:1.55; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+  .wrap { max-width:700px; margin:0 auto; padding:clamp(18px,4vw,40px) clamp(16px,4vw,28px) 64px; }
+
+  .eyebrow { font-family:var(--mono); font-size:.72rem; letter-spacing:.2em; text-transform:uppercase; color:var(--accent-ink); font-weight:600; display:flex; align-items:center; gap:.6em; }
+  .eyebrow::after { content:""; flex:1; height:1px; background:repeating-linear-gradient(90deg,var(--line-strong) 0 6px,transparent 6px 12px); }
+
+  header.hero { margin-top:16px; }
+  h1 { margin:.2em 0 0; font-size:clamp(1.55rem,5.2vw,2.15rem); line-height:1.1; letter-spacing:-.015em; text-wrap:balance; }
+  .meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+  .chip { font-family:var(--mono); font-size:.74rem; background:var(--panel); border:1px solid var(--line); color:var(--ink-soft); padding:5px 10px; border-radius:7px; white-space:nowrap; }
+  .chip b { color:var(--ink); font-weight:600; }
+  .chip.hot { background:var(--accent-soft); border-color:transparent; color:var(--accent-ink); }
+  .lede { color:var(--ink-soft); font-size:.98rem; margin:20px 2px 0; }
+  .lede b { color:var(--ink); font-weight:600; }
+
+  section { margin-top:30px; }
+  .sh { display:flex; align-items:baseline; gap:11px; margin:0 2px 12px; }
+  .sn { flex:none; width:26px; height:26px; border-radius:50%; background:var(--accent-soft); color:var(--accent-ink); font-family:var(--mono); font-weight:700; font-size:.85rem; display:grid; place-items:center; }
+  h2 { font-size:1.1rem; margin:0; letter-spacing:-.005em; }
+  .sh .note { font-size:.82rem; color:var(--ink-faint); margin-left:auto; align-self:center; }
+  p.body { color:var(--ink-soft); font-size:.92rem; margin:0 2px 12px; }
+  p.body b, li b { color:var(--ink); font-weight:600; }
+
+  .accounts { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:9px; }
+  .acc { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:11px 13px; font-size:.88rem; }
+  .acc b { display:block; }
+  .acc small { color:var(--ink-soft); }
+
+  .term { background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); overflow:hidden; }
+  .term.big { border-color:var(--accent); }
+  .term-bar { display:flex; align-items:center; gap:7px; padding:10px 14px; background:var(--panel-2); border-bottom:1px solid var(--line); }
+  .term.big .term-bar { background:var(--accent-soft); }
+  .dot { width:11px; height:11px; border-radius:50%; background:var(--line-strong); }
+  .term-title { font-family:var(--mono); font-size:.72rem; color:var(--ink-faint); margin-left:6px; }
+  .term.big .term-title { color:var(--accent-ink); font-weight:600; }
+  .copy { margin-left:auto; font-family:var(--mono); font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; background:transparent; border:1px solid var(--line-strong); color:var(--ink-soft); padding:4px 10px; border-radius:6px; cursor:pointer; transition:.15s; }
+  .term.big .copy { border-color:var(--accent); color:var(--accent-ink); }
+  .copy:hover { color:var(--ink); border-color:var(--accent); }
+  .copy.copied { color:var(--go); border-color:var(--go); }
+  pre { margin:0; padding:15px 16px; overflow-x:auto; font-family:var(--mono); font-size:.83rem; line-height:1.7; color:var(--ink); white-space:pre-wrap; word-break:break-word; }
+  pre.cmd { white-space:pre; }
+  pre .c { color:var(--ink-faint); }
+  code { font-family:var(--mono); font-size:.85em; background:var(--panel-2); border:1px solid var(--line); padding:1px 5px; border-radius:5px; color:var(--ink); }
+
+  .callout { margin-top:12px; display:flex; gap:12px; align-items:flex-start; background:var(--accent-soft); border-radius:11px; padding:13px 15px; font-size:.88rem; color:var(--accent-ink); }
+  .callout b { color:var(--accent-ink); }
+  .callout .ic { flex:none; font-size:1.05rem; line-height:1.3; }
+  .did { display:grid; gap:6px; margin:12px 2px 0; }
+  .did div { display:flex; gap:9px; font-size:.87rem; color:var(--ink-soft); }
+  .did .k { color:var(--go); flex:none; font-family:var(--mono); }
+
+  details { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-top:8px; }
+  summary { cursor:pointer; padding:12px 14px; font-weight:600; font-size:.9rem; list-style:none; display:flex; gap:9px; }
+  summary::-webkit-details-marker { display:none; }
+  summary .q { color:var(--accent-ink); font-family:var(--mono); }
+  details .a { padding:0 14px 13px; color:var(--ink-soft); font-size:.86rem; line-height:1.6; }
+  details .a code { font-size:.84em; }
+
+  footer { margin-top:38px; padding-top:18px; border-top:1px solid var(--line); color:var(--ink-faint); font-size:.82rem; line-height:1.6; }
+  footer a { color:var(--accent-ink); }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Начни здесь</div>
+  <header class="hero">
+    <h1>Окружение для хакатона за 10 минут</h1>
+    <div class="meta">
+      <span class="chip hot">OpenAI Build Week · Codex</span>
+      <span class="chip">📍 <b>Тель-Авив</b></span>
+      <span class="chip">🗓 <b>21 июля</b></span>
+    </div>
+    <p class="lede">Три действия руками, потом один промт в Codex — и <b>агент сам доустанавливает
+    всё остальное</b>: клонирует общий репозиторий, ставит инструменты, подключает базу и деплой,
+    кладёт скиллы. Лучше сделать это <b>накануне</b>, а не на площадке.</p>
+  </header>
+
+  <!-- accounts -->
+  <section>
+    <div class="sh"><span class="sn">0</span><h2>Заведи аккаунты (бесплатные)</h2></div>
+    <div class="accounts">
+      <div class="acc"><b>OpenAI</b><small>вход в Codex</small></div>
+      <div class="acc"><b>GitHub</b><small>общий репозиторий</small></div>
+      <div class="acc"><b>Supabase</b><small>база + авторизация</small></div>
+      <div class="acc"><b>Vercel</b><small>деплой превью</small></div>
+    </div>
+  </section>
+
+  <!-- step 1 -->
+  <section>
+    <div class="sh"><span class="sn">1</span><h2>Базовая установка руками</h2><span class="note">~5 минут</span></div>
+    <p class="body">Codex не может поставить сам себя, поэтому эти три строки — руками. Дальше всё сделает агент.</p>
+    <div class="term">
+      <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="term-title">терминал</span><button class="copy" data-copy="code1">Копировать</button></div>
+<pre class="cmd" id="code1"><span class="c"># 1. Node 22+ — если нет: nodejs.org (LTS) или  nvm install 22</span>
+node --version
+
+<span class="c"># 2. поставить Codex CLI</span>
+npm install -g @openai/codex
+
+<span class="c"># 3. войти под аккаунтом OpenAI</span>
+codex</pre>
+    </div>
+  </section>
+
+  <!-- step 2 — the prompt -->
+  <section>
+    <div class="sh"><span class="sn">2</span><h2>Агент ставит всё остальное сам</h2></div>
+    <p class="body">Открой Codex в папке, где хочешь держать проект, и <b>вставь этот промт</b>. Агент выполнит его автономно.</p>
+    <div class="term big">
+      <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="term-title">вставь это в Codex</span><button class="copy" data-copy="prompt">Копировать промт</button></div>
+<pre id="prompt">Ты — мой агент настройки окружения. Выполни всё автономно и отчитайся в конце.
+
+1. Склонируй репозиторий https://github.com/walklikeaman/codex-hackathon-starter.git и зайди в его папку.
+2. Запусти ./setup.sh — он поставит CodeGraph и Vercel CLI и подключит к Codex серверы Supabase, Vercel и CodeGraph (codex mcp add), а также скопирует скиллы /ship и /loop-* в ~/.codex/prompts.
+3. Запусти ./scaffold.sh — создаст рабочее Next.js-приложение в папке ./app.
+4. Проверь установку: `codex mcp list` показывает codegraph, supabase и vercel; в ~/.codex/prompts лежат ship.md и loop-*.md.
+5. Отчитайся коротко: что подключилось, и что осталось за мной (vercel login и браузерный вход Supabase/Vercel при первом обращении).
+
+Останавливайся и спрашивай меня только если шаг нельзя выполнить без моего участия. После подключения MCP-серверов напомни, что Codex надо перезапустить, чтобы они загрузились.</pre>
+    </div>
+    <div class="did">
+      <div><span class="k">→</span><span>клонирует общий репозиторий команды</span></div>
+      <div><span class="k">→</span><span>ставит CodeGraph и Vercel CLI, подключает Supabase / Vercel / CodeGraph к Codex</span></div>
+      <div><span class="k">→</span><span>кладёт скиллы <code>/ship</code>, <code>/loop-demo</code>, <code>/loop-lint</code> и остальные</span></div>
+      <div><span class="k">→</span><span>создаёт рабочее приложение и проверяет, что всё встало</span></div>
+    </div>
+    <div class="callout"><span class="ic">↻</span><span>После того как агент подключит MCP, <b>перезапусти Codex</b> (закрой и открой заново) — тогда серверы загрузятся.</span></div>
+  </section>
+
+  <!-- step 3 -->
+  <section>
+    <div class="sh"><span class="sn">3</span><h2>Вход в сервисы и доступ к репозиторию</h2></div>
+    <p class="body"><b>Вход:</b> выполни <code>vercel login</code>. При первом обращении агента к Supabase и Vercel откроется браузерный вход — пройди его дома, чтобы не выскочил на демо.</p>
+    <p class="body"><b>Доступ на запись:</b> репозиторий общий. Скинь свой <b>GitHub-ник</b> владельцу — тебя добавят в Collaborators, и тогда <code>/ship</code> сможет пушить. До этого можно клонировать и строить.</p>
+    <div class="callout"><span class="ic">🔥</span><span>Прогони браузерный вход <b>накануне</b>: открой Codex и попроси «покажи проекты Supabase» и «покажи деплои Vercel».</span></div>
+  </section>
+
+  <!-- готово -->
+  <section>
+    <div class="sh"><span class="sn">✓</span><h2>Готово — можно строить</h2></div>
+    <p class="body">Открой репозиторий в Codex, заполни блок «Проект» в <code>AGENTS.md</code> (что строим, стек, один демо-путь) и опиши задачу словами. Дальше — <code>/loop-demo</code> до зелёного и <code>/ship</code>, чтобы сохранить.</p>
+
+    <details>
+      <summary><span class="q">?</span>codex: command not found после установки</summary>
+      <div class="a">Глобальная папка npm не в PATH этой сессии. Открой новый терминал; если не помогло — добавь <code>$(npm prefix -g)/bin</code> в PATH. И не путай: пакет называется <code>@openai/codex</code>, а не <code>codex</code>.</div>
+    </details>
+    <details>
+      <summary><span class="q">?</span>./setup.sh упал на установке</summary>
+      <div class="a">Чаще всего это Node ниже 22 или права на глобальный npm. Поставь Node 22 через nvm (<code>nvm install 22</code>) — тогда sudo не нужен — и запусти <code>./setup.sh</code> снова, он идемпотентный.</div>
+    </details>
+    <details>
+      <summary><span class="q">?</span>Агент не может создать таблицу в Supabase</summary>
+      <div class="a">MCP Supabase ещё не прошёл браузерный вход, либо не выбран проект. Попроси Codex «покажи проекты Supabase» — откроется вход. После входа перезапусти Codex.</div>
+    </details>
+    <details>
+      <summary><span class="q">?</span>codex mcp list пустой</summary>
+      <div class="a">Запусти <code>./setup.sh</code> ещё раз в папке репозитория и перезапусти Codex. Вручную: <code>codex mcp add supabase --url https://mcp.supabase.com/mcp</code> и <code>codex mcp add vercel --url https://mcp.vercel.com</code>.</div>
+    </details>
+  </section>
+
+  <footer>
+    Репозиторий: <a href="https://github.com/walklikeaman/codex-hackathon-starter">github.com/walklikeaman/codex-hackathon-starter</a>.
+    Подробности установки — <code>INSTALL.md</code>, как устроено окружение — <code>docs/agent-framework.md</code>.
+    Вопросы по настройке — в чат команды.
+  </footer>
+
+</div>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var el = document.getElementById(btn.getAttribute('data-copy'));
+      var text = el ? el.innerText : '';
+      navigator.clipboard.writeText(text).then(function(){
+        var was = btn.textContent;
+        btn.textContent = 'Готово ✓'; btn.classList.add('copied');
+        setTimeout(function(){ btn.textContent = was; btn.classList.remove('copied'); }, 1800);
+      }).catch(function(){
+        btn.textContent = 'Не вышло';
+        setTimeout(function(){ btn.textContent = 'Копировать'; }, 1800);
+      });
+    });
+  });
+</script>
+</body>
+</html>
