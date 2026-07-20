@@ -1,0 +1,17 @@
+{
+  "description": "Session-start reminders: active guardrail count + a nudge if the AGENTS.md Project/scope block is still unfilled.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "GUARDS=$(grep -c '## Guardrail:' .loops/guardrails.md 2>/dev/null || echo 0); echo \"[loops] .loops/guardrails.md: $GUARDS guardrail(s) active\"; grep -q '<one sentence' AGENTS.md 2>/dev/null && echo '[scope] ⚠ AGENTS.md Project block not filled — lock the idea + demo path + out-of-scope first'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

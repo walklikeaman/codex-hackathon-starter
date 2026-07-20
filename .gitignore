@@ -1,0 +1,24 @@
+# secrets — never commit
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# deps / build
+node_modules/
+.next/
+dist/
+build/
+.vercel/
+
+# os / editor noise
+.DS_Store
+*.log
+tmp/
+
+# codegraph local index (rebuilt per machine)
+.codegraph/
+
+# scratch
+_probe_*

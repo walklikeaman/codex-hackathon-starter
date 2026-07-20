@@ -1,0 +1,24 @@
+{
+  "_comment": "For teammates using Claude Code or Cursor instead of Codex. Codex users don't need this — setup.sh wires MCP via 'codex mcp add'. Claude Code: copy this to '.mcp.json' at the repo root and 'AGENTS.md' to 'CLAUDE.md'. Cursor: copy to '.cursor/mcp.json'. Supabase + Vercel authenticate via in-browser OAuth on first use — no tokens to commit.",
+  "mcpServers": {
+    "codegraph": {
+      "type": "stdio",
+      "command": "codegraph",
+      "args": ["serve", "--mcp"]
+    },
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp"
+    },
+    "vercel": {
+      "type": "http",
+      "url": "https://mcp.vercel.com"
+    },
+    "playwright": {
+      "_note": "optional — drives a real browser; first use downloads ~100MB chromium",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    }
+  }
+}
