@@ -102,18 +102,21 @@
       <span class="chip">🗓 <b>21 июля</b></span>
     </div>
     <p class="lede">Три действия руками, потом один промт в Codex — и <b>агент сам доустанавливает
-    всё остальное</b>: клонирует общий репозиторий, ставит инструменты, подключает базу и деплой,
-    кладёт скиллы. Лучше сделать это <b>накануне</b>, а не на площадке.</p>
+    всё остальное</b>: клонирует общий репозиторий, ставит инструменты, кладёт скиллы и создаёт
+    приложение. База и деплой — <b>общие на всю команду</b>, отдельные аккаунты для них не нужны.
+    Лучше сделать это <b>накануне</b>, а не на площадке.</p>
   </header>
 
   <!-- accounts -->
   <section>
-    <div class="sh"><span class="sn">0</span><h2>Заведи аккаунты (бесплатные)</h2></div>
+    <div class="sh"><span class="sn">0</span><h2>Аккаунты</h2></div>
+    <p class="body">У каждого свой — только два. Базу и деплой заводит владелец один раз на всю команду,
+    отдельные аккаунты Supabase и Vercel тебе не нужны.</p>
     <div class="accounts">
-      <div class="acc"><b>OpenAI</b><small>вход в Codex</small></div>
-      <div class="acc"><b>GitHub</b><small>общий репозиторий</small></div>
-      <div class="acc"><b>Supabase</b><small>база + авторизация</small></div>
-      <div class="acc"><b>Vercel</b><small>деплой превью</small></div>
+      <div class="acc"><b>OpenAI</b><small>у каждого · вход в Codex</small></div>
+      <div class="acc"><b>GitHub</b><small>у каждого · общий репозиторий</small></div>
+      <div class="acc"><b>Supabase</b><small>общий · 1 база на команду</small></div>
+      <div class="acc"><b>Vercel</b><small>общий · 1 проект на команду</small></div>
     </div>
   </section>
 
@@ -143,28 +146,30 @@ codex</pre>
 <pre id="prompt">Ты — мой агент настройки окружения. Выполни всё автономно и отчитайся в конце.
 
 1. Склонируй репозиторий https://github.com/walklikeaman/codex-hackathon-starter.git и зайди в его папку.
-2. Запусти ./setup.sh — он поставит CodeGraph и Vercel CLI и подключит к Codex серверы Supabase, Vercel и CodeGraph (codex mcp add), а также скопирует скиллы /ship и /loop-* в ~/.codex/prompts.
+2. Запусти ./setup.sh — он поставит CodeGraph, подключит CodeGraph к Codex (codegraph install) и скопирует скиллы /ship и /loop-* в ~/.codex/prompts.
 3. Запусти ./scaffold.sh — создаст рабочее Next.js-приложение в папке ./app.
-4. Проверь установку: `codex mcp list` показывает codegraph, supabase и vercel; в ~/.codex/prompts лежат ship.md и loop-*.md.
-5. Отчитайся коротко: что подключилось, и что осталось за мной (vercel login и браузерный вход Supabase/Vercel при первом обращении).
+4. Скопируй .env.example в app/.env.local. Общие ключи Supabase я пришлю отдельно — не выдумывай их, просто скажи, куда я их впишу.
+5. Проверь: `codex mcp list` показывает codegraph; в ~/.codex/prompts лежат ship.md и loop-*.md.
+6. Отчитайся коротко: что готово и что осталось за мной (вписать общие ключи Supabase, вход в Codex).
 
-Останавливайся и спрашивай меня только если шаг нельзя выполнить без моего участия. После подключения MCP-серверов напомни, что Codex надо перезапустить, чтобы они загрузились.</pre>
+Останавливайся и спрашивай меня только если шаг нельзя выполнить без моего участия. После подключения CodeGraph напомни, что Codex надо перезапустить.</pre>
     </div>
     <div class="did">
       <div><span class="k">→</span><span>клонирует общий репозиторий команды</span></div>
-      <div><span class="k">→</span><span>ставит CodeGraph и Vercel CLI, подключает Supabase / Vercel / CodeGraph к Codex</span></div>
+      <div><span class="k">→</span><span>ставит CodeGraph и подключает его к Codex</span></div>
       <div><span class="k">→</span><span>кладёт скиллы <code>/ship</code>, <code>/loop-demo</code>, <code>/loop-lint</code> и остальные</span></div>
-      <div><span class="k">→</span><span>создаёт рабочее приложение и проверяет, что всё встало</span></div>
+      <div><span class="k">→</span><span>создаёт рабочее приложение и проверяет установку</span></div>
     </div>
-    <div class="callout"><span class="ic">↻</span><span>После того как агент подключит MCP, <b>перезапусти Codex</b> (закрой и открой заново) — тогда серверы загрузятся.</span></div>
+    <div class="callout"><span class="ic">↻</span><span>После того как агент подключит CodeGraph, <b>перезапусти Codex</b> (закрой и открой заново) — тогда он загрузится.</span></div>
   </section>
 
   <!-- step 3 -->
   <section>
-    <div class="sh"><span class="sn">3</span><h2>Вход в сервисы и доступ к репозиторию</h2></div>
-    <p class="body"><b>Вход:</b> выполни <code>vercel login</code>. При первом обращении агента к Supabase и Vercel откроется браузерный вход — пройди его дома, чтобы не выскочил на демо.</p>
-    <p class="body"><b>Доступ на запись:</b> репозиторий общий. Скинь свой <b>GitHub-ник</b> владельцу — тебя добавят в Collaborators, и тогда <code>/ship</code> сможет пушить. До этого можно клонировать и строить.</p>
-    <div class="callout"><span class="ic">🔥</span><span>Прогони браузерный вход <b>накануне</b>: открой Codex и попроси «покажи проекты Supabase» и «покажи деплои Vercel».</span></div>
+    <div class="sh"><span class="sn">3</span><h2>Общие база и деплой, доступ к репозиторию</h2></div>
+    <p class="body"><b>Одна база и один деплой на всю команду</b>, не по штуке на человека. Владелец заводит один проект Supabase и один Vercel, а тебе присылает ключи Supabase для <code>app/.env.local</code>. Свои аккаунты Supabase и Vercel заводить не нужно.</p>
+    <p class="body"><b>Деплой:</b> пушишь ветку в общий репозиторий, и общий Vercel сам собирает превью-ссылку. Локально <code>vercel</code> ставить не обязательно.</p>
+    <p class="body"><b>Доступ на запись:</b> скинь свой <b>GitHub-ник</b> владельцу — добавят в Collaborators, и <code>/ship</code> сможет пушить.</p>
+    <div class="callout"><span class="ic">👑</span><span><b>Владелец команды — один раз:</b> заведи 1 проект Supabase и 1 проект Vercel; в Vercel сделай Import и выбери общий GitHub-репозиторий (тогда каждый пуш ветки станет превью-деплоем); пришли команде ключи Supabase (URL и anon key); у себя запусти <code>./setup.sh --infra</code>, чтобы твой Codex мог управлять схемой; добавь участников в Collaborators по их GitHub-никам.</span></div>
   </section>
 
   <!-- готово -->
@@ -182,11 +187,11 @@ codex</pre>
     </details>
     <details>
       <summary><span class="q">?</span>Агент не может создать таблицу в Supabase</summary>
-      <div class="a">MCP Supabase ещё не прошёл браузерный вход, либо не выбран проект. Попроси Codex «покажи проекты Supabase» — откроется вход. После входа перезапусти Codex.</div>
+      <div class="a">Схему ведёт один человек — тот, кто запускал <code>./setup.sh --infra</code>. У него MCP Supabase должен пройти браузерный вход и выбрать общий проект («покажи проекты Supabase» откроет вход). Остальные читают базу через общие ключи в <code>app/.env.local</code>, отдельный доступ не нужен.</div>
     </details>
     <details>
-      <summary><span class="q">?</span>codex mcp list пустой</summary>
-      <div class="a">Запусти <code>./setup.sh</code> ещё раз в папке репозитория и перезапусти Codex. Вручную: <code>codex mcp add supabase --url https://mcp.supabase.com/mcp</code> и <code>codex mcp add vercel --url https://mcp.vercel.com</code>.</div>
+      <summary><span class="q">?</span>codex mcp list не показывает codegraph</summary>
+      <div class="a">Запусти <code>./setup.sh</code> ещё раз в папке репозитория и перезапусти Codex. Вручную: <code>codegraph install</code> и выбери Codex CLI. Supabase и Vercel MCP нужны только тому, кто ведёт бэкенд — он ставит их через <code>./setup.sh --infra</code>.</div>
     </details>
   </section>
 
