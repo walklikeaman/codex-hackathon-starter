@@ -145,8 +145,8 @@ codex</pre>
 
 1. Склонируй репозиторий https://github.com/walklikeaman/codex-hackathon-starter.git и зайди в его папку.
 2. Запусти ./setup.sh — поставит CodeGraph, подключит его к Codex (codegraph install) и положит скиллы /ship и /loop-* в ~/.codex/prompts.
-3. Запусти ./scaffold.sh — создаст рабочее Next.js-приложение в папке ./app.
-4. Убедись, что scaffold создал app/.env.local из .env.example — общие ключи Supabase уже вшиты в репозиторий, вписывать ничего не нужно.
+3. Запусти ./scaffold.sh — приложение уже в репозитории; скрипт поставит зависимости и создаст .env.local с общими ключами Supabase.
+4. Запусти npm run dev — приложение поднимется на http://localhost:3000. Ключи Supabase уже вшиты, вписывать ничего не нужно.
 5. Прочитай AGENTS.md, TASKS.md и TEAMWORK.md — это правила, доска задач и как мы работаем командой. Записи веди в wiki/log.md, доску обновляй в TASKS.md, быстрые заметки — в notes/.
 6. Проверь: `codex mcp list` показывает codegraph; в ~/.codex/prompts лежат ship.md и loop-*.md.
 7. Отчитайся коротко: что готово и что осталось за мной (вписать ключи Supabase, вход в Codex).
@@ -157,7 +157,7 @@ codex</pre>
       <div><span class="k">→</span><span>клонирует общий репозиторий команды</span></div>
       <div><span class="k">→</span><span>ставит CodeGraph и подключает его к Codex</span></div>
       <div><span class="k">→</span><span>кладёт скиллы <code>/ship</code>, <code>/loop-demo</code>, <code>/loop-lint</code> и остальные</span></div>
-      <div><span class="k">→</span><span>создаёт рабочее приложение и проверяет установку</span></div>
+      <div><span class="k">→</span><span>ставит зависимости готового приложения и проверяет установку</span></div>
     </div>
     <div class="callout"><span class="ic">↻</span><span>После того как агент подключит CodeGraph, <b>перезапусти Codex</b> (закрой и открой заново) — тогда он загрузится.</span></div>
   </section>
