@@ -58,6 +58,8 @@ fork in approach, lay out the options and pick one with a reason instead of gues
 6. If code exists, ask CodeGraph for structure instead of grepping blind
    (`codegraph_context` / `codegraph_explore`). Build the index once with
    `codegraph init`; rebuild after a branch switch with `codegraph index --force`.
+7. `TASKS.md` — who owns what and what's next; work to that board and update it
+   after `/ship`. Team collaboration rules are in `TEAMWORK.md`.
 
 ## Tools wired for you (see README)
 
@@ -111,6 +113,9 @@ demo-ready and lets the next teammate pull working code.
 - Don't deploy to a real/production domain without asking — preview URLs only.
 - Don't build past the locked scope. New idea → out-of-scope list, finish the demo path first.
 - Don't bury decisions in code comments — put a line in `.loops/guardrails.md` or `wiki/`.
+- Work on your own branch (`feature/<name>`), never push to `main` — open a PR and
+  let the integrator merge. Pull before you start; agree the data contract before
+  splitting work; don't edit the same file another agent is editing. Full rules: `TEAMWORK.md`.
 
 ## Commit co-author
 
