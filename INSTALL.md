@@ -1,141 +1,142 @@
-# INSTALL — fresh-machine setup
+# INSTALL — установка на чистой машине
 
-Everything to stand up the starter on a laptop that has nothing yet. Budget
-~25-40 min the day BEFORE the hackathon (Wi-Fi and npm are slower on-site, and
-the app scaffold + first MCP OAuth are best done at home).
+Всё, что нужно, чтобы поднять стартер на ноутбуке, где пока ничего нет. Заложи
+~25-40 минут за день ДО хакатона (на площадке Wi-Fi и npm медленнее, а скаффолд
+приложения и первый OAuth для MCP лучше сделать дома).
 
-## 0. Prerequisites
+## 0. Что нужно заранее
 
-| Need           | Check            | Get it                                              |
-| -------------- | ---------------- | --------------------------------------------------- |
-| **Node 22+**   | `node --version` | https://nodejs.org or `nvm install 22`              |
-| **git**        | `git --version`  | Xcode CLT (`xcode-select --install`) / your pkg mgr |
-| **A terminal** | —                | Terminal.app / iTerm                                |
+| Что нужно    | Проверка         | Где взять                                                |
+| ------------ | ---------------- | -------------------------------------------------------- |
+| **Node 22+** | `node --version` | https://nodejs.org или `nvm install 22`                  |
+| **git**      | `git --version`  | Xcode CLT (`xcode-select --install`) / пакетный менеджер |
+| **Терминал** | —                | Terminal.app / iTerm                                     |
 
-`setup.sh` refuses to run below Node 22 (Codex + CodeGraph both need it).
+`setup.sh` не запустится на Node ниже 22 (это нужно и Codex, и CodeGraph).
 
-## 1. Accounts to have ready (BEFORE the day)
+## 1. Аккаунты, которые нужны заранее (ДО дня хакатона)
 
-One shared project: **one** Supabase database and **one** Vercel project for the
-whole team, not one per person. Each teammate needs only OpenAI + GitHub.
+Одна общая инфраструктура: **одна** база Supabase и **один** проект Vercel на всю
+команду, а не по одному на каждого. Каждому участнику нужны только OpenAI + GitHub.
 
-| Account                    | Who      | Why                                                            |
-| -------------------------- | -------- | -------------------------------------------------------------- |
-| **OpenAI** (ChatGPT / API) | everyone | Codex sign-in; $150 credits at the event                       |
-| **GitHub**                 | everyone | push to the one shared repo (owner adds you as collaborator)   |
-| **Supabase**               | owner    | one shared database; owner shares the URL + anon key           |
-| **Vercel**                 | owner    | one shared project, linked to the repo (auto-deploys branches) |
+| Аккаунт                    | Кто      | Зачем                                                             |
+| -------------------------- | -------- | ----------------------------------------------------------------- |
+| **OpenAI** (ChatGPT / API) | все      | вход в Codex; $150 кредитов на площадке                           |
+| **GitHub**                 | все      | пуш в общий репозиторий (владелец добавляет тебя в коллабораторы) |
+| **Supabase**               | владелец | одна общая база; владелец раздаёт URL + anon-ключ                 |
+| **Vercel**                 | владелец | один общий проект, привязанный к репозиторию (автодеплой веток)   |
 
-We ship **no credentials**. The owner sets up the shared Supabase + Vercel once
-and shares the Supabase keys; everyone else just needs OpenAI + GitHub.
+Мы не кладём **никаких креденшелов**. Владелец один раз настраивает общие
+Supabase + Vercel и раздаёт ключи Supabase; всем остальным нужны только
+OpenAI + GitHub.
 
-### Owner — once for the whole team
+### Владелец — один раз на всю команду
 
-1. Create one Supabase project and one Vercel project.
-2. In Vercel: Import Project → pick the shared GitHub repo (every branch push then gets a preview URL).
-3. Send the team the Supabase URL + anon key (for `app/.env.local`).
-4. Run `./setup.sh --infra` so your Codex can manage the schema via the Supabase/Vercel MCP.
-5. Add teammates as collaborators (repo → Settings → Collaborators).
+1. Создай один проект Supabase и один проект Vercel.
+2. В Vercel: Import Project → выбери общий GitHub-репозиторий (после этого каждый пуш ветки получает preview-URL).
+3. Разошли команде URL + anon-ключ Supabase (для `app/.env.local`).
+4. Запусти `./setup.sh --infra`, чтобы твой Codex мог управлять схемой через Supabase/Vercel MCP.
+5. Добавь участников в коллабораторы (репозиторий → Settings → Collaborators).
 
-## 2. Get the code
+## 2. Забери код
 
 ```bash
 git clone https://github.com/walklikeaman/codex-hackathon-starter.git
 cd codex-hackathon-starter
 ```
 
-It's a shared team repo — the owner adds teammates as **collaborators** (repo →
-Settings → Collaborators) so everyone can `/ship` (push). Non-collaborators can
-fork and open a PR instead.
+Это общий командный репозиторий — владелец добавляет участников в
+**коллабораторы** (репозиторий → Settings → Collaborators), чтобы каждый мог
+делать `/ship` (пуш). Кто не в коллабораторах — форкает и открывает PR.
 
-## 3. Run setup
+## 3. Запусти setup
 
 ```bash
-./setup.sh                 # teammate: Codex + CodeGraph + skills (no DB/deploy account)
-./setup.sh --infra         # owner/backend: also Vercel CLI + wire Supabase + Vercel MCP
-./setup.sh --playwright    # also wire the Playwright browser MCP (~100MB chromium on first use)
-./setup.sh --check         # verify only, install nothing
+./setup.sh                 # участник: Codex + CodeGraph + скиллы (без аккаунтов БД/деплоя)
+./setup.sh --infra         # владелец/бэкенд: ещё Vercel CLI + подключение Supabase и Vercel MCP
+./setup.sh --playwright    # ещё подключить браузерный Playwright MCP (~100МБ chromium при первом запуске)
+./setup.sh --check         # только проверка, ничего не ставит
 ```
 
-`setup.sh` (idempotent — safe to re-run):
+`setup.sh` (идемпотентный — можно перезапускать):
 
-1. verifies Node 22+/npm;
-2. installs **Codex CLI** (`@openai/codex`) and **CodeGraph** (`@colbymchenry/codegraph`);
-3. puts the freshly-installed global bin on PATH, then runs `codegraph install` to wire CodeGraph into Codex;
-4. copies `/ship` + loop prompts to `~/.codex/prompts/`.
+1. проверяет Node 22+/npm;
+2. ставит **Codex CLI** (`@openai/codex`) и **CodeGraph** (`@colbymchenry/codegraph`);
+3. добавляет свежепоставленный глобальный bin в PATH, затем запускает `codegraph install`, чтобы подключить CodeGraph к Codex;
+4. копирует `/ship` и loop-промпты в `~/.codex/prompts/`.
 
-With **`--infra`** it also installs the Vercel CLI and wires the **Supabase** and
-**Vercel** MCP servers — only the one person managing the shared backend/deploy
-needs this. Everyone else uses the shared DB through `app/.env.local`.
+С **`--infra`** он ещё ставит Vercel CLI и подключает MCP-серверы **Supabase** и
+**Vercel** — это нужно только тому одному, кто ведёт общий бэкенд/деплой. Все
+остальные работают с общей базой через `app/.env.local`.
 
-If the CLIs install but aren't yet on your shell's PATH, the script says so and
-tells you to open a new terminal and re-run — it won't falsely report success.
+Если CLI поставились, но ещё не попали в PATH твоего шелла, скрипт об этом скажет
+и попросит открыть новый терминал и перезапустить — ложного «успешно» не будет.
 
-## 4. Scaffold a runnable app
+## 4. Собери работающее приложение
 
 ```bash
-./scaffold.sh              # Next.js + TS + Tailwind in ./app  (or bring your own stack)
+./scaffold.sh              # Next.js + TS + Tailwind в ./app  (или свой стек)
 cd app
-codegraph init            # build the local code index for Codex
+codegraph init            # собрать локальный индекс кода для Codex
 npm run dev               # http://localhost:3000
 ```
 
-`scaffold.sh` also seeds `app/.env.local` from `.env.example` — fill it in
-(it's gitignored). Doing the scaffold the day before pre-caches the packages.
+`scaffold.sh` заодно создаёт `app/.env.local` из `.env.example` — заполни его
+(он в gitignore). Если сделать скаффолд накануне, пакеты закешируются заранее.
 
-## 5. Sign in
+## 5. Войди в аккаунты
 
 ```bash
-codex           # first run: sign in with your OpenAI/ChatGPT account
-vercel login
+codex           # первый запуск: вход под аккаунтом OpenAI/ChatGPT
+vercel login    # только тому, кто ведёт деплой
 ```
 
-If you ran `--infra`, the **Supabase and Vercel MCPs** each open their own
-in-browser OAuth the first time the agent calls them — trigger that at home so it
-doesn't surprise you mid-build, and pick the ONE shared project. Everyone else can
-skip this; they reach the shared DB through `app/.env.local`.
+Если запускал `--infra`, то **MCP Supabase и Vercel** при первом вызове агентом
+каждый откроет свой OAuth в браузере — сделай это дома, чтобы не застало посреди
+сборки, и выбери ТОТ ЖЕ общий проект. Остальным это не нужно — они ходят в общую
+базу через `app/.env.local`.
 
-## 6. Verify it worked
+## 6. Проверь, что всё работает
 
 ```bash
 node --version                 # >= 22
 codex --version
 codegraph --version
 vercel --version
-codex mcp list                 # → codegraph  (supabase, vercel too if you ran --infra)
+codex mcp list                 # → codegraph  (supabase, vercel тоже, если запускал --infra)
 ls ~/.codex/prompts/           # → ship.md, loop-demo.md, loop-lint.md, …
 ```
 
-Then open the repo with Codex and confirm the SessionStart line prints
-`[loops] .loops/guardrails.md: N guardrail(s) active` (Codex supports
-`.codex/hooks.json` SessionStart hooks). If the Project block is still blank
-you'll also see the `[scope] ⚠ …` nudge — fill it before building.
+Потом открой репозиторий в Codex и убедись, что в строке SessionStart печатается
+`[loops] .loops/guardrails.md: N guardrail(s) active` (Codex поддерживает
+SessionStart-хуки из `.codex/hooks.json`). Если блок Project всё ещё пустой,
+увидишь ещё и подсказку `[scope] ⚠ …` — заполни его до начала сборки.
 
-## 7. First real step
+## 7. Первый настоящий шаг
 
-Fill the **Project** block at the top of `AGENTS.md` (idea, category, stack, the
-one demo path, out-of-scope). That single block keeps a team of 3-6 pointed at
-the same demo. Then build.
+Заполни блок **«Проект»** в начале `AGENTS.md` (идея, категория, стек,
+единственный демо-сценарий, что вне скоупа). Один этот блок держит команду из
+3-6 человек нацеленной на одно и то же демо. Дальше — сборка.
 
-## Manual MCP wiring (if the script couldn't)
+## Ручное подключение MCP (если скрипт не смог)
 
 ```bash
-codegraph install                                    # pick Codex CLI when prompted
+codegraph install                                    # выбери Codex CLI по запросу
 codex mcp add supabase --url https://mcp.supabase.com/mcp
 codex mcp add vercel   --url https://mcp.vercel.com
-codex mcp add playwright -- npx -y @playwright/mcp@latest   # optional
-codex mcp list                                       # confirm
+codex mcp add playwright -- npx -y @playwright/mcp@latest   # по желанию
+codex mcp list                                       # проверка
 ```
 
-## Troubleshooting
+## Если что-то пошло не так
 
-- **`codex: command not found` after install** — the global npm bin isn't on
-  PATH in this shell. Open a new terminal; if it persists, add
-  `$(npm prefix -g)/bin` to PATH. (Do **not** `npm i -g codex` — that's an
-  unrelated 2012 package. It's `@openai/codex`.)
-- **CodeGraph says "not initialized"** in a repo — run `codegraph init` then
-  `codegraph index --force` at the repo root (do this in your `app/` dir).
-- **Agent can't create a Supabase table** — the MCP needs to have completed its
-  browser OAuth, and the project must be selected. Re-run the OAuth from a fresh
-  agent session.
-- **`scaffold.sh` says the dir exists** — pass another name: `./scaffold.sh web`.
+- **`codex: command not found` после установки** — глобальный npm-bin не в PATH
+  этого шелла. Открой новый терминал; если не помогло, добавь
+  `$(npm prefix -g)/bin` в PATH. (**Не** делай `npm i -g codex` — это посторонний
+  пакет 2012 года. Нужен `@openai/codex`.)
+- **CodeGraph пишет «not initialized»** в репозитории — запусти `codegraph init`,
+  потом `codegraph index --force` в корне репозитория (делай это в папке `app/`).
+- **Агент не может создать таблицу в Supabase** — у MCP должен быть завершён
+  браузерный OAuth, и должен быть выбран проект. Перезапусти OAuth из свежей
+  сессии агента.
+- **`scaffold.sh` говорит, что папка уже есть** — передай другое имя: `./scaffold.sh web`.
