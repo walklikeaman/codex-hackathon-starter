@@ -60,6 +60,7 @@ codex           # вход в Codex
 - `/loop-spec-ship` — небольшую спеку довести до зелёного и заслать.
 - `/loop-guardrails` — записать повторяющуюся ошибку в guardrails.
 - `/loop-docs-sync`, `/loop-migrate`, `/loop-pr-review`, `/loop-de-sloppify` — по необходимости.
+- `/schema` — минимальная схема Supabase (после фиксации идеи), `/ui-polish` — полировка демо, `/pitch` — 90-секундный питч для судей.
 
 ## Что уже умеет окружение
 
