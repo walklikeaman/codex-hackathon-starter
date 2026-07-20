@@ -1,27 +1,28 @@
 # Hackathon Starter (OpenAI Codex)
 
-A pre-wired environment so a team spends the 7 hours **building the product**, not
-fighting setup. Clone it, run one script, scaffold an app, start building. Tuned
-for the **OpenAI Build Week hackathon** (build with Codex; working demo required).
+A clean project that already works the way a **mature agentic project** does — so a
+team can describe what they want and start building immediately, not fight setup.
+Clone it, run one script, scaffold an app, go. Tuned for the **OpenAI Build Week
+hackathon** (build with Codex; working demo required).
 
-Distilled from the KIT Label agent stack — this is the **lean** cut: the agent
-discipline, the backend + deploy + code-intelligence tools, one-button ship, and
-a runnable app scaffold. The heavy compounding-knowledge layer (wiki graph,
-Obsidian, 13 loops) is left out on purpose; it's overkill for one evening.
+Nothing domain-specific is baked in — it's a blank project with the full agent
+toolkit wired up: discipline, autopilot, compounding memory, quality loops,
+one-button ship, code intelligence, and a backend + deploy pipeline.
 
 ## What you get
 
-| Piece                        | Why it wins you time                                                                                                                                                                                                                                   |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Supabase** (MCP)           | Postgres + auth + edge functions, created and queried by the agent. OAuth in-browser, **write-enabled** — Codex can build your schema.                                                                                                                 |
-| **Vercel**                   | `vercel` for preview deploys in seconds; Vercel MCP for logs/errors.                                                                                                                                                                                   |
-| `scaffold.sh`                | One command → a runnable Next.js + TS + Tailwind app, so Codex/CodeGraph/Vercel/`loop-demo` have something to work on from minute one.                                                                                                                 |
-| `AGENTS.md`                  | Codex reads it every session: Karpathy discipline + autopilot default + a scope-lock block, so it builds without hand-holding.                                                                                                                         |
-| `/ship`                      | Stage surgically → clean commit → push → verify. Repo stays demo-ready; secrets never leak.                                                                                                                                                            |
-| `/loop-lint`, `/loop-demo`   | Drive the build to clean, and the one demo flow to green.                                                                                                                                                                                              |
-| **CodeGraph** (MCP)          | Local code knowledge graph. Once your build has real size, Codex answers "what calls X / blast radius of Z" from a pre-built index instead of grepping. Free, 100% local, no auth. (Small payoff on the first hundred lines; grows with the codebase.) |
-| **Playwright** (MCP, opt-in) | `./setup.sh --playwright` — drive a real browser to verify the demo path.                                                                                                                                                                              |
-| `.loops/guardrails.md`       | Hard constraints (no `git add -A`, no prod deploy without asking, protect the demo path), surfaced at session start.                                                                                                                                   |
+| Piece                        | Why it wins you time                                                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AGENTS.md`                  | Codex reads it every session: think-first discipline + autopilot default + a scope-lock block, so it builds without hand-holding.                                              |
+| **Supabase** (MCP)           | Postgres + auth + edge functions, created and queried by the agent. OAuth in-browser, **write-enabled** — Codex can build your schema.                                         |
+| **Vercel**                   | `vercel` for preview deploys in seconds; Vercel MCP for logs/errors.                                                                                                           |
+| `scaffold.sh`                | One command → a runnable Next.js + TS + Tailwind app, so Codex/CodeGraph/Vercel have something to work on from minute one.                                                     |
+| **CodeGraph** (MCP)          | Local code knowledge graph. Codex answers "what calls X / blast radius of Z" from a pre-built index instead of grepping — fewer tokens, fewer tool calls. 100% local, no auth. |
+| Compounding memory (`wiki/`) | The agent writes decisions, gotchas, and domain notes into a plain-text knowledge base, so the next session and the next teammate start smarter, not from zero.                |
+| Quality loops                | `/loop-demo`, `/loop-lint`, `/loop-debug`, `/loop-spec-ship`, `/loop-guardrails`, and more — self-pacing checks that drive work to green.                                      |
+| `/ship`                      | Stage surgically → clean commit → push → verify → log. Repo stays demo-ready; secrets never leak.                                                                              |
+| `.loops/guardrails.md`       | Hard constraints (no `git add -A`, no prod deploy without asking, protect the demo path), surfaced at session start.                                                           |
+| **Playwright** (MCP, opt-in) | `./setup.sh --playwright` — drive a real browser to verify the demo path.                                                                                                      |
 
 ## 60-second quickstart
 
@@ -40,12 +41,14 @@ codex                    # sign in on first run
 vercel login             # (Supabase + Vercel MCPs also OAuth in-browser on first agent use)
 ```
 
-Fill the **Project** block at the top of `AGENTS.md` before writing code — idea,
-stack, the ONE demo path, and what's out of scope. That block is what keeps a
-team of 3-6 aimed at the same demo (the session-start hook nags you if it's blank).
+Then just tell Codex what you're building. Fill the **Project** block at the top of
+`AGENTS.md` first — idea, stack, the ONE demo path, and what's out of scope. That
+block keeps a team of 3-6 aimed at the same demo (the session-start hook nags you
+if it's blank).
 
 Full account + machine checklist: **[INSTALL.md](INSTALL.md)**.
 Come-prepared one-pager for the whole team: **[PREFLIGHT.md](PREFLIGHT.md)**.
+How the whole method works: **[docs/agent-framework.md](docs/agent-framework.md)**.
 
 ## Using Claude Code or Cursor instead of Codex?
 
@@ -76,8 +79,12 @@ scaffold.sh        drop in a runnable Next.js app (./app)
 .env.example       expected env keys (copy to .env.local; never commit the filled copy)
 INSTALL.md         fresh-machine + account checklist
 PREFLIGHT.md       short shareable "install before you arrive" one-pager
+docs/agent-framework.md   the full method: layers, rituals, loops, ship
 config/mcp.json    MCP set for Claude Code / Cursor users
-prompts/           /ship, /loop-lint, /loop-demo  → copied to ~/.codex/prompts/
-.loops/guardrails.md   hard constraints, surfaced at session start
+prompts/           /ship + /loop-* → copied to ~/.codex/prompts/
+wiki/              compounding knowledge base (index · log · concepts · entities · sources)
+Context/           raw, immutable inbox — drop material here, tell the agent to ingest
+.loops/            guardrails + reflexion state, surfaced at session start
+.obsidian/         open the repo as an Obsidian vault to see the knowledge graph
 .codex/hooks.json  prints guardrail count + a scope-not-locked nudge at session start
 ```

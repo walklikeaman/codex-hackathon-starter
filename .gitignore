@@ -22,3 +22,10 @@ tmp/
 
 # scratch
 _probe_*
+
+# Obsidian per-user state (shared config stays tracked)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+
+# Graphify output (regenerated locally, optional)
+graphify-out/
