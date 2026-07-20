@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
 # hackathon-starter — one-command environment setup for an OpenAI Codex hackathon.
 #
-# Safe to re-run (idempotent): it checks before it installs, and never overwrites
-# your credentials. It does NOT log you in anywhere — auth stays in your hands.
+# ONE shared project: one GitHub repo, one Supabase database, one Vercel project.
+# Most teammates need only Codex + CodeGraph locally and the shared repo. The
+# person who manages the backend/deploy runs with --infra to wire Supabase/Vercel.
 #
-# Usage:  ./setup.sh               # install CLIs + wire the core MCP servers into Codex
+# Safe to re-run (idempotent). It never logs you in — auth stays in your hands.
+#
+# Usage:  ./setup.sh               # teammate: Codex + CodeGraph + skills (no DB/deploy accounts needed)
+#         ./setup.sh --infra       # owner/backend: also install Vercel CLI + wire Supabase & Vercel MCP
 #         ./setup.sh --playwright  # also wire the Playwright browser MCP (~100MB chromium)
 #         ./setup.sh --check       # verify only, install nothing
 set -uo pipefail
 
-PLAYWRIGHT=0; CHECK=0
+INFRA=0; PLAYWRIGHT=0; CHECK=0
 for a in "$@"; do
   case "$a" in
+    --infra)      INFRA=1;;
     --playwright) PLAYWRIGHT=1;;
     --check)      CHECK=1;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
@@ -25,7 +30,7 @@ warn(){ printf '  \033[33m!\033[0m %s\n' "$1"; }
 miss(){ printf '  \033[31m✗\033[0m %s\n' "$1"; }
 have(){ command -v "$1" >/dev/null 2>&1; }
 
-echo "▸ hackathon-starter setup  ($([ "$CHECK" = 1 ] && echo check-only || echo install))"
+echo "▸ hackathon-starter setup  ($([ "$INFRA" = 1 ] && echo infra || echo teammate) · $([ "$CHECK" = 1 ] && echo check-only || echo install))"
 
 # ── 0. Node 22+ (Codex + codegraph both need it) ───────────────────────────────
 if have node; then
@@ -56,29 +61,28 @@ install_or_report "CodeGraph" "command -v codegraph" \
   "npm install -g @colbymchenry/codegraph" \
   "https://github.com/colbymchenry/codegraph"
 
-# ── 3. Vercel CLI (preview deploys) ────────────────────────────────────────────
-install_or_report "Vercel CLI" "command -v vercel" \
-  "npm install -g vercel" \
-  "npm i -g vercel  (then: vercel login)"
+# ── 3. Vercel CLI — only the person managing deploys needs it (--infra) ─────────
+if [ "$INFRA" = 1 ]; then
+  install_or_report "Vercel CLI" "command -v vercel" \
+    "npm install -g vercel" \
+    "npm i -g vercel  (then: vercel login)"
+fi
 
 [ "$CHECK" = 1 ] && { echo; echo "check done — nothing installed."; exit 0; }
 
 # ── 3b. Make freshly-installed global bins resolvable in THIS shell ─────────────
-# (npm's global bin isn't on PATH until a new shell — export it so the wiring
-#  below actually finds codex/codegraph on a first run.)
 GLOBAL_BIN="$(npm prefix -g 2>/dev/null)/bin"
 case ":$PATH:" in *":$GLOBAL_BIN:"*) : ;; *) [ -d "$GLOBAL_BIN" ] && export PATH="$GLOBAL_BIN:$PATH";; esac
 
-# ── 4. Wire CodeGraph into Codex (auto-detects the agent, writes ~/.codex/config.toml) ─
+# ── 4. Wire CodeGraph into Codex (everyone — local, no auth) ────────────────────
 if have codegraph; then
   echo "  • wiring CodeGraph into Codex…"
   codegraph install >/dev/null 2>&1 && ok "CodeGraph → Codex wired" \
     || warn "run 'codegraph install' yourself and pick Codex CLI"
 fi
 
-# ── 5. Wire MCP servers into Codex ─────────────────────────────────────────────
-# 'codex mcp add' is idempotent-ish; distinguish a real failure from "already there".
-add_mcp(){ # name  <transport args...>   (either  -- cmd args   OR  --url URL)
+# ── 5. Wire Supabase + Vercel MCP — ONLY --infra (one person manages the shared project) ─
+add_mcp(){ # name  <transport args...>
   local name="$1"; shift
   have codex || { warn "MCP $name skipped — Codex CLI not resolvable"; return 1; }
   local out; out="$(codex mcp add "$name" "$@" 2>&1)"
@@ -87,22 +91,20 @@ add_mcp(){ # name  <transport args...>   (either  -- cmd args   OR  --url URL)
   else miss "MCP $name failed: $(printf '%s' "$out" | head -1)"; fi
 }
 
-if have codex; then
-  # Supabase — hosted server, OAuth in-browser on first use. Write-enabled (the
-  # agent can create tables / run SQL / deploy edge functions). No token to ship.
-  add_mcp supabase --url "https://mcp.supabase.com/mcp"
-  # Vercel — hosted MCP, OAuth in-browser on first use.
-  add_mcp vercel --url "https://mcp.vercel.com"
-  # Playwright — opt-in (--playwright): drives a real browser to verify the demo path.
-  [ "$PLAYWRIGHT" = 1 ] && add_mcp playwright -- npx -y @playwright/mcp@latest
-else
-  warn "Codex CLI not resolvable in this shell — MCP wiring skipped."
+if [ "$INFRA" = 1 ] && have codex; then
+  echo "  • --infra: wiring Supabase + Vercel MCP (point these at the ONE shared project)…"
+  add_mcp supabase --url "https://mcp.supabase.com/mcp"   # OAuth in-browser; pick the shared project
+  add_mcp vercel   --url "https://mcp.vercel.com"          # OAuth in-browser; pick the shared project
+elif [ "$INFRA" = 0 ]; then
+  ok "teammate mode — no Supabase/Vercel MCP (you use the shared DB via .env; deploys come from the shared Vercel)"
 fi
+# Playwright — opt-in for anyone verifying the demo path in a real browser.
+[ "$PLAYWRIGHT" = 1 ] && have codex && add_mcp playwright -- npx -y @playwright/mcp@latest
 
-# ── 6. Install the /ship + loop prompts into Codex ─────────────────────────────
+# ── 6. Install the /ship + loop prompts into Codex (everyone) ───────────────────
 mkdir -p "$HOME/.codex/prompts"
 if cp "$STARTER_DIR"/prompts/*.md "$HOME/.codex/prompts/" 2>/dev/null; then
-  ok "prompts → ~/.codex/prompts/ (/ship, /loop-lint, /loop-demo)"
+  ok "prompts → ~/.codex/prompts/ (/ship, /loop-demo, /loop-lint, …)"
 else
   warn "no prompts/ copied"
 fi
@@ -120,12 +122,12 @@ else
 fi
 cat <<EOF
    1. Sign in to Codex:   codex        (first run walks you through it)
-   2. Sign in to Vercel:  vercel login   (the Vercel/Supabase MCPs also do their
-                                          own in-browser OAuth on first agent use)
+   2. Copy .env.example → .env.local and paste the SHARED Supabase keys (ask the owner).
    3. Scaffold your app:  ./scaffold.sh  (or your own stack), then in the app dir:
                           codegraph init   (build the local code index)
    4. Open the repo with Codex, fill the **Project** block in AGENTS.md, and build.
-      Type /ship when a slice works.  /loop-demo to get the demo green.
+      Push a branch → the shared Vercel deploys a preview.  /ship to save.
+$( [ "$INFRA" = 1 ] && echo "   (infra) You wired Supabase + Vercel MCP — sign in to each and pick the ONE shared project." )
 
    Full checklist: INSTALL.md   ·   what/why: README.md   ·   come-prepared: PREFLIGHT.md
 EOF

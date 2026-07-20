@@ -16,14 +16,26 @@ the app scaffold + first MCP OAuth are best done at home).
 
 ## 1. Accounts to have ready (BEFORE the day)
 
-| Account                    | Why                                                                 | Note                                                                                                                              |
-| -------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| **OpenAI** (ChatGPT / API) | Codex CLI sign-in; $150 credits at the event ($100 Codex + $50 API) | Sign in with `codex` on first run                                                                                                 |
-| **Supabase**               | DB + auth + edge functions                                          | Free tier. The MCP signs in via **browser OAuth** — no token needed. (A Personal Access Token is optional, only for headless/CI.) |
-| **Vercel**                 | preview deploys                                                     | Free tier. `vercel login`; the MCP also OAuths in-browser                                                                         |
-| **GitHub**                 | your team's shared repo                                             | Have the CLI (`gh`) or a token ready                                                                                              |
+One shared project: **one** Supabase database and **one** Vercel project for the
+whole team, not one per person. Each teammate needs only OpenAI + GitHub.
 
-We ship **no credentials** — every teammate uses their own accounts.
+| Account                    | Who      | Why                                                            |
+| -------------------------- | -------- | -------------------------------------------------------------- |
+| **OpenAI** (ChatGPT / API) | everyone | Codex sign-in; $150 credits at the event                       |
+| **GitHub**                 | everyone | push to the one shared repo (owner adds you as collaborator)   |
+| **Supabase**               | owner    | one shared database; owner shares the URL + anon key           |
+| **Vercel**                 | owner    | one shared project, linked to the repo (auto-deploys branches) |
+
+We ship **no credentials**. The owner sets up the shared Supabase + Vercel once
+and shares the Supabase keys; everyone else just needs OpenAI + GitHub.
+
+### Owner — once for the whole team
+
+1. Create one Supabase project and one Vercel project.
+2. In Vercel: Import Project → pick the shared GitHub repo (every branch push then gets a preview URL).
+3. Send the team the Supabase URL + anon key (for `app/.env.local`).
+4. Run `./setup.sh --infra` so your Codex can manage the schema via the Supabase/Vercel MCP.
+5. Add teammates as collaborators (repo → Settings → Collaborators).
 
 ## 2. Get the code
 
@@ -39,7 +51,8 @@ fork and open a PR instead.
 ## 3. Run setup
 
 ```bash
-./setup.sh                 # core: Codex + CodeGraph + Vercel CLIs, wire Supabase + Vercel MCP
+./setup.sh                 # teammate: Codex + CodeGraph + skills (no DB/deploy account)
+./setup.sh --infra         # owner/backend: also Vercel CLI + wire Supabase + Vercel MCP
 ./setup.sh --playwright    # also wire the Playwright browser MCP (~100MB chromium on first use)
 ./setup.sh --check         # verify only, install nothing
 ```
@@ -47,10 +60,13 @@ fork and open a PR instead.
 `setup.sh` (idempotent — safe to re-run):
 
 1. verifies Node 22+/npm;
-2. installs **Codex CLI** (`@openai/codex`), **CodeGraph** (`@colbymchenry/codegraph`), **Vercel CLI**;
+2. installs **Codex CLI** (`@openai/codex`) and **CodeGraph** (`@colbymchenry/codegraph`);
 3. puts the freshly-installed global bin on PATH, then runs `codegraph install` to wire CodeGraph into Codex;
-4. `codex mcp add`s the **Supabase** and **Vercel** hosted MCP servers (+ Playwright with `--playwright`);
-5. copies `/ship` + loop prompts to `~/.codex/prompts/`.
+4. copies `/ship` + loop prompts to `~/.codex/prompts/`.
+
+With **`--infra`** it also installs the Vercel CLI and wires the **Supabase** and
+**Vercel** MCP servers — only the one person managing the shared backend/deploy
+needs this. Everyone else uses the shared DB through `app/.env.local`.
 
 If the CLIs install but aren't yet on your shell's PATH, the script says so and
 tells you to open a new terminal and re-run — it won't falsely report success.
@@ -74,8 +90,10 @@ codex           # first run: sign in with your OpenAI/ChatGPT account
 vercel login
 ```
 
-The **Supabase and Vercel MCPs** each open their own in-browser OAuth the first
-time the agent calls them — trigger that at home so it doesn't surprise you mid-build.
+If you ran `--infra`, the **Supabase and Vercel MCPs** each open their own
+in-browser OAuth the first time the agent calls them — trigger that at home so it
+doesn't surprise you mid-build, and pick the ONE shared project. Everyone else can
+skip this; they reach the shared DB through `app/.env.local`.
 
 ## 6. Verify it worked
 
@@ -84,8 +102,8 @@ node --version                 # >= 22
 codex --version
 codegraph --version
 vercel --version
-codex mcp list                 # → codegraph, supabase, vercel, (playwright)
-ls ~/.codex/prompts/           # → ship.md, loop-lint.md, loop-demo.md
+codex mcp list                 # → codegraph  (supabase, vercel too if you ran --infra)
+ls ~/.codex/prompts/           # → ship.md, loop-demo.md, loop-lint.md, …
 ```
 
 Then open the repo with Codex and confirm the SessionStart line prints

@@ -67,8 +67,10 @@ fork in approach, lay out the options and pick one with a reason instead of gues
 - **Vercel** — `vercel` for preview deploys; Vercel MCP for logs/errors.
 - **Playwright** (MCP, opt-in) — drive a real browser to verify the demo path.
 
-Auth is per-teammate (your own accounts). Never commit tokens — they come from env
-or each tool's own login. `.env` is gitignored; expected keys are in `.env.example`.
+One shared project: one Supabase database and one Vercel project for the team.
+Most teammates use the shared DB through `app/.env.local`; only the person running
+`./setup.sh --infra` wires the Supabase/Vercel MCP to manage it. Never commit
+tokens — `.env` is gitignored; expected keys are in `.env.example`.
 
 ## Knowledge that compounds — the `wiki/` layer
 
