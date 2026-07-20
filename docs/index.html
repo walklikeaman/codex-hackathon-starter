@@ -222,6 +222,7 @@ codex</pre>
   <section>
     <div class="sh"><span class="sn">5</span><h2>Как работаем командой</h2></div>
     <p class="body">Главное правило: <b>разные ветки → один сводит в <code>main</code></b>. Так четверо не толкаются.</p>
+    <div class="callout"><span class="ic">⚠️</span><span><b>Правило №1:</b> работай только в своей ветке, напрямую в <code>main</code> не пушь — иначе затрёшь чужие изменения и словишь конфликты. Свои правки приносишь через <b>Pull Request</b>, интегратор мёржит.</span></div>
     <ul class="plain">
       <li>Каждый — в своей ветке (<code>feature/&lt;коротко&gt;</code>). Пушишь → открываешь PR → интегратор мёржит в <code>main</code>.</li>
       <li>В <code>main</code> пушит только интегратор. Общий Vercel собирает превью на каждую ветку.</li>
@@ -250,9 +251,10 @@ codex</pre>
       <div class="cat">★ Apps for your life · фаворит</div>
       <h3>SnapSell — фото вещи → готовое объявление</h3>
       <div class="row"><span class="k">Демо:</span> наводишь камеру на любую вещь (хоть рюкзак из зала) → через 5 сек карточка «$40–55, потому что…» → Post → влетает в живую ленту.</div>
+      <div class="row"><span class="k">С телефона:</span> это <b>веб</b> — открываешь URL на телефоне, камера прямо в браузере (Android и iPhone одинаково, приложение ставить не надо). На проектор — зеркалишь телефон: iPhone → AirPlay на Mac или кабель + QuickTime; Android → scrcpy по USB.</div>
       <div class="row"><span class="k">Почему:</span> вау из вещи в руках человека, поток линейный, почти нечему ломаться, результат — красивый шареабельный артефакт.</div>
       <details class="prompt"><summary>▸ промт для Codex <button class="copy" data-copy="p1" style="margin-left:auto">копировать</button></summary>
-<pre id="p1">Проект: SnapSell — «сфоткал вещь → готовое объявление». Стек: Next.js (App Router) + Supabase (таблица listings) + Vercel, GPT-vision через OpenAI API на сервере. ОДИН демо-путь: экран с кнопкой камеры → фото → vision возвращает строгий JSON {title, description, condition, category, price_range, reasoning} → рендерим красивую карточку объявления → кнопка Post пишет в Supabase и показывает в общей ленте. Вне скоупа: auth, оплата, редактирование, реальная eBay-интеграция. Первый шаг: подними Next.js, заведи таблицу listings и роут /api/analyze, который принимает base64-фото и возвращает захардкоженный JSON — потом подключи модель.</pre></details>
+<pre id="p1">Проект: SnapSell — «сфоткал вещь → готовое объявление». Стек: Next.js (App Router) + Supabase (таблица listings) + Vercel, GPT-vision через OpenAI API на сервере. Приложение — веб, открывается в браузере телефона; камера через getUserMedia или input[type=file accept=image/* capture], одинаково на Android и iPhone (нативное приложение не нужно). ОДИН демо-путь: экран с кнопкой камеры → фото → vision возвращает строгий JSON {title, description, condition, category, price_range, reasoning} → рендерим красивую карточку объявления → кнопка Post пишет в Supabase и показывает в общей ленте. Вне скоупа: auth, оплата, редактирование, реальная eBay-интеграция. Первый шаг: подними Next.js, заведи таблицу listings и роут /api/analyze, который принимает base64-фото и возвращает захардкоженный JSON — потом подключи модель.</pre></details>
     </div>
 
     <div class="idea">
@@ -406,6 +408,7 @@ After wiring CodeGraph, remind me to restart Codex.</pre>
   <section>
     <div class="sh"><span class="sn">5</span><h2>How we work as a team</h2></div>
     <p class="body">The key rule: <b>separate branches → one person merges into <code>main</code></b>. That's how four people don't collide.</p>
+    <div class="callout"><span class="ic">⚠️</span><span><b>Rule #1:</b> work only on your own branch, never push straight to <code>main</code> — otherwise you overwrite others' work and hit conflicts. Bring your changes via a <b>Pull Request</b>; the integrator merges.</span></div>
     <ul class="plain">
       <li>Everyone works on their own branch (<code>feature/&lt;short&gt;</code>). Push → open a PR → the integrator merges into <code>main</code>.</li>
       <li>Only the integrator pushes to <code>main</code>. The shared Vercel builds a preview for every branch.</li>
@@ -434,9 +437,10 @@ After wiring CodeGraph, remind me to restart Codex.</pre>
       <div class="cat">★ Apps for your life · favorite</div>
       <h3>SnapSell — photo of an item → a ready listing</h3>
       <div class="row"><span class="k">Demo:</span> point the camera at anything (a backpack from the room) → in 5s a card "$40–55, because…" → Post → it flies into a live feed.</div>
+      <div class="row"><span class="k">On a phone:</span> it's a <b>web app</b> — open the URL on a phone, camera runs right in the browser (same on Android and iPhone, nothing to install). To the projector — mirror the phone: iPhone → AirPlay to a Mac or cable + QuickTime; Android → scrcpy over USB.</div>
       <div class="row"><span class="k">Why:</span> the wow comes from an object in their hands, the flow is linear and hard to break, and the result is a nice shareable artifact.</div>
       <details class="prompt"><summary>▸ prompt for Codex <button class="copy" data-copy="p1e" style="margin-left:auto">copy</button></summary>
-<pre id="p1e">Project: SnapSell — "snap an item → a ready marketplace listing". Stack: Next.js (App Router) + Supabase (table listings) + Vercel, GPT-vision via the OpenAI API on the server. ONE demo path: a screen with a camera button → photo → vision returns strict JSON {title, description, condition, category, price_range, reasoning} → render a nice listing card → a Post button writes to Supabase and shows it in a shared feed. Out of scope: auth, payments, editing, real eBay integration. First step: stand up Next.js, create the listings table and an /api/analyze route that takes a base64 photo and returns hardcoded JSON — then wire in the model.</pre></details>
+<pre id="p1e">Project: SnapSell — "snap an item → a ready marketplace listing". Stack: Next.js (App Router) + Supabase (table listings) + Vercel, GPT-vision via the OpenAI API on the server. The app is web, opens in the phone browser; camera via getUserMedia or input[type=file accept=image/* capture], identical on Android and iPhone (no native app). ONE demo path: a screen with a camera button → photo → vision returns strict JSON {title, description, condition, category, price_range, reasoning} → render a nice listing card → a Post button writes to Supabase and shows it in a shared feed. Out of scope: auth, payments, editing, real eBay integration. First step: stand up Next.js, create the listings table and an /api/analyze route that takes a base64 photo and returns hardcoded JSON — then wire in the model.</pre></details>
     </div>
 
     <div class="idea">
