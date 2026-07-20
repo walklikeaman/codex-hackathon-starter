@@ -33,12 +33,12 @@ git clone https://github.com/walklikeaman/codex-hackathon-starter.git && cd code
 # 2. Поставь CLI и подключи CodeGraph к Codex (идемпотентно)
 ./setup.sh
 
-# 3. Собери работающее приложение (сделай накануне, если можешь — тянет пакеты)
-./scaffold.sh            # Next.js в ./app  (можно заменить своим стеком)
+# 3. Поставь зависимости приложения (оно уже в репозитории) + локальный .env
+./scaffold.sh            # npm install + .env.local с общими ключами Supabase
 
 # 4. Войди и строй
 codex                    # вход при первом запуске
-vercel login             # только тому, кто ведёт деплой
+npm run dev              # http://localhost:3000
 ```
 
 Дальше просто скажи Codex, что строишь. Сначала заполни блок **«Проект»** вверху
@@ -74,9 +74,10 @@ vercel login             # только тому, кто ведёт деплой
 
 ```
 AGENTS.md          glue, который читает Codex (заполни блок «Проект» на старте)
+app/ · package.json · next.config.mjs   готовое Next.js-приложение (в корне; деплоится на Vercel)
 setup.sh           установка машины + подключение MCP  (--infra, --playwright, --check)
-scaffold.sh        готовое приложение Next.js (./app)
-.env.example       ожидаемые ключи окружения (скопируй в .env.local; заполненный не коммить)
+scaffold.sh        ставит зависимости приложения + создаёт .env.local
+.env.example       общие ключи Supabase уже внутри (публичные; scaffold копирует в .env.local)
 INSTALL.md         чек-лист: чистая машина + аккаунты
 PREFLIGHT.md       короткая шаринг-одностраничка «поставь заранее»
 docs/agent-framework.md   весь метод: слои, ритуалы, лупы, ship
