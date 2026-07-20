@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Начни здесь — окружение для хакатона на Codex</title>
+<title>Хакатон на Codex — полная инструкция команде</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
 <style>
   :root {
     --ground:#f6f5f1; --panel:#ffffff; --panel-2:#efece4;
@@ -26,207 +27,294 @@
     }
   }
   * { box-sizing:border-box; }
-  html { -webkit-text-size-adjust:100%; }
-  body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); line-height:1.55; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
-  .wrap { max-width:700px; margin:0 auto; padding:clamp(18px,4vw,40px) clamp(16px,4vw,28px) 64px; }
+  html { -webkit-text-size-adjust:100%; scroll-behavior:smooth; }
+  body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); line-height:1.6; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+  .wrap { max-width:760px; margin:0 auto; padding:clamp(18px,4vw,40px) clamp(16px,4vw,28px) 72px; }
+  a { color:var(--accent-ink); text-underline-offset:2px; }
 
-  .eyebrow { font-family:var(--mono); font-size:.72rem; letter-spacing:.2em; text-transform:uppercase; color:var(--accent-ink); font-weight:600; display:flex; align-items:center; gap:.6em; }
-  .eyebrow::after { content:""; flex:1; height:1px; background:repeating-linear-gradient(90deg,var(--line-strong) 0 6px,transparent 6px 12px); }
-
-  header.hero { margin-top:16px; }
-  h1 { margin:.2em 0 0; font-size:clamp(1.55rem,5.2vw,2.15rem); line-height:1.1; letter-spacing:-.015em; text-wrap:balance; }
+  .eyebrow { font-family:var(--mono); font-size:.72rem; letter-spacing:.2em; text-transform:uppercase; color:var(--accent-ink); font-weight:600; }
+  h1 { margin:.25em 0 0; font-size:clamp(1.6rem,5.4vw,2.3rem); line-height:1.08; letter-spacing:-.015em; text-wrap:balance; }
   .meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
   .chip { font-family:var(--mono); font-size:.74rem; background:var(--panel); border:1px solid var(--line); color:var(--ink-soft); padding:5px 10px; border-radius:7px; white-space:nowrap; }
-  .chip b { color:var(--ink); font-weight:600; }
+  .chip b { color:var(--ink); }
   .chip.hot { background:var(--accent-soft); border-color:transparent; color:var(--accent-ink); }
-  .lede { color:var(--ink-soft); font-size:.98rem; margin:20px 2px 0; }
+  .lede { color:var(--ink-soft); font-size:1.0rem; margin:18px 0 0; }
   .lede b { color:var(--ink); font-weight:600; }
 
-  section { margin-top:30px; }
-  .sh { display:flex; align-items:baseline; gap:11px; margin:0 2px 12px; }
-  .sn { flex:none; width:26px; height:26px; border-radius:50%; background:var(--accent-soft); color:var(--accent-ink); font-family:var(--mono); font-weight:700; font-size:.85rem; display:grid; place-items:center; }
-  h2 { font-size:1.1rem; margin:0; letter-spacing:-.005em; }
-  .sh .note { font-size:.82rem; color:var(--ink-faint); margin-left:auto; align-self:center; }
-  p.body { color:var(--ink-soft); font-size:.92rem; margin:0 2px 12px; }
+  /* TOC */
+  .toc { margin-top:26px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .toc-t { font-family:var(--mono); font-size:.68rem; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:8px; }
+  .toc ol { margin:0; padding-left:1.3em; columns:2; column-gap:24px; }
+  @media (max-width:520px){ .toc ol { columns:1; } }
+  .toc li { margin:3px 0; font-size:.9rem; }
+
+  section { margin-top:38px; scroll-margin-top:16px; }
+  .sh { display:flex; align-items:baseline; gap:11px; margin:0 2px 14px; }
+  .sn { flex:none; width:27px; height:27px; border-radius:50%; background:var(--accent-soft); color:var(--accent-ink); font-family:var(--mono); font-weight:700; font-size:.82rem; display:grid; place-items:center; }
+  h2 { font-size:1.18rem; margin:0; letter-spacing:-.01em; }
+  h3 { font-size:1rem; margin:22px 2px 8px; }
+  p.body { margin:0 2px 12px; }
   p.body b, li b { color:var(--ink); font-weight:600; }
+  ul.plain { margin:0 0 12px; padding-left:1.2em; }
+  ul.plain li { margin:5px 0; }
+  code { font-family:var(--mono); font-size:.85em; background:var(--panel-2); border:1px solid var(--line); padding:1px 5px; border-radius:5px; color:var(--ink); }
 
-  .accounts { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:9px; }
-  .acc { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:11px 13px; font-size:.88rem; }
-  .acc b { display:block; }
-  .acc small { color:var(--ink-soft); }
+  table { width:100%; border-collapse:collapse; margin:0 0 8px; font-size:.9rem; display:block; overflow-x:auto; }
+  th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-family:var(--mono); font-size:.68rem; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint); font-weight:600; }
+  td b { color:var(--ink); }
 
-  .term { background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); overflow:hidden; }
+  .term { background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); overflow:hidden; margin:6px 0 4px; }
   .term.big { border-color:var(--accent); }
-  .term-bar { display:flex; align-items:center; gap:7px; padding:10px 14px; background:var(--panel-2); border-bottom:1px solid var(--line); }
+  .term-bar { display:flex; align-items:center; gap:7px; padding:9px 14px; background:var(--panel-2); border-bottom:1px solid var(--line); }
   .term.big .term-bar { background:var(--accent-soft); }
-  .dot { width:11px; height:11px; border-radius:50%; background:var(--line-strong); }
-  .term-title { font-family:var(--mono); font-size:.72rem; color:var(--ink-faint); margin-left:6px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--line-strong); }
+  .term-title { font-family:var(--mono); font-size:.71rem; color:var(--ink-faint); margin-left:6px; }
   .term.big .term-title { color:var(--accent-ink); font-weight:600; }
-  .copy { margin-left:auto; font-family:var(--mono); font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; background:transparent; border:1px solid var(--line-strong); color:var(--ink-soft); padding:4px 10px; border-radius:6px; cursor:pointer; transition:.15s; }
+  .copy { margin-left:auto; font-family:var(--mono); font-size:.68rem; letter-spacing:.04em; text-transform:uppercase; background:transparent; border:1px solid var(--line-strong); color:var(--ink-soft); padding:4px 9px; border-radius:6px; cursor:pointer; transition:.15s; }
   .term.big .copy { border-color:var(--accent); color:var(--accent-ink); }
   .copy:hover { color:var(--ink); border-color:var(--accent); }
   .copy.copied { color:var(--go); border-color:var(--go); }
-  pre { margin:0; padding:15px 16px; overflow-x:auto; font-family:var(--mono); font-size:.83rem; line-height:1.7; color:var(--ink); white-space:pre-wrap; word-break:break-word; }
+  pre { margin:0; padding:14px 16px; overflow-x:auto; font-family:var(--mono); font-size:.82rem; line-height:1.7; color:var(--ink); white-space:pre-wrap; word-break:break-word; }
   pre.cmd { white-space:pre; }
   pre .c { color:var(--ink-faint); }
-  code { font-family:var(--mono); font-size:.85em; background:var(--panel-2); border:1px solid var(--line); padding:1px 5px; border-radius:5px; color:var(--ink); }
 
-  .callout { margin-top:12px; display:flex; gap:12px; align-items:flex-start; background:var(--accent-soft); border-radius:11px; padding:13px 15px; font-size:.88rem; color:var(--accent-ink); }
+  .callout { margin:12px 0; display:flex; gap:12px; align-items:flex-start; background:var(--accent-soft); border-radius:11px; padding:13px 15px; font-size:.9rem; color:var(--accent-ink); }
+  .callout .ic { flex:none; font-size:1.05rem; }
   .callout b { color:var(--accent-ink); }
-  .callout .ic { flex:none; font-size:1.05rem; line-height:1.3; }
-  .did { display:grid; gap:6px; margin:12px 2px 0; }
-  .did div { display:flex; gap:9px; font-size:.87rem; color:var(--ink-soft); }
-  .did .k { color:var(--go); flex:none; font-family:var(--mono); }
 
-  details { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-top:8px; }
-  summary { cursor:pointer; padding:12px 14px; font-weight:600; font-size:.9rem; list-style:none; display:flex; gap:9px; }
-  summary::-webkit-details-marker { display:none; }
-  summary .q { color:var(--accent-ink); font-family:var(--mono); }
-  details .a { padding:0 14px 13px; color:var(--ink-soft); font-size:.86rem; line-height:1.6; }
-  details .a code { font-size:.84em; }
+  .gloss { display:grid; gap:9px; }
+  .g { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; font-size:.92rem; }
+  .g b { color:var(--ink); }
 
-  footer { margin-top:38px; padding-top:18px; border-top:1px solid var(--line); color:var(--ink-faint); font-size:.82rem; line-height:1.6; }
-  footer a { color:var(--accent-ink); }
-  @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+  .cmds { display:grid; gap:7px; }
+  .cmd { display:flex; gap:12px; align-items:baseline; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 14px; font-size:.9rem; }
+  .cmd .name { flex:none; font-family:var(--mono); font-size:.83rem; color:var(--accent-ink); font-weight:600; min-width:120px; }
+  .cmd .d { color:var(--ink-soft); }
+
+  .idea { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:10px; }
+  .idea.fav { border-color:var(--accent); }
+  .idea .cat { font-family:var(--mono); font-size:.66rem; letter-spacing:.06em; text-transform:uppercase; color:var(--accent-ink); }
+  .idea h3 { margin:2px 0 6px; font-size:1.02rem; }
+  .idea .row { font-size:.9rem; margin:5px 0; }
+  .idea .row b { color:var(--ink); }
+  .idea .row .k { color:var(--ink-faint); font-size:.82rem; }
+  details.prompt { margin-top:10px; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+  details.prompt summary { cursor:pointer; padding:9px 12px; font-family:var(--mono); font-size:.74rem; color:var(--accent-ink); list-style:none; display:flex; align-items:center; gap:8px; background:var(--panel-2); }
+  details.prompt summary::-webkit-details-marker { display:none; }
+  details.prompt[open] summary { border-bottom:1px solid var(--line); }
+
+  footer { margin-top:44px; padding-top:18px; border-top:1px solid var(--line); color:var(--ink-faint); font-size:.83rem; line-height:1.6; }
+  .top { display:inline-block; margin-top:8px; font-size:.8rem; }
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto;} * { transition:none !important; } }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" id="top">
 
-  <div class="eyebrow">Начни здесь</div>
-  <header class="hero">
-    <h1>Окружение для хакатона за 10 минут</h1>
-    <div class="meta">
-      <span class="chip hot">OpenAI Build Week · Codex</span>
-      <span class="chip">📍 <b>Тель-Авив</b></span>
-      <span class="chip">🗓 <b>21 июля</b></span>
-    </div>
-    <p class="lede">Три действия руками, потом один промт в Codex — и <b>агент сам доустанавливает
-    всё остальное</b>: клонирует общий репозиторий, ставит инструменты, кладёт скиллы и создаёт
-    приложение. База и деплой — <b>общие на всю команду</b>, отдельные аккаунты для них не нужны.
-    Лучше сделать это <b>накануне</b>, а не на площадке.</p>
-  </header>
+  <div class="eyebrow">Хакатон на Codex · полная инструкция</div>
+  <h1>Окружение готово. Подключаемся и строим.</h1>
+  <div class="meta">
+    <span class="chip hot">OpenAI Build Week</span>
+    <span class="chip">📍 <b>Тель-Авив</b></span>
+    <span class="chip">🗓 <b>21 июля</b></span>
+    <span class="chip">⏱ 7 часов · строим на Codex</span>
+  </div>
+  <p class="lede">Здесь <b>всё в одном месте</b>: что уже готово, как поставить, что вставить агенту,
+  какие команды есть, как работаем вчетвером и какие идеи с готовыми промтами. Судят живое рабочее демо.</p>
 
-  <!-- accounts -->
-  <section>
-    <div class="sh"><span class="sn">0</span><h2>Аккаунты — нужно только два</h2></div>
-    <div class="accounts">
-      <div class="acc"><b>OpenAI</b><small>вход в Codex</small></div>
-      <div class="acc"><b>GitHub</b><small>общий репозиторий</small></div>
-    </div>
-    <p class="body">Базу и деплой команда держит централизованно на Supabase и Vercel — тебе аккаунты для них заводить не нужно.</p>
-    <div class="callout"><span class="ic">🗺</span><span><b>Что есть что:</b> <b>GitHub</b> — где лежит код · <b>Vercel</b> — публикует его в интернете по ссылке · <b>Supabase</b> — хранит данные приложения. Дашборды почти не нужны: агент работает через ключи.</span></div>
+  <div class="toc">
+    <div class="toc-t">Содержание</div>
+    <ol>
+      <li><a href="#ready">Что уже готово</a></li>
+      <li><a href="#gloss">Словарик</a></li>
+      <li><a href="#install">Установка</a></li>
+      <li><a href="#cmds">Команды</a></li>
+      <li><a href="#team">Как работаем командой</a></li>
+      <li><a href="#ideas">Идеи проекта</a></li>
+    </ol>
+  </div>
+
+  <!-- 1 -->
+  <section id="ready">
+    <div class="sh"><span class="sn">1</span><h2>Что уже готово (не настраиваем)</h2></div>
+    <table>
+      <tr><th>Что</th><th>Статус / ссылка</th></tr>
+      <tr><td><b>Репозиторий</b> (код)</td><td><a href="https://github.com/walklikeaman/codex-hackathon-starter">github.com/walklikeaman/codex-hackathon-starter</a></td></tr>
+      <tr><td><b>Живое приложение</b></td><td><a href="https://codex-hackathon-starter.vercel.app">codex-hackathon-starter.vercel.app</a> — уже открывается ✅</td></tr>
+      <tr><td><b>Supabase</b> (база + вход)</td><td>общий проект, подключён на проде ✅</td></tr>
+      <tr><td><b>Vercel</b> (публикация)</td><td>привязан к репо: любой пуш = автодеплой в веб</td></tr>
+      <tr><td><b>Ключи Supabase</b></td><td>вшиты в репозиторий — вписывать ничего не нужно</td></tr>
+    </table>
+    <p class="body">Тебе останется только поставить Codex и вставить один промт — дальше агент всё поднимет сам.</p>
   </section>
 
-  <!-- step 1 -->
-  <section>
-    <div class="sh"><span class="sn">1</span><h2>Базовая установка руками</h2><span class="note">~5 минут</span></div>
-    <p class="body">Codex не может поставить сам себя, поэтому эти три строки — руками. Дальше всё сделает агент.</p>
+  <!-- 2 -->
+  <section id="gloss">
+    <div class="sh"><span class="sn">2</span><h2>Словарик (чтобы не путаться)</h2></div>
+    <div class="gloss">
+      <div class="g"><b>Жюри / судья</b> — те, кто оценивает проекты и выбирает победителей. Им показываем демо. Фразы в идеях вроде «судья снимает свой рюкзак» — это приём показа: даёшь приложение в руки живому человеку (жюри или зрителю), и он пробует на своём. Работать всё должно и на обычном примере.</div>
+      <div class="g"><b>Демо-путь</b> — ОДИН сценарий, который показываем вживую от начала до конца. Бережём его; всё лишнее — «вне скоупа», пока он не зелёный.</div>
+      <div class="g"><b>GitHub</b> — где лежит код. <b>Vercel</b> — публикует код в интернете по ссылке. <b>Supabase</b> — хранит данные приложения. «Деплоить в GitHub» так не бывает: пушим в GitHub, публикует Vercel.</div>
+      <div class="g"><b>Ветка</b> — своя копия кода, где работаешь, не мешая другим. <b>PR (Pull Request)</b> — предложение влить свою ветку в общую. <b>main</b> — главная ветка, в неё сводит один человек (интегратор).</div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section id="install">
+    <div class="sh"><span class="sn">3</span><h2>Установка</h2></div>
+    <p class="body"><b>Аккаунты — только два у каждого:</b> <b>OpenAI</b> (вход в Codex, $150 кредитов на событии) и
+    <b>GitHub</b> (скинь ник в чат для доступа на запись). Supabase и Vercel заводить не нужно — они общие.</p>
+
+    <h3>Шаг 1 — руками (~5 минут)</h3>
     <div class="term">
-      <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="term-title">терминал</span><button class="copy" data-copy="code1">Копировать</button></div>
-<pre class="cmd" id="code1"><span class="c"># 1. Node 22+ — если нет: nodejs.org (LTS) или  nvm install 22</span>
+      <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="term-title">терминал</span><button class="copy" data-copy="c1">Копировать</button></div>
+<pre class="cmd" id="c1"><span class="c"># Node 22+ — если нет: nodejs.org (LTS) или nvm install 22</span>
 node --version
-
-<span class="c"># 2. поставить Codex CLI</span>
+<span class="c"># поставить Codex</span>
 npm install -g @openai/codex
-
-<span class="c"># 3. войти под аккаунтом OpenAI</span>
+<span class="c"># войти под аккаунтом OpenAI</span>
 codex</pre>
     </div>
-  </section>
 
-  <!-- step 2 — the prompt -->
-  <section>
-    <div class="sh"><span class="sn">2</span><h2>Агент ставит всё остальное сам</h2></div>
-    <p class="body">Открой Codex в папке, где хочешь держать проект, и <b>вставь этот промт</b>. Агент выполнит его автономно.</p>
+    <h3>Шаг 2 — агент ставит всё остальное. Открой Codex и вставь:</h3>
     <div class="term big">
-      <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="term-title">вставь это в Codex</span><button class="copy" data-copy="prompt">Копировать промт</button></div>
-<pre id="prompt">Ты — мой агент настройки окружения. Выполни всё автономно и отчитайся в конце.
+      <div class="term-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="term-title">вставь это в Codex</span><button class="copy" data-copy="cprompt">Копировать промт</button></div>
+<pre id="cprompt">Ты — мой агент настройки окружения. Выполни всё автономно и отчитайся в конце.
 
 1. Склонируй репозиторий https://github.com/walklikeaman/codex-hackathon-starter.git и зайди в его папку.
-2. Запусти ./setup.sh — поставит CodeGraph, подключит его к Codex (codegraph install) и положит скиллы /ship и /loop-* в ~/.codex/prompts.
-3. Запусти ./scaffold.sh — приложение уже в репозитории; скрипт поставит зависимости и создаст .env.local с общими ключами Supabase.
-4. Запусти npm run dev — приложение поднимется на http://localhost:3000. Ключи Supabase уже вшиты, вписывать ничего не нужно.
-5. Прочитай AGENTS.md, TASKS.md и TEAMWORK.md — это правила, доска задач и как мы работаем командой. Записи веди в wiki/log.md, доску обновляй в TASKS.md, быстрые заметки — в notes/.
-6. Проверь: `codex mcp list` показывает codegraph; в ~/.codex/prompts лежат ship.md и loop-*.md.
-7. Отчитайся коротко: что готово и что осталось за мной (вписать ключи Supabase, вход в Codex).
+2. Запусти ./setup.sh — поставит CodeGraph, подключит его к Codex и положит скиллы (/ship, /autopilot, /loop-*, /pitch, /ui-polish, /schema) в ~/.codex/prompts.
+3. Запусти ./scaffold.sh — поставит зависимости приложения и создаст .env.local с общими ключами Supabase.
+4. Запусти npm run dev — приложение поднимется на http://localhost:3000.
+5. Прочитай AGENTS.md, TASKS.md и TEAMWORK.md — правила, доска задач и как мы работаем командой.
+6. Отчитайся: что готово. НЕ создавай таблицы в базе, пока мы не зафиксируем идею.
 
-Важно: НЕ создавай таблицы в базе и не придумывай схему, пока не зафиксирована идея проекта — схему решаем в первые 15 минут кикоффа. Останавливайся и спрашивай только если шаг нельзя выполнить без меня. После подключения CodeGraph напомни, что Codex надо перезапустить.</pre>
+После подключения CodeGraph напомни перезапустить Codex.</pre>
     </div>
-    <div class="did">
-      <div><span class="k">→</span><span>клонирует общий репозиторий команды</span></div>
-      <div><span class="k">→</span><span>ставит CodeGraph и подключает его к Codex</span></div>
-      <div><span class="k">→</span><span>кладёт скиллы <code>/ship</code>, <code>/loop-demo</code>, <code>/loop-lint</code> и остальные</span></div>
-      <div><span class="k">→</span><span>ставит зависимости готового приложения и проверяет установку</span></div>
-    </div>
-    <div class="callout"><span class="ic">↻</span><span>После того как агент подключит CodeGraph, <b>перезапусти Codex</b> (закрой и открой заново) — тогда он загрузится.</span></div>
+    <div class="callout"><span class="ic">✅</span><span>После этого локально приложение работает, база подключена, а деплой пойдёт сам при следующем пуше.</span></div>
   </section>
 
-  <!-- step 3 -->
-  <section>
-    <div class="sh"><span class="sn">3</span><h2>Доступ и общие ключи</h2></div>
-    <p class="body"><b>База и деплой — общие</b>, их держит команда. Ключи Supabase уже вшиты в репозиторий — <code>scaffold</code> сам заполняет <code>app/.env.local</code>, вписывать ничего не надо. Свои Supabase и Vercel не заводи.</p>
-    <p class="body"><b>Деплой сам:</b> пушишь ветку в общий репозиторий, и общий Vercel собирает превью-ссылку. Локально ничего настраивать не нужно.</p>
-    <p class="body"><b>Доступ на запись:</b> скинь свой <b>GitHub-ник</b> владельцу — добавят в Collaborators, и <code>/ship</code> сможет пушить.</p>
-  </section>
-
-  <!-- готово -->
-  <section>
-    <div class="sh"><span class="sn">✓</span><h2>Готово — можно строить</h2></div>
-    <p class="body">Открой репозиторий в Codex, заполни блок «Проект» в <code>AGENTS.md</code> (что строим, стек, один демо-путь) и опиши задачу словами. Дальше — <code>/loop-demo</code> до зелёного и <code>/ship</code>, чтобы сохранить.</p>
-
-    <details>
-      <summary><span class="q">?</span>codex: command not found после установки</summary>
-      <div class="a">Глобальная папка npm не в PATH этой сессии. Открой новый терминал; если не помогло — добавь <code>$(npm prefix -g)/bin</code> в PATH. И не путай: пакет называется <code>@openai/codex</code>, а не <code>codex</code>.</div>
-    </details>
-    <details>
-      <summary><span class="q">?</span>./setup.sh упал на установке</summary>
-      <div class="a">Чаще всего это Node ниже 22 или права на глобальный npm. Поставь Node 22 через nvm (<code>nvm install 22</code>) — тогда sudo не нужен — и запусти <code>./setup.sh</code> снова, он идемпотентный.</div>
-    </details>
-    <details>
-      <summary><span class="q">?</span>Агент не может создать таблицу в Supabase</summary>
-      <div class="a">Схему ведёт один человек — тот, кто запускал <code>./setup.sh --infra</code>. У него MCP Supabase должен пройти браузерный вход и выбрать общий проект («покажи проекты Supabase» откроет вход). Остальные читают базу через общие ключи в <code>app/.env.local</code>, отдельный доступ не нужен.</div>
-    </details>
-    <details>
-      <summary><span class="q">?</span>codex mcp list не показывает codegraph</summary>
-      <div class="a">Запусти <code>./setup.sh</code> ещё раз в папке репозитория и перезапусти Codex. Вручную: <code>codegraph install</code> и выбери Codex CLI. Supabase и Vercel MCP нужны только тому, кто ведёт бэкенд — он ставит их через <code>./setup.sh --infra</code>.</div>
-    </details>
-  </section>
-
-  <!-- teamwork -->
-  <section>
-    <div class="sh"><span class="sn">★</span><h2>Как работаем командой</h2></div>
-    <p class="body">Роли раздаём на кикоффе, а правила — заранее. Главное: <b>разные ветки, сводит в одну один человек</b>.</p>
-    <div class="did">
-      <div><span class="k">→</span><span>каждый в своей ветке <code>feature/…</code>, в <code>main</code> мёржит только интегратор (через Pull Request)</span></div>
-      <div><span class="k">→</span><span>на кикоффе фиксируем скоуп и <b>контракт данных</b> — тогда бэкенд и фронт идут параллельно</span></div>
-      <div><span class="k">→</span><span>интеграция каждые 60–90 минут: все пушат, интегратор сводит в <code>main</code>, деплой превью</span></div>
-      <div><span class="k">→</span><span><code>/ship</code> часто, маленькими коммитами; доску задач ведём в <code>TASKS.md</code></span></div>
+  <!-- 4 -->
+  <section id="cmds">
+    <div class="sh"><span class="sn">4</span><h2>Команды (пишешь <code>/имя</code> в Codex)</h2></div>
+    <div class="cmds">
+      <div class="cmd"><span class="name">/autopilot</span><span class="d">веди свою задачу до зелёного сам (спека → сборка → запуск → проверка → /ship), стоп на человеческом гейте.</span></div>
+      <div class="cmd"><span class="name">/ship</span><span class="d">сохранить и запушить: аккуратный коммит, пуш, проверка. Секреты не утекают.</span></div>
+      <div class="cmd"><span class="name">/loop-demo</span><span class="d">довести один демо-путь до зелёного, от начала до конца.</span></div>
+      <div class="cmd"><span class="name">/loop-lint</span><span class="d">перед коммитом привести линт, типы и сборку к чистоте.</span></div>
+      <div class="cmd"><span class="name">/loop-debug</span><span class="d">чинить баг; записывает попытки, чтобы не ходить по кругу.</span></div>
+      <div class="cmd"><span class="name">/loop-spec-ship</span><span class="d">маленькую спеку довести до зелёного и заслать.</span></div>
+      <div class="cmd"><span class="name">/schema</span><span class="d">минимальная схема Supabase — только после фиксации идеи, ведёт один человек.</span></div>
+      <div class="cmd"><span class="name">/ui-polish</span><span class="d">быстрая визуальная полировка демо (~30 мин), чтобы выглядело намеренно.</span></div>
+      <div class="cmd"><span class="name">/pitch</span><span class="d">90-секундный питч для жюри: проблема → живое демо → вау → просьба.</span></div>
     </div>
-    <div class="callout"><span class="ic">📋</span><span>Полные правила — <code>TEAMWORK.md</code>, доска задач (её Codex читает на старте) — <code>TASKS.md</code>. Роли впишете туда на кикоффе.</span></div>
+    <p class="body" style="margin-top:12px">Плюс <b>CodeGraph</b> (агент понимает код без слепого grep) и <b>память проекта</b> (<code>wiki/</code>, <code>Context/</code>) — решения копятся между сессиями.</p>
+  </section>
+
+  <!-- 5 -->
+  <section id="team">
+    <div class="sh"><span class="sn">5</span><h2>Как работаем командой</h2></div>
+    <p class="body">Главное правило: <b>разные ветки → один сводит в <code>main</code></b>. Так четверо не толкаются.</p>
+    <ul class="plain">
+      <li>Каждый — в своей ветке (<code>feature/&lt;коротко&gt;</code>). Пушишь → открываешь PR → интегратор мёржит в <code>main</code>.</li>
+      <li>В <code>main</code> пушит только интегратор. Общий Vercel собирает превью на каждую ветку.</li>
+    </ul>
+    <h3>Роли (разбираем на кикоффе, ~1 человек на каждую)</h3>
+    <ul class="plain">
+      <li><b>Интегратор / main</b> — держит <code>main</code> зелёным, мёржит PR, ведёт скоуп.</li>
+      <li><b>Бэкенд</b> — Supabase: схема (<code>/schema</code>), API. Схему ведёт он один.</li>
+      <li><b>Фронтенд</b> — экраны и флоу.</li>
+      <li><b>Демо и деплой</b> — гоняет демо-путь целиком, <code>/ui-polish</code>, запись демо, <code>/pitch</code>.</li>
+    </ul>
+    <h3>Кикофф (первые 30–45 минут, все вместе)</h3>
+    <ul class="plain">
+      <li>Выбрать идею (раздел ниже), заполнить блок «Проект» в <code>AGENTS.md</code>: идея, стек, один демо-путь, что вне скоупа.</li>
+      <li>Договориться о контракте данных (таблицы/поля) — тогда бэк и фронт идут параллельно.</li>
+      <li>Нарезать демо-путь на 4–6 кусков, вписать в <code>TASKS.md</code>, разобрать по себе.</li>
+    </ul>
+    <p class="body"><b>Ритм:</b> <code>git pull</code> перед стартом · <code>/ship</code> часто · интеграция каждые 60–90 минут (все пушат, интегратор сводит, деплой превью, проверяем что демо-путь жив).</p>
+  </section>
+
+  <!-- 6 -->
+  <section id="ideas">
+    <div class="sh"><span class="sn">6</span><h2>Идеи проекта</h2></div>
+    <p class="body">6 идей под категории, все собираются вчетвером за 7 часов, с сильным живым демо. Выбираем <b>одну</b> на кикоффе, её промт вставляем в блок «Проект» в <code>AGENTS.md</code> — дальше <code>/autopilot</code> → <code>/loop-demo</code> → <code>/ship</code>.</p>
+
+    <div class="idea fav">
+      <div class="cat">★ Apps for your life · фаворит</div>
+      <h3>SnapSell — фото вещи → готовое объявление</h3>
+      <div class="row"><span class="k">Демо:</span> даёшь зрителю/жюри снять свою вещь (рюкзак) → через 5 сек карточка «$40–55, потому что…» → Post → влетает в живую ленту.</div>
+      <div class="row"><span class="k">Почему:</span> вау из вещи в руках человека, поток линейный, почти нечему ломаться, результат — красивый шареабельный артефакт.</div>
+      <details class="prompt"><summary>▸ промт для Codex <button class="copy" data-copy="p1" style="margin-left:auto">копировать</button></summary>
+<pre id="p1">Проект: SnapSell — «сфоткал вещь → готовое объявление». Стек: Next.js (App Router) + Supabase (таблица listings) + Vercel, GPT-vision через OpenAI API на сервере. ОДИН демо-путь: экран с кнопкой камеры → фото → vision возвращает строгий JSON {title, description, condition, category, price_range, reasoning} → рендерим красивую карточку объявления → кнопка Post пишет в Supabase и показывает в общей ленте. Вне скоупа: auth, оплата, редактирование, реальная eBay-интеграция. Первый шаг: подними Next.js, заведи таблицу listings и роут /api/analyze, который принимает base64-фото и возвращает захардкоженный JSON — потом подключи модель.</pre></details>
+    </div>
+
+    <div class="idea">
+      <div class="cat">Developer tools</div>
+      <h3>Codex Colosseum — 3 агента на один баг</h3>
+      <div class="row"><span class="k">Демо:</span> вводим баг → три колонки, live-диффы + авто-тесты → у двоих зелёный чек → «Merge winner».</div>
+      <div class="row"><span class="k">Почему:</span> прямо в тему OpenAI Build Week; eval-харнесс для промптов, боль каждого разработчика.</div>
+      <details class="prompt"><summary>▸ промт для Codex <button class="copy" data-copy="p2" style="margin-left:auto">копировать</button></summary>
+<pre id="p2">Проект: Codex Colosseum — арена из 3 агентов на один баг. Стек: Next.js + Supabase (таблица runs) + Vercel, 3 параллельных вызова OpenAI на сервере. ОДИН демо-путь: захардкоженный файл с падающим тестом → кнопка Run → 3 вызова с разными системными промптами стримят диффы в 3 колонки → гоним фиксированный тест-набор в serverless → pass/fail-бейдж → Merge winner кладёт выбранный дифф в результат. Вне скоупа: git-push, авторизация, история, произвольные репо, больше одного файла. Первый шаг: свёрстай 3-колоночный экран со стрим-плейсхолдерами и заготовь мини-репо (файл + красный тест) как фикстуру.</pre></details>
+    </div>
+
+    <div class="idea">
+      <div class="cat">Developer tools · AI-native</div>
+      <h3>Napkin — фото наброска → живой UI</h3>
+      <div class="row"><span class="k">Демо:</span> человек рисует форму на whiteboard-доске, снимает на телефон → через ~15 сек рабочий кликабельный React-компонент на экране.</div>
+      <div class="row"><span class="k">Почему:</span> vision + codegen в одном жесте, магия из рисунка, досок на хакатоне полно.</div>
+      <details class="prompt"><summary>▸ промт для Codex <button class="copy" data-copy="p3" style="margin-left:auto">копировать</button></summary>
+<pre id="p3">Проект: Napkin — «фото наброска → живой UI». Стек: Next.js + Vercel, GPT-vision, Supabase хранит сгенерённые страницы. ОДИН демо-путь: загрузка фото скетча → модель отдаёт строгий JSX+Tailwind → рендерим в изолированной песочнице (react-live/iframe) прямо на экране, компонент кликабелен. Вне скоупа: ручные правки кода, экспорт, аккаунты, много экранов. Первый шаг: сделай экран загрузки фото и sandbox-рендерер, который безопасно исполняет строку JSX+Tailwind; сначала прогони на захардкоженном сниппете формы, потом подключи vision.</pre></details>
+    </div>
+
+    <div class="idea">
+      <div class="cat">Education</div>
+      <h3>Viva — голосовой устный экзаменатор</h3>
+      <div class="row"><span class="k">Демо:</span> человек отвечает голосом неверно → ИИ перебивает на полуслове и наводящим выводит на правильный ответ (Realtime API).</div>
+      <div class="row"><span class="k">Почему:</span> живой голос бьёт зал сильнее текста; фишка — перебивание и адаптивность на лету.</div>
+      <details class="prompt"><summary>▸ промт для Codex <button class="copy" data-copy="p4" style="margin-left:auto">копировать</button></summary>
+<pre id="p4">Проект: Viva — голосовой устный экзаменатор по одному документу. Стек: Next.js + Supabase (хранит материал сессии) + Vercel, голос через OpenAI Realtime API. ОДИН демо-путь: загрузил PDF → «Начать экзамен» → ИИ голосом задаёт вопрос по материалу, слушает ответ, при ошибке ПЕРЕБИВАЕТ и уточняет наводящим, в конце даёт устный вердикт. Вне скоупа: регистрация классов, журнал оценок, мобилка, несколько предметов/сессий. Первый шаг: подними Realtime-соединение в браузере с примитивным систем-промптом «экзаменуй по этому тексту, перебивай на ошибке», проверь двусторонний звук, потом привяжи загруженный PDF как контекст.</pre></details>
+    </div>
+
+    <div class="idea">
+      <div class="cat">Games</div>
+      <h3>Взломай Оракула — игра-джейлбрейк</h3>
+      <div class="row"><span class="k">Демо:</span> человек пишет хитрый заход → экран вспыхивает GRANTED → имя на лидерборд комнаты → уровень 2. После этого каждый хочет попробовать.</div>
+      <div class="row"><span class="k">Почему:</span> геймплей = сам промпт-инжиниринг (в духе Gandalf), дофамин и соревнование среди AI-аудитории, почти нечему ломаться.</div>
+      <details class="prompt"><summary>▸ промт для Codex <button class="copy" data-copy="p5" style="margin-left:auto">копировать</button></summary>
+<pre id="p5">Проект: Взломай Оракула — игра-джейлбрейк на 3 уровня. Стек: Next.js + Supabase (таблица leaderboard: name, level, time) + Vercel, OpenAI на сервере. ОДИН демо-путь: уровень 1 → игрок пишет сообщение → сервер прогоняет через систем-промпт «не выдавай пароль X» → при утечке пароля в ответе показываем WIN, пишем имя+время в лидерборд, открываем уровень 2 с более жёсткой защитой. Три уровня захардкожены. Вне скоупа: авторизация, генерация уровней, анти-чит, графика. Первый шаг: сделай один экран с чатом и серверный роут, который детектит подстроку-пароль в ответе модели и возвращает {granted:true/false}.</pre></details>
+    </div>
+
+    <div class="idea">
+      <div class="cat">Productivity / Work</div>
+      <h3>Reply Debt — кому ты должен ответить</h3>
+      <div class="row"><span class="k">Демо:</span> инбокс из 40 писем сжимается до «ты должен 6 людям» + готовые черновики → Send → тред гаснет.</div>
+      <div class="row"><span class="k">Почему:</span> отвечает на болезненное «кто на мне завис», а не «суммируй инбокс»; безопасный вау, почти не ломается.</div>
+      <details class="prompt"><summary>▸ промт для Codex <button class="copy" data-copy="p6" style="margin-left:auto">копировать</button></summary>
+<pre id="p6">Проект: Reply Debt — «кому ты должен ответить». Стек: Next.js + Supabase (таблица emails: from, subject, body, thread_id, status) с 40 сид-письмами + Vercel, OpenAI API. ОДИН демо-путь: /inbox классифицирует каждый тред «я ли блокер?», показывает только долги, у каждого — сгенерённый черновик и кнопка Send (мок → status=resolved, карточка исчезает, счётчик долга падает). Вне скоупа: реальный Gmail OAuth, настоящая отправка, вложения, мобилка. Первый шаг: залей сид-данные миграцией, сделай /inbox со списком тредов и мок-классификатором (каждый 3-й = долг), потом подключи модель.</pre></details>
+    </div>
   </section>
 
   <footer>
-    Репозиторий: <a href="https://github.com/walklikeaman/codex-hackathon-starter">github.com/walklikeaman/codex-hackathon-starter</a>.
-    Подробности установки — <code>INSTALL.md</code>, как устроено окружение — <code>docs/agent-framework.md</code>.
-    Вопросы по настройке — в чат команды.
+    Репозиторий: <a href="https://github.com/walklikeaman/codex-hackathon-starter">github.com/walklikeaman/codex-hackathon-starter</a> ·
+    полные тексты — <code>GUIDE.md</code>, <code>IDEAS.md</code>, <code>TEAMWORK.md</code> в репо.<br>
+    Вопросы по установке — в чат команды.
+    <br><a class="top" href="#top">↑ наверх</a>
   </footer>
 
 </div>
 
 <script>
   document.querySelectorAll('.copy').forEach(function(btn){
-    btn.addEventListener('click', function(){
+    btn.addEventListener('click', function(e){
+      e.preventDefault();
       var el = document.getElementById(btn.getAttribute('data-copy'));
       var text = el ? el.innerText : '';
       navigator.clipboard.writeText(text).then(function(){
         var was = btn.textContent;
-        btn.textContent = 'Готово ✓'; btn.classList.add('copied');
-        setTimeout(function(){ btn.textContent = was; btn.classList.remove('copied'); }, 1800);
-      }).catch(function(){
-        btn.textContent = 'Не вышло';
-        setTimeout(function(){ btn.textContent = 'Копировать'; }, 1800);
-      });
+        btn.textContent = 'скопировано ✓'; btn.classList.add('copied');
+        setTimeout(function(){ btn.textContent = was; btn.classList.remove('copied'); }, 1700);
+      }).catch(function(){ btn.textContent = 'ошибка'; setTimeout(function(){ btn.textContent='копировать'; },1700); });
     });
   });
 </script>
