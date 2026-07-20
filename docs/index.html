@@ -109,15 +109,12 @@
 
   <!-- accounts -->
   <section>
-    <div class="sh"><span class="sn">0</span><h2>Аккаунты</h2></div>
-    <p class="body">У каждого свой — только два. Базу и деплой заводит владелец один раз на всю команду,
-    отдельные аккаунты Supabase и Vercel тебе не нужны.</p>
+    <div class="sh"><span class="sn">0</span><h2>Аккаунты — нужно только два</h2></div>
     <div class="accounts">
-      <div class="acc"><b>OpenAI</b><small>у каждого · вход в Codex</small></div>
-      <div class="acc"><b>GitHub</b><small>у каждого · общий репозиторий</small></div>
-      <div class="acc"><b>Supabase</b><small>общий · 1 база на команду</small></div>
-      <div class="acc"><b>Vercel</b><small>общий · 1 проект на команду</small></div>
+      <div class="acc"><b>OpenAI</b><small>вход в Codex</small></div>
+      <div class="acc"><b>GitHub</b><small>общий репозиторий</small></div>
     </div>
+    <p class="body">Базу и деплой команда держит централизованно на Supabase и Vercel — тебе аккаунты для них заводить не нужно.</p>
   </section>
 
   <!-- step 1 -->
@@ -165,11 +162,10 @@ codex</pre>
 
   <!-- step 3 -->
   <section>
-    <div class="sh"><span class="sn">3</span><h2>Общие база и деплой, доступ к репозиторию</h2></div>
-    <p class="body"><b>Одна база и один деплой на всю команду</b>, не по штуке на человека. Владелец заводит один проект Supabase и один Vercel, а тебе присылает ключи Supabase для <code>app/.env.local</code>. Свои аккаунты Supabase и Vercel заводить не нужно.</p>
-    <p class="body"><b>Деплой:</b> пушишь ветку в общий репозиторий, и общий Vercel сам собирает превью-ссылку. Локально <code>vercel</code> ставить не обязательно.</p>
+    <div class="sh"><span class="sn">3</span><h2>Доступ и общие ключи</h2></div>
+    <p class="body"><b>База и деплой — общие</b>, их держит команда. Тебе пришлют ключи Supabase — впишешь их в <code>app/.env.local</code>. Заводить свои Supabase и Vercel не надо.</p>
+    <p class="body"><b>Деплой сам:</b> пушишь ветку в общий репозиторий, и общий Vercel собирает превью-ссылку. Локально ничего настраивать не нужно.</p>
     <p class="body"><b>Доступ на запись:</b> скинь свой <b>GitHub-ник</b> владельцу — добавят в Collaborators, и <code>/ship</code> сможет пушить.</p>
-    <div class="callout"><span class="ic">👑</span><span><b>Владелец команды — один раз:</b> заведи 1 проект Supabase и 1 проект Vercel; в Vercel сделай Import и выбери общий GitHub-репозиторий (тогда каждый пуш ветки станет превью-деплоем); пришли команде ключи Supabase (URL и anon key); у себя запусти <code>./setup.sh --infra</code>, чтобы твой Codex мог управлять схемой; добавь участников в Collaborators по их GitHub-никам.</span></div>
   </section>
 
   <!-- готово -->
