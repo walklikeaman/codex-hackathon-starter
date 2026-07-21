@@ -7,9 +7,21 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
-## [2026-07-21] update | Filter placeholder Wikidata labels
+## [2026-07-21] update | Filter unresolved Wikidata labels
 
-- Excluded work and location records whose displayed label is an unresolved Wikidata identifier beginning with `Q`, including television-series (`Q6769811`) results without a human-readable name.
+- Excluded records whose work or place label begins with an unresolved Wikidata QID, including television-series (`Q6769811`) entries without a human-readable name.
+
+## [2026-07-21] update | Multi-place story search across cities
+
+- Fixed the Wikidata pair limit so duplicate release/image rows no longer consume the result window before distinct work-location pairs are selected.
+- Added city-bounds-aware title search for films, series, and books. Known works use the faster Wikidata entity API; sparse results can be supplemented only by in-city, directly cited web research.
+- Location cards now explain whether a place is a filming location or story setting, include the place description, and link to the supporting Wikidata or research source.
+- Rebased onto current `main` while preserving nearby geolocation, timed tours, voice guide, TMDB imagery, recreate-the-shot, and the GloryMap brand. Verified 57 tests, the production build, 16 nearby London places, and 13 `Mission: Impossible – Fallout` places in Paris in a real browser.
+
+## [2026-07-21] decision | Product renamed to GloryMap
+
+- Renamed the active product brand, page metadata, accessibility copy and routing User-Agent from SceneMap to GloryMap.
+- Preserved historical logs, raw context, internal component names and existing `scenemap-*` localStorage keys for traceability and backward compatibility.
 
 ## [2026-07-21] update | Correct image PR synced with current main
 
@@ -29,16 +41,6 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 - AI adds short original stories when available; verified location descriptions remain a deterministic fallback when `OPENAI_API_KEY` or the AI service is unavailable.
 - Added server-side `gpt-4o-mini-tts` MP3 narration with Play, Pause/Resume, Stop, spoiler-free copy, high-quality `marin` and `cedar` voices, and automatic stop on location changes. `OPENAI_API_KEY` never reaches the browser.
 - Verified with 30 unit tests, a production build, real `gpt-5.6-terra` timed tours, a real 89 KB OpenAI MP3, Play/Pause/Resume/Stop, automatic stop on location change, a post-merge 5-stop route (4.7 km, 63 min), deterministic AI-off fallback, geolocation, and a clean-console normal browser flow.
-
-## [2026-07-21] update | Show every fetched work in the map UI
-
-- Removed the five-work client cap, so the work selector and map now use every film, series, and book returned for the selected area.
-- Raised the live map request to the supported 200-location API maximum; the global Wikidata catalogue remains queried by the active map area rather than loaded as tens of thousands of points at once.
-
-## [2026-07-21] update | Current-location map control
-
-- Added a browser-only current-location control that recenters the map, displays a blue position marker, and reloads nearby Wikidata works.
-- Location access is requested only after the user presses the control; coordinates are never stored or sent anywhere except the existing nearby-locations request.
 
 ## [2026-07-21] update | Books and series in the live map
 

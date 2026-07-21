@@ -6,7 +6,7 @@ Codex читает этот файл в начале сессии — здесь
 
 ## Проект
 
-- **Строим:** SceneMap — карта мест из любимых фильмов и пешие кино-маршруты.
+- **Строим:** GloryMap — карта мест из любимых фильмов и пешие кино-маршруты.
 - **Демо-путь:** выбрать фильмы → открыть локацию на карте Лондона → добавить 3 точки → построить пеший маршрут.
 
 ## Роли (впишите себя на кикоффе)
@@ -33,9 +33,10 @@ Codex читает этот файл в начале сессии — здесь
 
 ## Done
 
+- [x] Multi-place film/series/book search with city bounds, relation descriptions and cited sparse-result research — @Codex — `feature/multi-location-search`
 - [x] #18: 30/60/120-minute nearby tours from a city/geolocation with real walking-time validation and deterministic fallback — `feature/timed-voice-tour`
 - [x] #20: OpenAI TTS voice guide with narrator profiles, spoiler-free mode and Play/Pause/Resume/Stop — `feature/timed-voice-tour`
 - [x] Personal movie library: Letterboxd/IMDb CSV imports, merge, search and local persistence — @walklikeaman — `feature/personal-account-connectors`
 - [x] Окружение поднято (клон репо + `./setup.sh`)
-- [x] SceneMap MVP: English UI, mapped-film search, 10 locations and street-level walking routes — @walklikeaman — `feature/scenemap-skeleton`
+- [x] GloryMap MVP: English UI, mapped-film search, 10 locations and street-level walking routes — @walklikeaman — `feature/scenemap-skeleton`
 - [x] AI film guide: stories, stop ordering and walking-route integration — `feature/ai-film-tour`
