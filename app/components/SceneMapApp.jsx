@@ -248,7 +248,7 @@ function worksFromLocations(sourceLocations) {
       kind: location.kind ?? "film",
       code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
     },
-  ])).values()].slice(0, 5);
+  ])).values()];
 }
 
 function RecenterOnSelection({ center, position }) {
@@ -1283,6 +1283,10 @@ export default function SceneMapApp() {
       const city = await response.json();
       if (!response.ok) throw new Error(city.error);
 
+      setUserPosition(null);
+      setUserIsDemo(false);
+      setNearbyStatus("idle");
+      setNearbyMessage("");
       selectTourArea([city.lat, city.lng], city.name, {
         radiusKm: city.radius_km ?? 15,
         wikidataId: city.wikidata_id ?? null,
