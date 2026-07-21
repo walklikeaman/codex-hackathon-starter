@@ -7,6 +7,23 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Correct image PR synced with current main
+
+- Resolved PR #24 conflicts with the books/series, nearby-location, and recreate-the-shot changes from current `main` without rewriting branch history.
+- Preserved TMDB IDs only for films, HTTPS Commons place images, and the balanced Film/Series/Book API response.
+- Recreate-the-shot now opens only with a real reference image; verified 23 unit tests, the production build, no-token fallback, and the TMDB-backed dialog in Chromium.
+
+## [2026-07-21] update | Books and series in the live map
+
+- Expanded the Wikidata endpoint to return films and television series by filming location (`P915`), plus books by narrative location (`P840`), all restricted to the selected map area.
+- The map balances returned work types and labels every result, map pin, list entry, and detail card as Film, Series, or Book.
+
+## [2026-07-21] update | Local recreate-the-shot demo
+
+- Added the issue #21 mobile flow from each location card: local photo upload, adjustable overlay, then/now comparison, reset, and repeat upload.
+- User images remain browser-only object URLs; the flow has no upload request or persistent storage.
+- Verified the complete flow at 390 px in Chromium, including a long live-location title, keyboard opacity control, reset/re-upload, zero mutating network requests, all unit tests, and a production build.
+
 ## [2026-07-21] update | Correct film and place image sources
 
 - Stopped reusing the Wikimedia place photo as the film image in live location cards; missing film media now renders an explicit placeholder instead of a misleading duplicate.
