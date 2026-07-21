@@ -7,6 +7,12 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Interactive card shipped to protected preview
+
+- Коммиты `ef667b9` и `ef1fecd` опубликованы в `codex/interactive`; draft PR #27 направлен в `main`.
+- Vercel Preview `dpl_BiiLjWPaYscukogaGQeHYoAZn4n7` собран успешно и имеет статус READY.
+- Preview закрыт Vercel Authentication: анонимная browser-проверка получает Vercel Login, поэтому UI нужно проверять в авторизованной сессии или после изменения Deployment Protection.
+
 ## [2026-07-21] update | Interactive location card verified
 
 - Карточка локации дополнена типом/связью, адресом, расстоянием, источником, фактом, spoiler reveal и явными fallback-состояниями изображений.
