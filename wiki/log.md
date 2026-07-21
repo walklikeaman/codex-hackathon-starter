@@ -7,10 +7,15 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
-## [2026-07-21] update | IMDb Check-ins CSV filter
+## [2026-07-21] update | City search for the live film map
 
-- Added a local CSV import for the official IMDb `Your Check-ins` export. The client reads `Const` (IMDb title IDs) in-browser and never sends the source file or account credentials anywhere.
-- `/api/locations` now accepts up to 100 `imdb_ids` and returns only matching filming locations near the map center; verified with `tt2381249`, returning four matching London locations.
+- Added a city-search control with London as the default. It geocodes only a submitted city query, recenters the map, and reloads nearby Wikidata filming locations.
+- The city endpoint uses server-side cached Nominatim requests with an identifying User-Agent; no user location or search history is stored.
+- Verified the flow by switching the local app from London to Paris and receiving Paris-area film locations.
+
+## [2026-07-21] decision | IMDb integration deferred
+
+- Removed the Check-ins CSV import and IMDb-specific API filtering. IMDb does not offer a supported personal-account API, and the project does not use scraping.
 
 ## [2026-07-21] update | SceneMap frontend consumes live locations API
 
