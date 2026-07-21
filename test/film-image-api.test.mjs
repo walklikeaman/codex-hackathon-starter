@@ -165,6 +165,8 @@ test("film image API returns the location-matched candidate instead of the top b
       assert.equal(body.model, "test-vision-model");
       assert.equal(body.reasoning.effort, "low");
       assert.equal(body.max_output_tokens, 600);
+      assert.match(body.instructions, /already been verified/);
+      assert.match(body.instructions, /different viewpoint/);
       assert.equal(
         body.input[0].content.filter((item) => item.type === "input_image").length,
         3,
