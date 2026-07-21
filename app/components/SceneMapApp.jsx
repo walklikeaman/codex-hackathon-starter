@@ -209,15 +209,40 @@ function kmBetween(routeStops) {
 
 export default function SceneMapApp() {
   const [selectedFilms, setSelectedFilms] = useState(() => films.map((film) => film.id));
+  const [filmQuery, setFilmQuery] = useState("");
   const [activeLocation, setActiveLocation] = useState(locations[0]);
   const [routeStops, setRouteStops] = useState([]);
   const [route, setRoute] = useState(null);
   const [routeStatus, setRouteStatus] = useState("idle");
 
-  const visibleLocations = useMemo(
-    () => locations.filter((location) => selectedFilms.includes(location.filmId)),
-    [selectedFilms],
-  );
+  const matchingFilms = useMemo(() => {
+    const query = filmQuery.trim().toLowerCase();
+
+    if (!query) return films;
+
+    return films.filter((film) =>
+      `${film.title} ${film.year} ${film.code}`.toLowerCase().includes(query),
+    );
+  }, [filmQuery]);
+
+  const visibleLocations = useMemo(() => {
+    const matchingFilmIds = new Set(matchingFilms.map((film) => film.id));
+
+    return locations.filter(
+      (location) => selectedFilms.includes(location.filmId) && matchingFilmIds.has(location.filmId),
+    );
+  }, [matchingFilms, selectedFilms]);
+
+  useEffect(() => {
+    if (!visibleLocations.length) {
+      if (activeLocation) setActiveLocation(null);
+      return;
+    }
+
+    if (!activeLocation || !visibleLocations.some((location) => location.id === activeLocation.id)) {
+      setActiveLocation(visibleLocations[0]);
+    }
+  }, [activeLocation, visibleLocations]);
 
   const routePositions = route?.positions ?? [];
   const routeKm = route ? route.distanceMeters / 1000 : kmBetween(routeStops);
@@ -328,18 +353,37 @@ export default function SceneMapApp() {
         </div>
 
         <div className="action-row">
-          <button className="ghost-button" type="button">
+          <div className="film-search">
             <Search size={17} />
-            Gallery
-          </button>
+            <label className="sr-only" htmlFor="film-search">Search mapped films</label>
+            <input
+              id="film-search"
+              type="search"
+              value={filmQuery}
+              onChange={(event) => setFilmQuery(event.target.value)}
+              placeholder="Search mapped films"
+              autoComplete="off"
+            />
+            {filmQuery && (
+              <button
+                className="clear-search"
+                type="button"
+                onClick={() => setFilmQuery("")}
+                aria-label="Clear film search"
+                title="Clear search"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
           <button className="ghost-button" type="button">
             <Upload size={17} />
             CSV later
           </button>
         </div>
 
-        <div className="film-grid" aria-label="Selected films">
-          {films.map((film) => {
+        <div className="film-grid" aria-label="Mapped films" aria-live="polite">
+          {matchingFilms.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
             return (
@@ -358,6 +402,9 @@ export default function SceneMapApp() {
               </button>
             );
           })}
+          {matchingFilms.length === 0 && (
+            <p className="film-empty">No mapped films match "{filmQuery.trim()}".</p>
+          )}
         </div>
 
         <div className="location-list" aria-label="Map locations">
