@@ -7,6 +7,12 @@ import { Clapperboard, MapPin, Plus, Route, Search, X } from "lucide-react";
 
 const londonCenter = [51.5094, -0.1183];
 
+const kindLabels = {
+  film: "Film",
+  series: "Series",
+  book: "Book",
+};
+
 const fallbackFilms = [
   {
     id: "notting-hill",
@@ -38,7 +44,7 @@ const fallbackFilms = [
     year: 2003,
     code: "LA",
   },
-];
+].map((work) => ({ ...work, kind: "film" }));
 
 const fallbackLocations = [
   {
@@ -151,32 +157,45 @@ const fallbackLocations = [
     backdrop: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
     now: "https://images.unsplash.com/photo-1577048982768-5cb3e7ddfa23?auto=format&fit=crop&w=1200&q=80",
   },
-];
+].map((location) => ({ ...location, kind: "film" }));
+
+function kindLabel(kind) {
+  return kindLabels[kind] ?? "Work";
+}
+
+function locationDescription(kind, locationSource, title, year) {
+  const datedTitle = `${title}${year ? ` (${year})` : ""}`;
+  return locationSource === "narrative"
+    ? `Narrative location in the ${kind === "book" ? "book" : "series"} “${datedTitle}”.`
+    : `Filming location for the ${kind === "series" ? "series" : "film"} “${datedTitle}”.`;
+}
 
 function locationsFromApi(records) {
   return records
     .map((record) => ({
-      id: `${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+      id: `${record.kind}-${record.work_wikidata_id}-${record.loc_wikidata_id}`,
       filmId: record.work_wikidata_id,
       film: record.work_title,
       scene: record.work_title,
       place: record.loc_name,
-      description: `Filming location for ${record.work_title}${record.work_year ? ` (${record.work_year})` : ""}.`,
+      description: locationDescription(record.kind, record.location_source, record.work_title, record.work_year),
       position: [record.lat, record.lng],
       backdrop: record.commons_image,
       now: record.commons_image,
       year: record.work_year,
+      kind: record.kind,
     }))
     .filter((location) => Number.isFinite(location.position[0]) && Number.isFinite(location.position[1]));
 }
 
-function filmsFromLocations(sourceLocations) {
+function worksFromLocations(sourceLocations) {
   return [...new Map(sourceLocations.map((location) => [
     location.filmId,
     {
       id: location.filmId,
       title: location.film,
       year: location.year,
+      kind: location.kind,
       code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
     },
   ])).values()].slice(0, 5);
@@ -214,10 +233,10 @@ function FitRoute({ positions }) {
   return null;
 }
 
-function makeMarkerIcon(selected) {
+function makeMarkerIcon(selected, kind) {
   return L.divIcon({
     className: "",
-    html: `<span class="scene-pin${selected ? " is-selected" : ""}"><span></span></span>`,
+    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}"><span></span></span>`,
     iconSize: [34, 42],
     iconAnchor: [17, 34],
   });
@@ -278,9 +297,9 @@ export default function SceneMapApp() {
         if (!nextLocations.length) throw new Error("Locations API returned no usable points");
         if (cancelled) return;
 
-        const nextFilms = filmsFromLocations(nextLocations);
+        const nextWorks = worksFromLocations(nextLocations);
         setLiveLocations(nextLocations);
-        setSelectedFilms(nextFilms.map((film) => film.id));
+        setSelectedFilms(nextWorks.map((work) => work.id));
         setActiveLocation(nextLocations[0]);
         setRouteStops([]);
         setRouteResult(null);
@@ -297,7 +316,7 @@ export default function SceneMapApp() {
 
   const sourceLocations = liveLocations ?? fallbackLocations;
   const films = useMemo(
-    () => liveLocations ? filmsFromLocations(sourceLocations) : fallbackFilms,
+    () => liveLocations ? worksFromLocations(sourceLocations) : fallbackFilms,
     [liveLocations, sourceLocations],
   );
 
@@ -372,7 +391,7 @@ export default function SceneMapApp() {
       setRouteResult(makeFallbackRoute(routeStops));
       setRouteStatus("fallback");
       setRouteMessage(
-        "Роутер недоступен — показываем приблизительную линию между точками.",
+        "The routing service is unavailable — showing an approximate line between stops.",
       );
     }
   }
@@ -402,7 +421,7 @@ export default function SceneMapApp() {
 
   return (
     <main className="scene-shell">
-      <section className="map-stage" aria-label="Карта локаций SceneMap">
+      <section className="map-stage" aria-label="SceneMap location map">
         <MapContainer center={mapCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
@@ -414,12 +433,13 @@ export default function SceneMapApp() {
             <Marker
               key={location.id}
               position={location.position}
-              icon={makeMarkerIcon(activeLocation?.id === location.id)}
+              icon={makeMarkerIcon(activeLocation?.id === location.id, location.kind)}
               eventHandlers={{
                 click: () => setActiveLocation(location),
               }}
             >
               <Popup>
+                <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
                 <strong>{location.film}</strong>
                 <br />
                 {location.place}
@@ -440,14 +460,14 @@ export default function SceneMapApp() {
         </MapContainer>
       </section>
 
-      <aside className="command-panel" aria-label="Выбор фильмов">
+      <aside className="command-panel" aria-label="Work selection">
         <div className="brand-row">
           <div className="brand-mark">
             <Clapperboard size={22} />
           </div>
           <div>
             <p className="eyebrow">SceneMap MVP</p>
-            <h1>Кино-карта · {cityName}</h1>
+            <h1>Stories on the map · {cityName}</h1>
           </div>
         </div>
 
@@ -466,7 +486,7 @@ export default function SceneMapApp() {
         </form>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
-        <div className="film-grid" aria-label="Выбранные фильмы">
+        <div className="film-grid" aria-label="Selected works">
           {films.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
@@ -481,29 +501,35 @@ export default function SceneMapApp() {
                 <span className="poster-tile" aria-hidden="true">{film.code}</span>
                 <span>
                   <strong>{film.title}</strong>
-                  <small>{film.year}</small>
+                  <small>
+                    <span className={`work-kind kind-${film.kind}`}>{kindLabel(film.kind)}</span>
+                    {film.year ? ` · ${film.year}` : ""}
+                  </small>
                 </span>
               </button>
             );
           })}
         </div>
 
-        <div className="location-list" aria-label="Точки на карте">
+        <div className="location-list" aria-label="Map locations">
           <div className="section-row">
-            <p className="eyebrow">Точки</p>
-            <span>{visibleLocations.length} в {cityName}</span>
+            <p className="eyebrow">Locations</p>
+            <span>{visibleLocations.length} in {cityName}</span>
           </div>
           {visibleLocations.map((location) => (
             <div className="location-row" key={location.id}>
               <button type="button" onClick={() => setActiveLocation(location)}>
                 <strong>{location.place}</strong>
-                <span>{location.film}</span>
+                <span>
+                  <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
+                  {location.film}
+                </span>
               </button>
               <button
                 className="icon-button"
                 type="button"
                 onClick={() => addRouteStop(location)}
-                aria-label={`Добавить ${location.place} в маршрут`}
+                aria-label={`Add ${location.place} to route`}
               >
                 <Plus size={15} />
               </button>
@@ -513,8 +539,8 @@ export default function SceneMapApp() {
 
         <div className="route-card">
           <div>
-            <p className="eyebrow">Маршрут</p>
-            <strong>{routeStops.length} / 5 точек</strong>
+            <p className="eyebrow">Route</p>
+            <strong>{routeStops.length} / 5 stops</strong>
           </div>
           <button
             className={`primary-button${routeResult ? " is-complete" : ""}`}
@@ -524,12 +550,12 @@ export default function SceneMapApp() {
           >
             <Route size={18} />
             {routeStatus === "loading"
-              ? "Строим..."
+              ? "Building..."
               : routeStatus === "fallback"
-                ? "Маршрут примерный"
+                ? "Approximate route"
                 : routeResult
-                ? "Маршрут готов"
-                : "Построить"}
+                ? "Route ready"
+                : "Build route"}
           </button>
         </div>
 
@@ -541,7 +567,7 @@ export default function SceneMapApp() {
                   <span>{index + 1}</span>
                   {stop.place}
                 </button>
-                <button className="icon-button" type="button" onClick={() => removeRouteStop(stop.id)} aria-label="Убрать точку">
+                <button className="icon-button" type="button" onClick={() => removeRouteStop(stop.id)} aria-label="Remove stop">
                   <X size={15} />
                 </button>
               </li>
@@ -551,7 +577,7 @@ export default function SceneMapApp() {
 
         {routeStatus === "loading" && (
           <p className="route-summary" role="status">
-            Строим маршрут по пешеходным улицам Лондона...
+            Building a walking route through London...
           </p>
         )}
 
@@ -561,19 +587,19 @@ export default function SceneMapApp() {
             role="status"
           >
             <strong>
-              Пешком {routeResult.distanceKm.toFixed(1)} км · {routeResult.durationMinutes} мин
+              Walk {routeResult.distanceKm.toFixed(1)} km · {routeResult.durationMinutes} min
             </strong>
             {routeResult.source === "fallback" ? (
               <span>{routeMessage}</span>
             ) : (
               <span>
-                Маршрут построен по улицам ·{" "}
+                Route follows the streets ·{" "}
                 <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">
                   OpenStreetMap routing
                 </a>
                 {" · "}
                 <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">
-                  исправить карту
+                  fix the map
                 </a>
               </span>
             )}
@@ -582,11 +608,11 @@ export default function SceneMapApp() {
       </aside>
 
       {activeLocation && (
-        <section className="location-sheet" aria-label="Карточка локации">
+        <section className="location-sheet" aria-label="Location details">
           <div className="sheet-media">
             <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
             <div>
-              <p>{activeLocation.film}</p>
+              <p><span className={`work-kind kind-${activeLocation.kind}`}>{kindLabel(activeLocation.kind)}</span>{" "}{activeLocation.film}</p>
               <h2>{activeLocation.scene}</h2>
             </div>
           </div>
@@ -603,16 +629,16 @@ export default function SceneMapApp() {
             <div className="comparison-grid">
               <figure>
                 <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
-                <figcaption>кадр / настроение сцены</figcaption>
+                <figcaption>scene mood</figcaption>
               </figure>
               <figure>
                 <img src={activeLocation.now} alt="" onError={(event) => event.currentTarget.remove()} />
-                <figcaption>место сейчас</figcaption>
+                <figcaption>place today</figcaption>
               </figure>
             </div>
             <button className="wide-button" type="button" onClick={() => addRouteStop(activeLocation)}>
               <Route size={18} />
-              В маршрут
+              Add to route
             </button>
           </div>
         </section>
