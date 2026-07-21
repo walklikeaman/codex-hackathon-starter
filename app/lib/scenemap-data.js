@@ -1,0 +1,130 @@
+export const londonCenter = [51.5094, -0.1183];
+
+export const films = [
+  { id: "notting-hill", title: "Notting Hill", year: 1999, code: "NH" },
+  { id: "skyfall", title: "Skyfall", year: 2012, code: "007" },
+  { id: "harry-potter", title: "Harry Potter", year: 2001, code: "HP" },
+  { id: "sherlock", title: "Sherlock Holmes", year: 2009, code: "SH" },
+  { id: "love-actually", title: "Love Actually", year: 2003, code: "LA" },
+];
+
+export const locations = [
+  {
+    id: "portobello-road",
+    filmId: "notting-hill",
+    film: "Notting Hill",
+    scene: "Portobello morning walk",
+    place: "Portobello Road Market",
+    description: "William walks through the changing seasons of Notting Hill, turning a street market into the film's emotional timeline.",
+    position: [51.5156, -0.2057],
+    backdrop: "https://images.unsplash.com/photo-1533929736458-ca588d08c8be?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1555085634-25c3c9c10b6b?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "blue-door",
+    filmId: "notting-hill",
+    film: "Notting Hill",
+    scene: "The blue door",
+    place: "Westbourne Park Road",
+    description: "The private home behind the blue door anchors the romance in a real London neighborhood.",
+    position: [51.5174, -0.1993],
+    backdrop: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1578269174936-2709b6aeb913?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "mi6",
+    filmId: "skyfall",
+    film: "Skyfall",
+    scene: "MI6 on the Thames",
+    place: "Vauxhall Cross",
+    description: "Bond's world is framed by the real MI6 headquarters on the river, one of modern spy cinema's clearest London signals.",
+    position: [51.4874, -0.1247],
+    backdrop: "https://images.unsplash.com/photo-1510279770292-4b34de9f5c23?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1529655683826-aba9b3e77383?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "national-gallery",
+    filmId: "skyfall",
+    film: "Skyfall",
+    scene: "Q meets Bond",
+    place: "National Gallery",
+    description: "Bond and Q meet in front of Turner's painting, setting the old-versus-new theme in a public landmark.",
+    position: [51.5089, -0.1283],
+    backdrop: "https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "kings-cross",
+    filmId: "harry-potter",
+    film: "Harry Potter",
+    scene: "Platform 9 3/4",
+    place: "King's Cross Station",
+    description: "The gateway to Hogwarts turns a busy railway station into a pilgrimage point for fans.",
+    position: [51.532, -0.1233],
+    backdrop: "https://images.unsplash.com/photo-1517563259479-5b9d0f9d0448?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1590253230532-a67f6bc61c9e?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "leadenhall",
+    filmId: "harry-potter",
+    film: "Harry Potter",
+    scene: "Entrance to Diagon Alley",
+    place: "Leadenhall Market",
+    description: "Victorian arches stand in for the magical shopping street hidden inside ordinary London.",
+    position: [51.5126, -0.0834],
+    backdrop: "https://images.unsplash.com/photo-1533929736458-ca588d08c8be?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "st-pauls",
+    filmId: "sherlock",
+    film: "Sherlock Holmes",
+    scene: "Old London pursuit",
+    place: "St Paul's Cathedral",
+    description: "The cathedral and surrounding streets sell the film's smoky, industrial version of London.",
+    position: [51.5138, -0.0984],
+    backdrop: "https://images.unsplash.com/photo-1543832923-44667a44c804?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1520986606214-8b456906c813?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "parliament",
+    filmId: "sherlock",
+    film: "Sherlock Holmes",
+    scene: "Westminster stakes",
+    place: "Houses of Parliament",
+    description: "The detective story borrows Westminster's silhouette to make the conspiracy feel national.",
+    position: [51.4995, -0.1248],
+    backdrop: "https://images.unsplash.com/photo-1529655683826-aba9b3e77383?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1496307653780-42ee777d4833?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "south-bank",
+    filmId: "love-actually",
+    film: "Love Actually",
+    scene: "Riverside London",
+    place: "South Bank",
+    description: "The ensemble romance uses the Thames walk to make separate lives feel connected by the same city.",
+    position: [51.5066, -0.1162],
+    backdrop: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1505761671935-60b3a7427bad?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "somerset-house",
+    filmId: "love-actually",
+    film: "Love Actually",
+    scene: "Christmas London",
+    place: "Somerset House",
+    description: "A classic central London courtyard gives the film its polished winter-city texture.",
+    position: [51.5111, -0.1171],
+    backdrop: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1577048982768-5cb3e7ddfa23?auto=format&fit=crop&w=1200&q=80",
+  },
+];
+
+export function getFilmById(filmId) {
+  return films.find((film) => film.id === filmId);
+}
+
+export function getLocationsForFilm(filmId) {
+  return locations.filter((location) => location.filmId === filmId);
+}

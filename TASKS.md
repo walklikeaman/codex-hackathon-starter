@@ -35,3 +35,4 @@ Codex читает этот файл в начале сессии — здесь
 
 - [x] Окружение поднято (клон репо + `./setup.sh`)
 - [x] Каркас SceneMap: карта, 10 локаций, карточка и локальная линия маршрута — @walklikeaman — `feature/scenemap-skeleton`
+- [x] AI-гид по фильму: рассказы, порядок остановок и интеграция с walking route — `feature/ai-film-tour`
