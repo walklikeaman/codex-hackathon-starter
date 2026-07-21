@@ -29,8 +29,7 @@ export async function POST(request) {
       cache: "no-store",
       headers: {
         Accept: "application/json",
-        "User-Agent":
-          "SceneMap-Hackathon/1.0 (+https://github.com/walklikeaman/codex-hackathon-starter)",
+        "User-Agent": "SceneMap-Hackathon/1.0 (+https://github.com/walklikeaman/codex-hackathon-starter)",
         Referer: `${appOrigin}/`,
       },
       signal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
