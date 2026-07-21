@@ -7,6 +7,14 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Timed nearby tours and browser voice guide
+
+- Added 30/60/120-minute tour planning from a searched city or browser geolocation. The deterministic planner combines duplicate works at one physical place, chooses 3–5 nearby stops, and accepts only walking-router results within the 15% budget tolerance.
+- `Start tour` transfers the planned stops into the existing route and rebuilds them through `/api/route`; the route handler now supports both merged request contracts and returns normalized plus legacy metrics.
+- AI adds short original stories when available; verified location descriptions remain a deterministic fallback when `OPENAI_API_KEY` or the AI service is unavailable.
+- Added browser Speech Synthesis controls with Play, Pause/Resume, Stop, spoiler-free copy, a neutral guide, a non-celebrity Curious Archivist profile, unsupported-browser fallback, and automatic stop on location changes.
+- Verified with 27 unit tests, a production build, a real `gpt-5.6-terra` timed tour (3 stops, 4.2 km, 53 min), deterministic AI-off fallback, geolocation, and a clean-console browser flow.
+
 ## [2026-07-21] update | AI-guided film tour
 
 - Added server-only `POST /api/tour`: OpenAI Responses API with `gpt-5.6-terra` returns an English tour through Structured Outputs.
