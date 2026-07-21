@@ -9,10 +9,32 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ## [2026-07-21] update | AI-guided film tour
 
-- Добавлен серверный `POST /api/tour`: Responses API с `gpt-5.6-terra` возвращает русскоязычную экскурсию по выбранному фильму через Structured Outputs.
-- Модель работает только с проверенными локациями SceneMap; схема и пост-проверка отклоняют неизвестные, пропущенные и повторяющиеся точки.
-- UI фильтрует карту до выбранного фильма, показывает AI-рассказ и строит реальный пешеходный маршрут в предложенном порядке; ручной маршрут из 3–5 точек сохранён.
-- Проверено: unit-тесты, production build, реальный API-вызов и оба браузерных пути (AI Skyfall и ручной маршрут) прошли успешно.
+- Добавлен server-only `POST /api/tour`: Responses API с `gpt-5.6-terra` возвращает русскоязычную экскурсию по выбранному фильму через Structured Outputs.
+- Модель получает только выбранный фильм и до пяти текущих проверенных локаций SceneMap — как live Wikidata, так и fallback; схема и пост-проверка отклоняют неизвестные, пропущенные и повторяющиеся точки.
+- UI показывает AI-рассказ и строит реальный пешеходный маршрут в предложенном порядке; поиск города и ручной маршрут из 3–5 точек сохранены.
+- Проверено: 9 unit-тестов, production build, реальный API-вызов и браузерные AI/manual paths; консоль без ошибок.
+
+## [2026-07-21] update | City search for the live film map
+
+- Added a city-search control with London as the default. It geocodes only a submitted city query, recenters the map, and reloads nearby Wikidata filming locations.
+- The city endpoint uses server-side cached Nominatim requests with an identifying User-Agent; no user location or search history is stored.
+- Verified the flow by switching the local app from London to Paris and receiving Paris-area film locations.
+
+## [2026-07-21] decision | IMDb integration deferred
+
+- Removed the Check-ins CSV import and IMDb-specific API filtering. IMDb does not offer a supported personal-account API, and the project does not use scraping.
+
+## [2026-07-21] update | SceneMap frontend consumes live locations API
+
+- The map now fetches `/api/locations` on load for the London viewport and replaces its demo pins, film chips, location list, card, and route inputs with Wikidata results.
+- The static London set remains a client-side fallback when the upstream request fails, so the MVP demo path stays available without persisting data.
+- Verified visually in the local app: live film locations and Commons imagery render in the map and location card.
+
+## [2026-07-21] update | Live Wikidata film-location API
+
+- Added `GET /api/locations` for SceneMap. It requests Wikidata directly using the visible map center (`lat`, `lng`), `radius` in kilometres, and `limit`; defaults target London.
+- The response normalizes film/location Wikidata IDs, labels, year, coordinates, and Commons image URL. Results are deduplicated per film-location pair and HTTP-cached for one hour.
+- No Wikidata data is persisted in Supabase; the endpoint was verified with a live London request returning HTTP 200 and three coordinate-bearing locations.
 
 ## [2026-07-21] update | Real walking routes
 
