@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import { Clapperboard, ExternalLink, MapPin, Plus, Route, Search, Upload, X } from "lucide-react";
+import { Clapperboard, ExternalLink, MapPin, Plus, Route, Search, X } from "lucide-react";
 
 const londonCenter = [51.5094, -0.1183];
 
-const films = [
+const fallbackFilms = [
   {
     id: "notting-hill",
     title: "Notting Hill",
@@ -40,7 +40,7 @@ const films = [
   },
 ];
 
-const locations = [
+const fallbackLocations = [
   {
     id: "portobello-road",
     filmId: "notting-hill",
@@ -153,8 +153,41 @@ const locations = [
   },
 ];
 
-function RecenterOnSelection({ position }) {
+function locationsFromApi(records) {
+  return records
+    .map((record) => ({
+      id: `${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+      filmId: record.work_wikidata_id,
+      film: record.work_title,
+      scene: record.work_title,
+      place: record.loc_name,
+      description: `Filming location for ${record.work_title}${record.work_year ? ` (${record.work_year})` : ""}.`,
+      position: [record.lat, record.lng],
+      backdrop: record.commons_image,
+      now: record.commons_image,
+      year: record.work_year,
+    }))
+    .filter((location) => Number.isFinite(location.position[0]) && Number.isFinite(location.position[1]));
+}
+
+function filmsFromLocations(sourceLocations) {
+  return [...new Map(sourceLocations.map((location) => [
+    location.filmId,
+    {
+      id: location.filmId,
+      title: location.film,
+      year: location.year,
+      code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
+    },
+  ])).values()].slice(0, 5);
+}
+
+function RecenterOnSelection({ center, position }) {
   const map = useMap();
+
+  useEffect(() => {
+    map.flyTo(center, 12, { duration: 0.8 });
+  }, [center, map]);
 
   useEffect(() => {
     if (position) {
@@ -220,29 +253,70 @@ function makeFallbackRoute(routeStops) {
 }
 
 function makeImageSearchUrl(location) {
+  const scene = location.scene?.trim();
   const query = [
     `"${location.film}"`,
     `"${location.place}"`,
-    `"${location.scene}"`,
+    scene && scene.toLowerCase() !== location.film.toLowerCase() ? `"${scene}"` : null,
     "movie scene filming location",
-  ].join(" ");
+  ].filter(Boolean).join(" ");
   const params = new URLSearchParams({ q: query });
 
   return `https://www.bing.com/images/search?${params.toString()}`;
 }
 
 export default function SceneMapApp() {
+  const [liveLocations, setLiveLocations] = useState(null);
+  const [mapCenter, setMapCenter] = useState(londonCenter);
+  const [cityQuery, setCityQuery] = useState("London");
+  const [cityName, setCityName] = useState("London");
+  const [citySearchStatus, setCitySearchStatus] = useState("");
   const routeRequestId = useRef(0);
-  const [selectedFilms, setSelectedFilms] = useState(() => films.map((film) => film.id));
-  const [activeLocation, setActiveLocation] = useState(locations[0]);
+  const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
+  const [activeLocation, setActiveLocation] = useState(fallbackLocations[0]);
   const [routeStops, setRouteStops] = useState([]);
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
   const [routeMessage, setRouteMessage] = useState("");
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLocations() {
+      try {
+        const response = await fetch(`/api/locations?lat=${mapCenter[0]}&lng=${mapCenter[1]}&radius=5&limit=30`);
+        if (!response.ok) throw new Error("Locations API failed");
+        const payload = await response.json();
+        const nextLocations = locationsFromApi(payload.locations ?? []);
+        if (!nextLocations.length) throw new Error("Locations API returned no usable points");
+        if (cancelled) return;
+
+        const nextFilms = filmsFromLocations(nextLocations);
+        setLiveLocations(nextLocations);
+        setSelectedFilms(nextFilms.map((film) => film.id));
+        setActiveLocation(nextLocations[0]);
+        setRouteStops([]);
+        setRouteResult(null);
+        setRouteStatus("idle");
+        setRouteMessage("");
+      } catch {
+        // Keep the local demo locations visible if Wikidata is temporarily unavailable.
+      }
+    }
+
+    loadLocations();
+    return () => { cancelled = true; };
+  }, [mapCenter]);
+
+  const sourceLocations = liveLocations ?? fallbackLocations;
+  const films = useMemo(
+    () => liveLocations ? filmsFromLocations(sourceLocations) : fallbackFilms,
+    [liveLocations, sourceLocations],
+  );
+
   const visibleLocations = useMemo(
-    () => locations.filter((location) => selectedFilms.includes(location.filmId)),
-    [selectedFilms],
+    () => sourceLocations.filter((location) => selectedFilms.includes(location.filmId)),
+    [selectedFilms, sourceLocations],
   );
 
   const routePositions = routeResult?.positions ?? [];
@@ -316,15 +390,38 @@ export default function SceneMapApp() {
     }
   }
 
+  async function searchCity(event) {
+    event.preventDefault();
+    const query = cityQuery.trim();
+    if (!query) return;
+
+    setCitySearchStatus("Searching city…");
+    try {
+      const response = await fetch(`/api/cities?q=${encodeURIComponent(query)}`);
+      const city = await response.json();
+      if (!response.ok) throw new Error(city.error);
+
+      setMapCenter([city.lat, city.lng]);
+      setCityName(city.name);
+      setLiveLocations([]);
+      setActiveLocation(null);
+      setRouteStops([]);
+      invalidateRoute();
+      setCitySearchStatus("");
+    } catch {
+      setCitySearchStatus("City not found");
+    }
+  }
+
   return (
     <main className="scene-shell">
       <section className="map-stage" aria-label="Карта локаций SceneMap">
-        <MapContainer center={londonCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
+        <MapContainer center={mapCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
-          <RecenterOnSelection position={activeLocation?.position} />
+          <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
           {visibleLocations.map((location) => (
             <Marker
@@ -363,20 +460,24 @@ export default function SceneMapApp() {
           </div>
           <div>
             <p className="eyebrow">SceneMap MVP</p>
-            <h1>Кино-прогулка по Лондону</h1>
+            <h1>Кино-карта · {cityName}</h1>
           </div>
         </div>
 
-        <div className="action-row">
-          <button className="ghost-button" type="button">
+        <form className="city-search" onSubmit={searchCity}>
+          <Search size={17} aria-hidden="true" />
+          <input
+            aria-label="City"
+            onChange={(event) => setCityQuery(event.target.value)}
+            placeholder="City"
+            type="search"
+            value={cityQuery}
+          />
+          <button aria-label="Search city" className="ghost-button" type="submit">
             <Search size={17} />
-            Галерея
           </button>
-          <button className="ghost-button" type="button">
-            <Upload size={17} />
-            CSV позже
-          </button>
-        </div>
+        </form>
+        {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
         <div className="film-grid" aria-label="Выбранные фильмы">
           {films.map((film) => {
@@ -403,7 +504,7 @@ export default function SceneMapApp() {
         <div className="location-list" aria-label="Точки на карте">
           <div className="section-row">
             <p className="eyebrow">Точки</p>
-            <span>{visibleLocations.length} в Лондоне</span>
+            <span>{visibleLocations.length} в {cityName}</span>
           </div>
           {visibleLocations.map((location) => (
             <div className="location-row" key={location.id}>
