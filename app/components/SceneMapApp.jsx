@@ -1,28 +1,53 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { Circle, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import {
-  Camera,
-  Check,
+  CheckCircle2,
   Clapperboard,
+  Clock3,
+  Crosshair,
   ExternalLink,
-  Eye,
-  Heart,
-  ImageOff,
+  Film,
+  Link2,
+  LoaderCircle,
+  LocateFixed,
   MapPin,
   Plus,
   Route,
   Search,
-  Upload,
-  Volume2,
+  Sparkles,
+  Star,
+  Trash2,
+  User,
   X,
 } from "lucide-react";
+import {
+  DEMO_LOCATION,
+  RADIUS_OPTIONS_METERS,
+  findNearby,
+  formatDistanceMeters,
+  zoomForRadius,
+} from "../lib/nearby.mjs";
+import { mergeLibraries, parseMediaCsv } from "../lib/media-library.mjs";
+import {
+  TOUR_BUDGETS,
+  createFallbackGuide,
+  createTimedTourCandidates,
+  routeFitsBudget,
+} from "../lib/timed-tour.mjs";
+import VoiceGuide from "./VoiceGuide";
 
 const londonCenter = [51.5094, -0.1183];
 
-const films = [
+const kindLabels = {
+  film: "Film",
+  series: "Series",
+  book: "Book",
+};
+
+const fallbackFilms = [
   {
     id: "notting-hill",
     title: "Notting Hill",
@@ -53,9 +78,9 @@ const films = [
     year: 2003,
     code: "LA",
   },
-];
+].map((work) => ({ ...work, kind: "film" }));
 
-const locations = [
+const fallbackLocations = [
   {
     id: "portobello-road",
     filmId: "notting-hill",
@@ -166,25 +191,62 @@ const locations = [
     backdrop: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
     now: "https://images.unsplash.com/photo-1577048982768-5cb3e7ddfa23?auto=format&fit=crop&w=1200&q=80",
   },
-];
+].map((location) => ({ ...location, kind: "film" }));
 
-function ImageWithFallback({ src, alt }) {
-  const [failed, setFailed] = useState(false);
-
-  if (failed) {
-    return (
-      <div className="image-fallback" role="img" aria-label={`${alt} unavailable`}>
-        <ImageOff size={22} />
-        <span>Image unavailable</span>
-      </div>
-    );
-  }
-
-  return <img src={src} alt={alt} onError={() => setFailed(true)} />;
+function kindLabel(kind) {
+  return kindLabels[kind] ?? "Work";
 }
 
-function RecenterOnSelection({ position }) {
+function locationsFromApi(records) {
+  return records
+    .map((record) => {
+      const kind = record.kind ?? "film";
+      const relationLabel = record.relation_label
+        ?? (kind === "book" ? "Story setting" : "Filming location");
+
+      return {
+        id: `${kind}-${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+        filmId: record.work_wikidata_id,
+        film: record.work_title,
+        scene: record.scene_title ?? relationLabel,
+        place: record.loc_name,
+        description: record.relation_description
+          ?? `${record.loc_name} is connected with ${record.work_title}.`,
+        position: [record.lat, record.lng],
+        locationId: record.loc_wikidata_id,
+        backdrop: record.backdrop ?? null,
+        now: record.commons_image,
+        filmTmdbId: record.film_tmdb_id,
+        year: record.work_year,
+        kind,
+        relationKind: record.relation_kind,
+        sourceUrl: record.source_url,
+        sourceTitle: record.source_title,
+        evidenceSource: record.evidence_source ?? "wikidata",
+      };
+    })
+    .filter((location) => Number.isFinite(location.position[0]) && Number.isFinite(location.position[1]));
+}
+
+function worksFromLocations(sourceLocations) {
+  return [...new Map(sourceLocations.map((location) => [
+    location.filmId,
+    {
+      id: location.filmId,
+      title: location.film,
+      year: location.year,
+      kind: location.kind ?? "film",
+      code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
+    },
+  ])).values()];
+}
+
+function RecenterOnSelection({ center, position }) {
   const map = useMap();
+
+  useEffect(() => {
+    map.flyTo(center, 12, { duration: 0.8 });
+  }, [center, map]);
 
   useEffect(() => {
     if (position) {
@@ -201,8 +263,9 @@ function FitRoute({ positions }) {
   useEffect(() => {
     if (positions.length > 1) {
       map.fitBounds(L.latLngBounds(positions), {
-        padding: [64, 64],
+        animate: true,
         maxZoom: 14,
+        padding: [48, 48],
       });
     }
   }, [map, positions]);
@@ -210,14 +273,48 @@ function FitRoute({ positions }) {
   return null;
 }
 
-function makeMarkerIcon(selected) {
+function makeMarkerIcon(selected, nearest, kind) {
   return L.divIcon({
     className: "",
-    html: `<span class="scene-pin${selected ? " is-selected" : ""}"><span></span></span>`,
+    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}${nearest ? " is-nearest" : ""}"><span></span></span>`,
     iconSize: [34, 42],
     iconAnchor: [17, 34],
   });
 }
+
+const userIcon = L.divIcon({
+  className: "",
+  html: '<span class="user-pin"><span></span></span>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+});
+
+function FlyToUser({ position, radius }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (position) {
+      map.flyTo(position, zoomForRadius(radius), { duration: 0.8 });
+    }
+  }, [map, position, radius]);
+
+  return null;
+}
+
+const GEOLOCATION_ERRORS = {
+  1: {
+    status: "denied",
+    message: "Location access was denied. You can retry or use the demo location.",
+  },
+  2: {
+    status: "unavailable",
+    message: "Your position is unavailable right now. Try again or use the demo location.",
+  },
+  3: {
+    status: "timeout",
+    message: "Locating took too long. Try again or use the demo location.",
+  },
+};
 
 function kmBetween(routeStops) {
   if (routeStops.length < 2) return 0;
@@ -237,90 +334,482 @@ function kmBetween(routeStops) {
   }, 0);
 }
 
-export default function SceneMapApp() {
-  const [selectedFilms, setSelectedFilms] = useState(() => films.map((film) => film.id));
-  const [filmQuery, setFilmQuery] = useState("");
-  const [activeLocation, setActiveLocation] = useState(locations[0]);
-  const [isLocationOpen, setIsLocationOpen] = useState(true);
-  const [routeStops, setRouteStops] = useState([]);
-  const [route, setRoute] = useState(null);
-  const [routeStatus, setRouteStatus] = useState("idle");
-  const [spoilerOpen, setSpoilerOpen] = useState(false);
-  const [visitIds, setVisitIds] = useState(() => {
-    if (typeof window === "undefined") return [];
+function makeFallbackRoute(routeStops) {
+  const distanceKm = kmBetween(routeStops);
 
+  return {
+    positions: routeStops.map((stop) => stop.position),
+    distanceKm: Math.round(distanceKm * 10) / 10,
+    durationMinutes: Math.max(8, Math.round((distanceKm / 4.6) * 60)),
+    source: "fallback",
+  };
+}
+
+function makeImageSearchUrl(location) {
+  const scene = location.scene?.trim();
+  const relationQuery = location.kind === "book"
+    ? "book setting real place"
+    : "scene filming location";
+  const query = [
+    `"${location.film}"`,
+    `"${location.place}"`,
+    scene && scene.toLowerCase() !== location.film.toLowerCase() ? `"${scene}"` : null,
+    relationQuery,
+  ].filter(Boolean).join(" ");
+
+  return `https://www.bing.com/images/search?${new URLSearchParams({ q: query })}`;
+}
+
+function RecreateShot({ location, onClose }) {
+  const inputRef = useRef(null);
+  const photoUrlRef = useRef("");
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [view, setView] = useState("overlay");
+  const [opacity, setOpacity] = useState(55);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  function loadPhoto(event) {
+    const [file] = event.target.files;
+    if (!file?.type.startsWith("image/")) return;
+
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    const nextUrl = URL.createObjectURL(file);
+    photoUrlRef.current = nextUrl;
+    setPhotoUrl(nextUrl);
+    setView("overlay");
+  }
+
+  function resetPhoto() {
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    photoUrlRef.current = "";
+    setPhotoUrl("");
+    setView("overlay");
+    setOpacity(55);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  return (
+    <div className="recreate-backdrop">
+      <section
+        aria-labelledby="recreate-title"
+        aria-modal="true"
+        className="recreate-dialog"
+        role="dialog"
+      >
+        <header className="recreate-header">
+          <div>
+            <p className="eyebrow">Recreate the shot</p>
+            <h2 id="recreate-title">{location.scene}</h2>
+            <span>{location.film} · {location.place}</span>
+          </div>
+          <button
+            aria-label="Close recreate shot"
+            autoFocus
+            className="icon-button recreate-close"
+            onClick={onClose}
+            type="button"
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="recreate-stage">
+          {view === "overlay" ? (
+            <div className="recreate-canvas">
+              <img src={location.backdrop} alt={`Reference frame for ${location.film}`} />
+              {photoUrl && (
+                <img
+                  className="recreate-user-photo"
+                  src={photoUrl}
+                  alt="Your uploaded recreation"
+                  style={{ opacity: opacity / 100 }}
+                />
+              )}
+            </div>
+          ) : (
+            <div className="recreate-comparison" aria-label="Then and now comparison">
+              <figure>
+                <img src={location.backdrop} alt={`Reference frame for ${location.film}`} />
+                <figcaption>Then · reference</figcaption>
+              </figure>
+              <figure>
+                <img src={photoUrl} alt="Your uploaded recreation" />
+                <figcaption>Now · your photo</figcaption>
+              </figure>
+            </div>
+          )}
+          {!photoUrl && (
+            <div className="recreate-empty">
+              <strong>Match the framing</strong>
+              <span>Upload a photo from this device to line it up with the reference.</span>
+            </div>
+          )}
+        </div>
+
+        <div className="recreate-controls">
+          <input
+            accept="image/*"
+            className="recreate-file-input"
+            id="recreate-photo"
+            onChange={loadPhoto}
+            ref={inputRef}
+            type="file"
+          />
+          <label className="wide-button recreate-upload" htmlFor="recreate-photo">
+            {photoUrl ? "Choose another photo" : "Upload your photo"}
+          </label>
+
+          {photoUrl && (
+            <>
+              <div className="recreate-view-switch" aria-label="Comparison mode">
+                <button
+                  aria-pressed={view === "overlay"}
+                  className="ghost-button"
+                  onClick={() => setView("overlay")}
+                  type="button"
+                >
+                  Overlay
+                </button>
+                <button
+                  aria-pressed={view === "compare"}
+                  className="ghost-button"
+                  onClick={() => setView("compare")}
+                  type="button"
+                >
+                  Then / now
+                </button>
+              </div>
+
+              {view === "overlay" && (
+                <label className="recreate-opacity">
+                  <span>Your photo opacity</span>
+                  <input
+                    aria-label="Your photo opacity"
+                    max="100"
+                    min="0"
+                    onChange={(event) => setOpacity(Number(event.target.value))}
+                    type="range"
+                    value={opacity}
+                  />
+                  <output>{opacity}%</output>
+                </label>
+              )}
+
+              <button className="ghost-button recreate-reset" onClick={resetPhoto} type="button">
+                Reset photo
+              </button>
+            </>
+          )}
+
+          <p className="recreate-privacy">Your photo stays in this browser tab and is never uploaded.</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export default function SceneMapApp() {
+  const connectorInputRef = useRef(null);
+  const [liveLocations, setLiveLocations] = useState(null);
+  const [mapCenter, setMapCenter] = useState(londonCenter);
+  const [cityQuery, setCityQuery] = useState("London");
+  const [cityName, setCityName] = useState("London");
+  const [cityRadius, setCityRadius] = useState(15);
+  const [cityWikidataId, setCityWikidataId] = useState("Q84");
+  const [citySearchStatus, setCitySearchStatus] = useState("");
+  const [workQuery, setWorkQuery] = useState("");
+  const [workKind, setWorkKind] = useState("film");
+  const [locationsStatus, setLocationsStatus] = useState("");
+  const locationRequestId = useRef(0);
+  const routeRequestId = useRef(0);
+  const filmImageCache = useRef(new Map());
+  const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
+  const [activeLocation, setActiveLocation] = useState(fallbackLocations[0]);
+  const [filmImageState, setFilmImageState] = useState({
+    locationId: fallbackLocations[0].id,
+    url: fallbackLocations[0].backdrop,
+    sourceUrl: null,
+    status: "ready",
+  });
+  const [routeStops, setRouteStops] = useState([]);
+  const [routeStatus, setRouteStatus] = useState("idle");
+  const [routeResult, setRouteResult] = useState(null);
+  const [routeMessage, setRouteMessage] = useState("");
+  const [nearbyStatus, setNearbyStatus] = useState("idle");
+  const [nearbyMessage, setNearbyMessage] = useState("");
+  const [userPosition, setUserPosition] = useState(null);
+  const [userIsDemo, setUserIsDemo] = useState(false);
+  const [nearbyRadius, setNearbyRadius] = useState(RADIUS_OPTIONS_METERS[2]);
+  const [tourFilmId, setTourFilmId] = useState(fallbackFilms[0].id);
+  const [aiTour, setAiTour] = useState(null);
+  const [aiTourStatus, setAiTourStatus] = useState("idle");
+  const [aiTourError, setAiTourError] = useState("");
+  const [tourBudget, setTourBudget] = useState(60);
+  const [timedTour, setTimedTour] = useState(null);
+  const [timedTourStatus, setTimedTourStatus] = useState("idle");
+  const [timedTourMessage, setTimedTourMessage] = useState("");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [pendingConnector, setPendingConnector] = useState(null);
+  const [library, setLibrary] = useState(() => {
+    if (typeof window === "undefined") return [];
     try {
-      return JSON.parse(window.localStorage.getItem("scenemap-want-to-visit") || "[]");
+      const storedLibrary = JSON.parse(localStorage.getItem("scenemap-library") || "[]");
+      return Array.isArray(storedLibrary) ? storedLibrary : [];
     } catch {
       return [];
     }
   });
-  const [userPosition, setUserPosition] = useState(null);
-  const [checkInStatus, setCheckInStatus] = useState("");
-  const [recreatedShot, setRecreatedShot] = useState("");
-
-  const matchingFilms = useMemo(() => {
-    const query = filmQuery.trim().toLowerCase();
-
-    if (!query) return films;
-
-    return films.filter((film) =>
-      `${film.title} ${film.year} ${film.code}`.toLowerCase().includes(query),
-    );
-  }, [filmQuery]);
-
-  const visibleLocations = useMemo(() => {
-    const matchingFilmIds = new Set(matchingFilms.map((film) => film.id));
-
-    return locations.filter(
-      (location) => selectedFilms.includes(location.filmId) && matchingFilmIds.has(location.filmId),
-    );
-  }, [matchingFilms, selectedFilms]);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [importMessage, setImportMessage] = useState("");
+  const [recreateLocation, setRecreateLocation] = useState(null);
 
   useEffect(() => {
-    if (!visibleLocations.length) {
-      if (activeLocation) setActiveLocation(null);
+    localStorage.setItem("scenemap-library", JSON.stringify(library));
+  }, [library]);
+
+  function applyLocationResults(nextLocations) {
+    const nextFilms = worksFromLocations(nextLocations);
+    setLiveLocations(nextLocations);
+    setSelectedFilms(nextFilms.map((film) => film.id));
+    setActiveLocation(nextLocations[0] ?? null);
+    setTourFilmId(nextFilms[0]?.id ?? "");
+    setAiTour(null);
+    setAiTourStatus("idle");
+    setAiTourError("");
+    setTimedTour(null);
+    setTimedTourStatus("idle");
+    setTimedTourMessage("");
+    setRouteStops([]);
+    setRouteResult(null);
+    setRouteStatus("idle");
+    setRouteMessage("");
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    const requestId = locationRequestId.current + 1;
+    locationRequestId.current = requestId;
+
+    async function loadLocations() {
+      setLocationsStatus(`Finding mapped ${workKind} locations…`);
+      try {
+        const params = new URLSearchParams({
+          lat: String(mapCenter[0]),
+          lng: String(mapCenter[1]),
+          radius: String(Math.min(cityRadius, 10)),
+          limit: "30",
+          kind: workKind,
+        });
+        if (cityWikidataId) params.set("exclude", cityWikidataId);
+
+        const response = await fetch(`/api/locations?${params}`);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Locations API failed");
+        const nextLocations = locationsFromApi(payload.locations ?? []);
+        if (cancelled || requestId !== locationRequestId.current) return;
+
+        applyLocationResults(nextLocations);
+        setLocationsStatus(nextLocations.length
+          ? `${nextLocations.length} verified places found nearby.`
+          : `No mapped ${workKind} locations found nearby. Search for a title to check the whole city.`);
+      } catch (error) {
+        if (cancelled || requestId !== locationRequestId.current) return;
+        if (liveLocations !== null) applyLocationResults([]);
+        setLocationsStatus(error instanceof Error
+          ? error.message
+          : "Live location search is unavailable. The London demo remains available.");
+      }
+    }
+
+    loadLocations();
+    return () => { cancelled = true; };
+  }, [cityRadius, cityWikidataId, mapCenter, workKind]);
+
+  useEffect(() => {
+    if (!activeLocation) return undefined;
+
+    if (activeLocation.backdrop) {
+      setFilmImageState({
+        locationId: activeLocation.id,
+        url: activeLocation.backdrop,
+        sourceUrl: null,
+        status: "ready",
+      });
+      return undefined;
+    }
+
+    if (!activeLocation.filmTmdbId) {
+      setFilmImageState({
+        locationId: activeLocation.id,
+        url: null,
+        sourceUrl: null,
+        status: "unavailable",
+      });
+      return undefined;
+    }
+
+    const cacheKey = String(activeLocation.filmTmdbId);
+    if (filmImageCache.current.has(cacheKey)) {
+      const cached = filmImageCache.current.get(cacheKey);
+      setFilmImageState({
+        locationId: activeLocation.id,
+        url: cached?.url ?? null,
+        sourceUrl: cached?.sourceUrl ?? null,
+        status: cached?.url ? "ready" : "unavailable",
+      });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setFilmImageState({
+      locationId: activeLocation.id,
+      url: null,
+      sourceUrl: null,
+      status: "loading",
+    });
+
+    async function loadFilmImage() {
+      try {
+        const response = await fetch(
+          `/api/film-image?tmdbId=${encodeURIComponent(activeLocation.filmTmdbId)}`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) throw new Error("Film image API failed");
+
+        const payload = await response.json();
+        const cached = {
+          url: payload.image_url ?? null,
+          sourceUrl: payload.source_url ?? null,
+        };
+        filmImageCache.current.set(cacheKey, cached);
+        setFilmImageState({
+          locationId: activeLocation.id,
+          ...cached,
+          status: cached.url ? "ready" : "unavailable",
+        });
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        setFilmImageState({
+          locationId: activeLocation.id,
+          url: null,
+          sourceUrl: null,
+          status: "unavailable",
+        });
+      }
+    }
+
+    loadFilmImage();
+    return () => controller.abort();
+  }, [activeLocation]);
+
+  const sourceLocations = liveLocations ?? fallbackLocations;
+  const films = useMemo(
+    () => liveLocations ? worksFromLocations(sourceLocations) : fallbackFilms,
+    [liveLocations, sourceLocations],
+  );
+
+  useEffect(() => {
+    if (!films.some((film) => film.id === tourFilmId)) {
+      setTourFilmId(films[0]?.id ?? "");
+    }
+  }, [films, tourFilmId]);
+
+  const visibleLocations = useMemo(
+    () => sourceLocations.filter((location) => selectedFilms.includes(location.filmId)),
+    [selectedFilms, sourceLocations],
+  );
+
+  const filteredLibrary = useMemo(() => {
+    const query = libraryQuery.trim().toLowerCase();
+    if (!query) return library;
+    return library.filter((movie) =>
+      `${movie.title} ${movie.year ?? ""} ${(movie.sources ?? []).join(" ")}`.toLowerCase().includes(query),
+    );
+  }, [library, libraryQuery]);
+
+  const routePositions = routeResult?.positions ?? [];
+  const activeFilmImage = activeLocation?.backdrop
+    ?? (filmImageState.locationId === activeLocation?.id ? filmImageState.url : null);
+  const activeFilmImageStatus = activeLocation?.backdrop
+    ? "ready"
+    : filmImageState.locationId === activeLocation?.id
+      ? filmImageState.status
+      : activeLocation?.filmTmdbId ? "loading" : "unavailable";
+  const activeFilmImageSource = filmImageState.locationId === activeLocation?.id
+    ? filmImageState.sourceUrl
+    : null;
+  const activeNarration = aiTour?.stops?.find(
+    (stop) => stop.locationId === activeLocation?.id,
+  )?.narration;
+
+  const nearby = useMemo(
+    () => (userPosition ? findNearby(userPosition, visibleLocations, nearbyRadius) : null),
+    [nearbyRadius, userPosition, visibleLocations],
+  );
+
+  function locateMe() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setNearbyStatus("unavailable");
+      setNearbyMessage("This browser has no geolocation. Use the demo location instead.");
       return;
     }
 
-    if (!activeLocation || !visibleLocations.some((location) => location.id === activeLocation.id)) {
-      setActiveLocation(visibleLocations[0]);
-    }
-  }, [activeLocation, visibleLocations]);
-
-  useEffect(() => {
-    window.localStorage.setItem("scenemap-want-to-visit", JSON.stringify(visitIds));
-  }, [visitIds]);
-
-  useEffect(() => {
-    setSpoilerOpen(false);
-    setCheckInStatus("");
-    setRecreatedShot("");
-  }, [activeLocation?.id]);
-
-  const routePositions = route?.positions ?? [];
-  const routeKm = route ? route.distanceMeters / 1000 : kmBetween(routeStops);
-  const routeMinutes = route
-    ? Math.max(1, Math.round(route.durationSeconds / 60))
-    : Math.max(8, Math.round((routeKm / 4.6) * 60));
-  const distanceKm = userPosition && activeLocation
-    ? kmBetween([
-        { position: userPosition },
-        { position: activeLocation.position },
-      ])
-    : null;
-
-  function openLocation(location) {
-    setActiveLocation(location);
-    setIsLocationOpen(true);
+    setNearbyStatus("locating");
+    setNearbyMessage("");
+    navigator.geolocation.getCurrentPosition(
+      (result) => {
+        setUserPosition([result.coords.latitude, result.coords.longitude]);
+        setUserIsDemo(false);
+        setNearbyStatus("ready");
+        setNearbyMessage("");
+      },
+      (error) => {
+        const known = GEOLOCATION_ERRORS[error.code] ?? GEOLOCATION_ERRORS[2];
+        setNearbyStatus(known.status);
+        setNearbyMessage(known.message);
+      },
+      { enableHighAccuracy: false, maximumAge: 30_000, timeout: 8_000 },
+    );
   }
 
-  function clearRoute() {
-    setRoute(null);
+  function useDemoLocation() {
+    setUserPosition(DEMO_LOCATION.position);
+    setUserIsDemo(true);
+    setNearbyStatus("ready");
+    setNearbyMessage("");
+  }
+
+  function invalidateRoute() {
+    routeRequestId.current += 1;
+    setRouteResult(null);
     setRouteStatus("idle");
+    setRouteMessage("");
   }
 
   function toggleFilm(filmId) {
+    setAiTour(null);
+    setAiTourError("");
+    setTimedTour(null);
+    setTimedTourStatus("idle");
+    setTimedTourMessage("");
     setSelectedFilms((current) => {
       const next = current.includes(filmId)
         ? current.filter((id) => id !== filmId)
@@ -331,127 +820,500 @@ export default function SceneMapApp() {
   }
 
   function addRouteStop(location) {
-    setRouteStops((current) => {
-      if (current.some((stop) => stop.id === location.id)) return current;
-      return [...current, location].slice(0, 5);
-    });
-    clearRoute();
+    if (routeStops.some((stop) => stop.id === location.id) || routeStops.length >= 5) return;
+
+    setAiTour(null);
+    setAiTourError("");
+    setRouteStops([...routeStops, location]);
+    invalidateRoute();
   }
 
   function removeRouteStop(locationId) {
-    setRouteStops((current) => current.filter((stop) => stop.id !== locationId));
-    clearRoute();
+    setAiTour(null);
+    setAiTourError("");
+    setRouteStops(routeStops.filter((stop) => stop.id !== locationId));
+    invalidateRoute();
   }
 
-  function toggleWantToVisit(locationId) {
-    setVisitIds((current) =>
-      current.includes(locationId)
-        ? current.filter((id) => id !== locationId)
-        : [...current, locationId],
-    );
+  function selectConnector(connector) {
+    setPendingConnector(connector);
+    setImportMessage("");
+    connectorInputRef.current?.click();
   }
 
-  function checkIn() {
-    if (!navigator.geolocation) {
-      setCheckInStatus("Location access is not supported by this browser.");
-      return;
-    }
-
-    setCheckInStatus("Finding your location...");
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        const position = [coords.latitude, coords.longitude];
-        const distance = kmBetween([
-          { position },
-          { position: activeLocation.position },
-        ]);
-        setUserPosition(position);
-        setCheckInStatus(
-          distance <= 0.25
-            ? `Checked in at ${activeLocation.place}.`
-            : `You are ${distance.toFixed(1)} km away — get closer to check in.`,
-        );
-      },
-      () => setCheckInStatus("Location permission was not granted."),
-      { enableHighAccuracy: true, timeout: 10000 },
-    );
-  }
-
-  function listenToScene() {
-    if (!("speechSynthesis" in window)) {
-      setCheckInStatus("Audio narration is not supported by this browser.");
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(
-      new SpeechSynthesisUtterance(
-        `${activeLocation.scene}. ${activeLocation.description}`,
-      ),
-    );
-    setCheckInStatus("Playing scene narration.");
-  }
-
-  function loadRecreatedShot(event) {
+  async function importLibrary(event) {
     const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => setRecreatedShot(String(reader.result));
-    reader.readAsDataURL(file);
-  }
-
-  async function buildRoute() {
-    const fallbackKm = kmBetween(routeStops);
-    const fallback = {
-      positions: routeStops.map((stop) => stop.position),
-      distanceMeters: fallbackKm * 1000,
-      durationSeconds: Math.max(8, Math.round((fallbackKm / 4.6) * 60)) * 60,
-    };
-
-    setRoute(null);
-    setRouteStatus("loading");
+    if (!file || !pendingConnector) return;
 
     try {
-      const response = await fetch("/api/route", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ coordinates: routeStops.map((stop) => stop.position) }),
-      });
-      const data = await response.json();
+      const imported = parseMediaCsv(await file.text(), pendingConnector);
+      setLibrary((current) => mergeLibraries(current, imported));
+      setImportMessage(`${imported.length} movies imported from ${pendingConnector === "imdb" ? "IMDb" : "Letterboxd"}.`);
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : "The CSV file could not be imported.");
+    } finally {
+      event.target.value = "";
+      setPendingConnector(null);
+    }
+  }
 
-      if (!response.ok || !Array.isArray(data.positions) || data.positions.length < 2) {
-        throw new Error(data.error || "Route unavailable");
-      }
+  function clearLibrary() {
+    setLibrary([]);
+    setImportMessage("Your local movie list was cleared.");
+  }
 
-      setRoute(data);
+  async function requestWalkingRoute(stops) {
+    const response = await fetch("/api/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stops: stops.map((stop) => stop.position) }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (
+      !response.ok ||
+      !Array.isArray(payload?.positions) ||
+      payload.positions.length < 2 ||
+      !Number.isFinite(payload?.distanceKm) ||
+      !Number.isFinite(payload?.durationMinutes)
+    ) {
+      throw new Error(payload?.error || "Walking route response is invalid");
+    }
+
+    return payload;
+  }
+
+  async function buildRoute(stops = routeStops) {
+    const requestId = routeRequestId.current + 1;
+    routeRequestId.current = requestId;
+    setRouteResult(null);
+    setRouteStatus("loading");
+    setRouteMessage("");
+
+    try {
+      const payload = await requestWalkingRoute(stops);
+
+      if (requestId !== routeRequestId.current) return;
+
+      setRouteResult(payload);
       setRouteStatus("ready");
     } catch {
-      setRoute(fallback);
+      if (requestId !== routeRequestId.current) return;
+
+      setRouteResult(makeFallbackRoute(stops));
       setRouteStatus("fallback");
+      setRouteMessage(
+        "Walking directions are unavailable, so the stops are connected directly.",
+      );
+    }
+  }
+
+  async function buildTimedTour() {
+    const candidates = createTimedTourCandidates(
+      visibleLocations,
+      mapCenter,
+      tourBudget,
+    );
+
+    if (candidates.length === 0) {
+      setTimedTour(null);
+      setTimedTourStatus("error");
+      setTimedTourMessage(
+        "Select films with at least three nearby locations for this time budget.",
+      );
+      return;
+    }
+
+    setTimedTour(null);
+    setTimedTourStatus("loading");
+    setTimedTourMessage("Checking nearby walking routes...");
+
+    let selectedPlan = null;
+    let plannedRoute = null;
+    let usedRouteFallback = false;
+
+    try {
+      const routeCandidates = [5, 4, 3].flatMap((stopCount) =>
+        candidates
+          .filter((candidate) => candidate.stops.length === stopCount)
+          .slice(0, 4),
+      );
+
+      for (const candidate of routeCandidates) {
+        const candidateRoute = await requestWalkingRoute(candidate.stops);
+
+        if (routeFitsBudget(candidateRoute, tourBudget)) {
+          selectedPlan = candidate;
+          plannedRoute = candidateRoute;
+          break;
+        }
+      }
+
+      if (!selectedPlan) {
+        setTimedTourStatus("error");
+        setTimedTourMessage(
+          `No three-stop walk fits ${tourBudget} minutes near this location. Try a larger budget.`,
+        );
+        return;
+      }
+    } catch {
+      selectedPlan = candidates[0];
+      plannedRoute = makeFallbackRoute(selectedPlan.stops);
+      usedRouteFallback = true;
+
+      if (!routeFitsBudget(plannedRoute, tourBudget)) {
+        setTimedTourStatus("error");
+        setTimedTourMessage(
+          `No three-stop walk fits ${tourBudget} minutes near this location. Try a larger budget.`,
+        );
+        return;
+      }
+    }
+
+    const fallbackGuide = createFallbackGuide({
+      city: cityName,
+      budgetMinutes: tourBudget,
+      stops: selectedPlan.stops,
+    });
+    let guide = fallbackGuide;
+    let usedAiFallback = false;
+
+    setTimedTourMessage("Writing short stories for the selected stops...");
+
+    try {
+      const response = await fetch("/api/tour", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          city: cityName,
+          durationMinutes: tourBudget,
+          preserveOrder: true,
+          locations: selectedPlan.stops.map(
+            ({ id, place, scene, description, film }) => ({
+              id,
+              place,
+              scene,
+              description,
+              film,
+            }),
+          ),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      const expectedIds = selectedPlan.stops.map((stop) => stop.id);
+      const returnedIds = payload?.stops?.map((stop) => stop.locationId);
+
+      if (
+        !response.ok ||
+        !Array.isArray(returnedIds) ||
+        returnedIds.some((id, index) => id !== expectedIds[index])
+      ) {
+        throw new Error(payload.error || "The AI guide returned an invalid route.");
+      }
+
+      guide = payload;
+    } catch {
+      usedAiFallback = true;
+    }
+
+    setTimedTour({
+      budgetMinutes: tourBudget,
+      guide,
+      route: plannedRoute,
+      stops: selectedPlan.stops,
+      usedAiFallback,
+      usedRouteFallback,
+    });
+    setTimedTourStatus("ready");
+    setTimedTourMessage(
+      [
+        usedAiFallback ? "AI was unavailable, so verified location descriptions were used." : null,
+        usedRouteFallback ? "Walking directions were estimated because the router was unavailable." : null,
+      ].filter(Boolean).join(" "),
+    );
+  }
+
+  async function startTimedTour() {
+    if (!timedTour) return;
+
+    const filmIds = [...new Set(
+      timedTour.stops.flatMap((stop) => stop.filmIds ?? [stop.filmId]),
+    )];
+    setSelectedFilms(filmIds);
+    setRouteStops(timedTour.stops);
+    setActiveLocation(timedTour.stops[0]);
+    setAiTour({ ...timedTour.guide, timed: true });
+    setAiTourStatus("success");
+    setAiTourError("");
+    await buildRoute(timedTour.stops);
+  }
+
+  async function buildAiTour() {
+    const film = films.find((item) => item.id === tourFilmId);
+    const filmLocations = sourceLocations
+      .filter((location) => location.filmId === tourFilmId)
+      .slice(0, 5);
+
+    if (!film || filmLocations.length === 0) {
+      setAiTourStatus("error");
+      setAiTourError("No verified locations are available for this story yet.");
+      return;
+    }
+
+    setAiTour(null);
+    setAiTourStatus("loading");
+    setAiTourError("");
+
+    try {
+      const response = await fetch("/api/tour", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          city: cityName,
+          film: {
+            id: film.id,
+            title: film.title,
+            year: film.year ?? null,
+            kind: film.kind ?? "film",
+          },
+          locations: filmLocations.map(({ id, place, scene, description }) => ({
+            id,
+            place,
+            scene,
+            description,
+          })),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Could not build the AI tour.");
+      }
+
+      const locationsById = new Map(filmLocations.map((location) => [location.id, location]));
+      const orderedStops = payload.stops.map((stop) => locationsById.get(stop.locationId));
+
+      if (orderedStops.some((stop) => !stop)) {
+        throw new Error("The AI returned an unknown route stop.");
+      }
+
+      setSelectedFilms([tourFilmId]);
+      setRouteStops(orderedStops);
+      setActiveLocation(orderedStops[0]);
+      setAiTour(payload);
+      setAiTourStatus("success");
+
+      if (orderedStops.length > 1) {
+        await buildRoute(orderedStops);
+      } else {
+        invalidateRoute();
+      }
+    } catch (error) {
+      setAiTour(null);
+      setAiTourStatus("error");
+      setAiTourError(error instanceof Error ? error.message : "Could not build the AI tour.");
+    }
+  }
+
+  function selectTourArea(center, name, { radiusKm = 15, wikidataId = null } = {}) {
+    setMapCenter(center);
+    setCityName(name);
+    setCityRadius(radiusKm);
+    setCityWikidataId(wikidataId);
+    setWorkQuery("");
+    setLiveLocations([]);
+    setActiveLocation(null);
+    setRouteStops([]);
+    setAiTour(null);
+    setAiTourStatus("idle");
+    setAiTourError("");
+    setTimedTour(null);
+    setTimedTourStatus("idle");
+    setTimedTourMessage("");
+    setLocationsStatus(`Finding mapped ${workKind} locations in ${name}…`);
+    invalidateRoute();
+  }
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      setCitySearchStatus("Location access is unavailable in this browser");
+      return;
+    }
+
+    setCitySearchStatus("Finding your location...");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setUserPosition([coords.latitude, coords.longitude]);
+        setUserIsDemo(false);
+        setNearbyStatus("ready");
+        setNearbyMessage("");
+        setCityQuery("");
+        selectTourArea([coords.latitude, coords.longitude], "Your location");
+        setCitySearchStatus("");
+      },
+      () => setCitySearchStatus("Location access was not granted"),
+      { enableHighAccuracy: false, maximumAge: 300_000, timeout: 8_000 },
+    );
+  }
+
+  async function searchWork(event) {
+    event.preventDefault();
+    const query = workQuery.trim();
+    if (!query) {
+      setLocationsStatus("Enter a film, series, or book title.");
+      return;
+    }
+
+    const requestId = locationRequestId.current + 1;
+    locationRequestId.current = requestId;
+    setLocationsStatus(`Finding every mapped place for “${query}” in ${cityName}…`);
+
+    try {
+      const params = new URLSearchParams({
+        q: query,
+        kind: workKind,
+        lat: String(mapCenter[0]),
+        lng: String(mapCenter[1]),
+        radius: String(cityRadius),
+        limit: "30",
+      });
+      if (cityWikidataId) params.set("exclude", cityWikidataId);
+      const response = await fetch(`/api/locations?${params}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Location search failed");
+      if (requestId !== locationRequestId.current) return;
+
+      const nextLocations = locationsFromApi(payload.locations ?? []);
+      const matchedWork = payload.matched_work;
+      const matchedTitle = matchedWork?.label ?? nextLocations[0]?.film ?? query;
+      applyLocationResults(nextLocations);
+      if (nextLocations.length) {
+        setLocationsStatus(
+          `${nextLocations.length} verified ${nextLocations.length === 1 ? "place" : "places"} for ${matchedTitle} in ${cityName}.`,
+        );
+      } else {
+        setLocationsStatus(`No verified ${workKind} locations for “${query}” were found inside ${cityName}.`);
+      }
+
+      if (!matchedWork || nextLocations.length >= 3) return;
+
+      setLocationsStatus(
+        `${nextLocations.length || "No"} Wikidata ${nextLocations.length === 1 ? "place" : "places"}; checking cited web sources for more…`,
+      );
+      const discoveryResponse = await fetch("/api/locations/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          city: {
+            name: cityName,
+            lat: mapCenter[0],
+            lng: mapCenter[1],
+            radiusKm: cityRadius,
+          },
+          work: {
+            id: matchedWork.id,
+            title: matchedTitle,
+            kind: workKind,
+          },
+          existingLocations: nextLocations.map((location) => ({
+            place: location.place,
+            lat: location.position[0],
+            lng: location.position[1],
+          })),
+        }),
+      });
+      const discovery = await discoveryResponse.json().catch(() => ({}));
+      if (requestId !== locationRequestId.current) return;
+      if (!discoveryResponse.ok) {
+        setLocationsStatus(nextLocations.length
+          ? `${nextLocations.length} verified ${nextLocations.length === 1 ? "place" : "places"} for ${matchedTitle}. More research is unavailable right now.`
+          : `No verified places for ${matchedTitle} in ${cityName}; more research is unavailable right now.`);
+        return;
+      }
+
+      const researchedLocations = locationsFromApi(discovery.locations ?? []);
+      const merged = [...nextLocations];
+      for (const location of researchedLocations) {
+        const duplicate = merged.some((known) =>
+          known.place.toLowerCase() === location.place.toLowerCase()
+          || (Math.abs(known.position[0] - location.position[0]) < 0.0005
+            && Math.abs(known.position[1] - location.position[1]) < 0.0005),
+        );
+        if (!duplicate) merged.push(location);
+      }
+      applyLocationResults(merged);
+      setLocationsStatus(merged.length > nextLocations.length
+        ? `${merged.length} sourced places for ${matchedTitle}: Wikidata plus cited web research.`
+        : `${nextLocations.length || "No"} verified places for ${matchedTitle}; no additional sourced places were found.`);
+    } catch (error) {
+      if (requestId !== locationRequestId.current) return;
+      setLocationsStatus(error instanceof Error ? error.message : "Location search failed");
+    }
+  }
+
+  async function searchCity(event) {
+    event.preventDefault();
+    const query = cityQuery.trim();
+    if (!query) return;
+
+    setCitySearchStatus("Searching city…");
+    try {
+      const response = await fetch(`/api/cities?q=${encodeURIComponent(query)}`);
+      const city = await response.json();
+      if (!response.ok) throw new Error(city.error);
+
+      setUserPosition(null);
+      setUserIsDemo(false);
+      setNearbyStatus("idle");
+      setNearbyMessage("");
+      selectTourArea([city.lat, city.lng], city.name, {
+        radiusKm: city.radius_km ?? 15,
+        wikidataId: city.wikidata_id ?? null,
+      });
+      setCitySearchStatus("");
+    } catch {
+      setCitySearchStatus("City not found");
     }
   }
 
   return (
     <main className="scene-shell">
-      <section className="map-stage" aria-label="SceneMap locations map">
-        <MapContainer center={londonCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
+      <section className="map-stage" aria-label="GloryMap locations map">
+        <MapContainer center={mapCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
-          <RecenterOnSelection position={activeLocation?.position} />
+          <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
+          <FlyToUser position={userPosition} radius={nearbyRadius} />
+          {userPosition && (
+            <>
+              <Circle
+                center={userPosition}
+                radius={nearbyRadius}
+                pathOptions={{ color: "#f7b733", fillOpacity: 0.06, opacity: 0.5, weight: 1.5 }}
+              />
+              <Marker icon={userIcon} position={userPosition}>
+                <Popup>{userIsDemo ? DEMO_LOCATION.label : "You are here"}</Popup>
+              </Marker>
+            </>
+          )}
           {visibleLocations.map((location) => (
             <Marker
               key={location.id}
               position={location.position}
-              icon={makeMarkerIcon(activeLocation?.id === location.id)}
+              icon={makeMarkerIcon(
+                activeLocation?.id === location.id,
+                nearby?.nearest?.location.id === location.id,
+                location.kind,
+              )}
               eventHandlers={{
-                click: () => openLocation(location),
+                click: () => setActiveLocation(location),
               }}
             >
               <Popup>
+                <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
                 <strong>{location.film}</strong>
                 <br />
                 {location.place}
@@ -459,54 +1321,153 @@ export default function SceneMapApp() {
             </Marker>
           ))}
           {routePositions.length > 1 && (
-            <Polyline positions={routePositions} pathOptions={{ color: "#f7b733", weight: 5, opacity: 0.9 }} />
+            <Polyline
+              positions={routePositions}
+              pathOptions={{
+                color: "#f7b733",
+                dashArray: routeResult?.source === "fallback" ? "8 10" : undefined,
+                opacity: routeResult?.source === "fallback" ? 0.7 : 0.95,
+                weight: 5,
+              }}
+            />
           )}
         </MapContainer>
       </section>
 
-      <aside className="command-panel" aria-label="Film selection">
+      <aside className="command-panel" aria-label="Story selection">
         <div className="brand-row">
           <div className="brand-mark">
             <Clapperboard size={22} />
           </div>
           <div>
-            <p className="eyebrow">SceneMap MVP</p>
-            <h1>A film walk through London</h1>
+            <p className="eyebrow">GloryMap</p>
+            <h1>Stories on the map · {cityName}</h1>
           </div>
-        </div>
-
-        <div className="action-row">
-          <div className="film-search">
-            <Search size={17} />
-            <label className="sr-only" htmlFor="film-search">Search mapped films</label>
-            <input
-              id="film-search"
-              type="search"
-              value={filmQuery}
-              onChange={(event) => setFilmQuery(event.target.value)}
-              placeholder="Search mapped films"
-              autoComplete="off"
-            />
-            {filmQuery && (
-              <button
-                className="clear-search"
-                type="button"
-                onClick={() => setFilmQuery("")}
-                aria-label="Clear film search"
-                title="Clear search"
-              >
-                <X size={15} />
-              </button>
-            )}
-          </div>
-          <button className="ghost-button" type="button">
-            <Upload size={17} />
-            CSV later
+          <button className="account-button" type="button" onClick={() => setAccountOpen(true)}>
+            <User size={18} />
+            My movies
           </button>
         </div>
 
-        <div className="film-grid" aria-label="Mapped films" aria-live="polite">
-          {matchingFilms.map((film) => {
+        <div className="place-controls">
+          <form className="city-search" onSubmit={searchCity}>
+            <Search size={17} aria-hidden="true" />
+            <input
+              aria-label="City"
+              onChange={(event) => setCityQuery(event.target.value)}
+              placeholder="City"
+              type="search"
+              value={cityQuery}
+            />
+            <button aria-label="Search city" className="ghost-button" type="submit">
+              <Search size={17} />
+            </button>
+          </form>
+          <button className="use-location-button" type="button" onClick={useCurrentLocation}>
+            <LocateFixed size={16} />
+            Use my location
+          </button>
+        </div>
+        {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
+
+        <form className="work-search" onSubmit={searchWork}>
+          <select
+            aria-label="Work type"
+            value={workKind}
+            onChange={(event) => setWorkKind(event.target.value)}
+          >
+            <option value="film">Film</option>
+            <option value="series">Series</option>
+            <option value="book">Book</option>
+          </select>
+          <input
+            aria-label="Film, series, or book title"
+            onChange={(event) => setWorkQuery(event.target.value)}
+            placeholder="Film, series, or book"
+            type="search"
+            value={workQuery}
+          />
+          <button aria-label="Find story locations" className="ghost-button" type="submit">
+            <Search size={17} />
+          </button>
+        </form>
+        {locationsStatus && <p className="location-search-status" role="status">{locationsStatus}</p>}
+
+        <div className="nearby-card" aria-label="Nearby locations">
+          <div className="nearby-actions">
+            <button
+              className="ghost-button nearby-cta"
+              disabled={nearbyStatus === "locating"}
+              onClick={locateMe}
+              type="button"
+            >
+              <Crosshair size={17} />
+              {nearbyStatus === "locating" ? "Locating..." : "What's nearby?"}
+            </button>
+            {(nearbyStatus === "denied" ||
+              nearbyStatus === "unavailable" ||
+              nearbyStatus === "timeout") && (
+              <button className="ghost-button" onClick={useDemoLocation} type="button">
+                Use demo location
+              </button>
+            )}
+          </div>
+
+          {nearbyMessage && (
+            <p className="nearby-status" role="status">{nearbyMessage}</p>
+          )}
+
+          {userPosition && (
+            <>
+              <div className="radius-chips" role="group" aria-label="Search radius">
+                {RADIUS_OPTIONS_METERS.map((radius) => (
+                  <button
+                    aria-pressed={nearbyRadius === radius}
+                    className={`radius-chip${nearbyRadius === radius ? " is-selected" : ""}`}
+                    key={radius}
+                    onClick={() => setNearbyRadius(radius)}
+                    type="button"
+                  >
+                    {formatDistanceMeters(radius)}
+                  </button>
+                ))}
+              </div>
+
+              {nearby?.nearest ? (
+                <button
+                  className="nearby-result"
+                  onClick={() => setActiveLocation(nearby.nearest.location)}
+                  type="button"
+                >
+                  <MapPin size={17} aria-hidden="true" />
+                  <span>
+                    <strong>{nearby.nearest.location.place}</strong>
+                    <small>
+                      {nearby.nearest.location.film} ·{" "}
+                      {formatDistanceMeters(nearby.nearest.distanceMeters)} away
+                      {nearby.nearest.distanceMeters > nearbyRadius
+                        ? " · outside radius"
+                        : ""}
+                    </small>
+                  </span>
+                </button>
+              ) : (
+                <p className="nearby-status" role="status">
+                  No screen or story locations loaded for this city yet.
+                </p>
+              )}
+
+              <p className="nearby-count">
+                {nearby?.inRadius.length ?? 0} location{(nearby?.inRadius.length ?? 0) === 1 ? "" : "s"} within{" "}
+                {formatDistanceMeters(nearbyRadius)}
+                {userIsDemo ? ` · ${DEMO_LOCATION.label}` : ""}
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="film-grid" aria-label="Selected stories">
+          {films.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
             return (
@@ -520,26 +1481,154 @@ export default function SceneMapApp() {
                 <span className="poster-tile" aria-hidden="true">{film.code}</span>
                 <span>
                   <strong>{film.title}</strong>
-                  <small>{film.year}</small>
+                  <small>
+                    <span className={`work-kind kind-${film.kind}`}>{kindLabel(film.kind)}</span>
+                    {film.year ? ` · ${film.year}` : ""}
+                  </small>
                 </span>
               </button>
             );
           })}
-          {matchingFilms.length === 0 && (
-            <p className="film-empty">No mapped films match "{filmQuery.trim()}".</p>
+        </div>
+
+        <section className="timed-tour-card" aria-labelledby="timed-tour-title">
+          <div className="timed-tour-heading">
+            <span className="timed-tour-icon" aria-hidden="true"><Clock3 size={18} /></span>
+            <div>
+              <p className="eyebrow">Area · {cityName}</p>
+              <strong id="timed-tour-title">Tour by time and place</strong>
+            </div>
+          </div>
+          <div className="budget-options" role="group" aria-label="Tour time budget">
+            {TOUR_BUDGETS.map((minutes) => (
+              <button
+                className={tourBudget === minutes ? "is-selected" : ""}
+                key={minutes}
+                type="button"
+                aria-pressed={tourBudget === minutes}
+                disabled={timedTourStatus === "loading"}
+                onClick={() => {
+                  setTourBudget(minutes);
+                  setTimedTour(null);
+                  setTimedTourStatus("idle");
+                  setTimedTourMessage("");
+                }}
+              >
+                {minutes} min
+              </button>
+            ))}
+          </div>
+          <button
+            className="timed-tour-button"
+            type="button"
+            onClick={buildTimedTour}
+            disabled={timedTourStatus === "loading" || visibleLocations.length < 3}
+          >
+            {timedTourStatus === "loading" ? (
+              <LoaderCircle className="loading-icon" size={17} />
+            ) : (
+              <Clock3 size={17} />
+            )}
+            {timedTourStatus === "loading" ? "Planning..." : "Generate nearby tour"}
+          </button>
+          {timedTourMessage && (
+            <p
+              className={`timed-tour-message${timedTourStatus === "error" ? " is-error" : ""}`}
+              role={timedTourStatus === "error" ? "alert" : "status"}
+            >
+              {timedTourMessage}
+            </p>
+          )}
+          {timedTour && (
+            <div className="timed-tour-result" aria-live="polite">
+              <div>
+                <strong>{timedTour.guide.title}</strong>
+                <p>{timedTour.guide.intro}</p>
+              </div>
+              <div className="timed-tour-metrics">
+                <span>{timedTour.route.distanceKm.toFixed(1)} km</span>
+                <span>{timedTour.route.durationMinutes} min</span>
+                <span>{timedTour.stops.length} stops</span>
+              </div>
+              <ol>
+                {timedTour.stops.map((stop) => (
+                  <li key={stop.id}>
+                    <strong>{stop.place}</strong>
+                    <span>{stop.film}</span>
+                  </li>
+                ))}
+              </ol>
+              <button className="start-tour-button" type="button" onClick={startTimedTour}>
+                <Route size={17} />
+                Start tour
+              </button>
+            </div>
+          )}
+        </section>
+
+        <div className="ai-tour-card">
+          <div className="ai-tour-heading">
+            <span className="ai-tour-icon" aria-hidden="true">
+              <Sparkles size={17} />
+            </span>
+            <div>
+              <p className="eyebrow">AI guide</p>
+              <strong>Tour by work</strong>
+            </div>
+          </div>
+          <div className="ai-tour-controls">
+            <label>
+              <span className="sr-only">Work for the AI tour</span>
+              <select
+                value={tourFilmId}
+                onChange={(event) => {
+                  setTourFilmId(event.target.value);
+                  setAiTour(null);
+                  setAiTourError("");
+                }}
+                disabled={aiTourStatus === "loading" || films.length === 0}
+              >
+                {films.map((film) => (
+                  <option key={film.id} value={film.id}>{film.title}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="ai-tour-button"
+              type="button"
+              onClick={buildAiTour}
+              disabled={aiTourStatus === "loading" || !tourFilmId}
+            >
+              {aiTourStatus === "loading" ? (
+                <LoaderCircle className="loading-icon" size={17} />
+              ) : (
+                <Sparkles size={17} />
+              )}
+              {aiTourStatus === "loading" ? "Building..." : "Create tour"}
+            </button>
+          </div>
+          {aiTourError && <p className="ai-tour-error" role="alert">{aiTourError}</p>}
+          {aiTour && (
+            <div className="ai-tour-ready" aria-live="polite">
+              <strong>{aiTour.title}</strong>
+              <span>{aiTour.intro}</span>
+            </div>
           )}
         </div>
 
         <div className="location-list" aria-label="Map locations">
           <div className="section-row">
             <p className="eyebrow">Locations</p>
-            <span>{visibleLocations.length} in London</span>
+            <span>{visibleLocations.length} in {cityName}</span>
           </div>
           {visibleLocations.map((location) => (
             <div className="location-row" key={location.id}>
-              <button type="button" onClick={() => openLocation(location)}>
+              <button type="button" onClick={() => setActiveLocation(location)}>
                 <strong>{location.place}</strong>
-                <span>{location.film}</span>
+                <span>
+                  <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
+                  {location.film}
+                </span>
               </button>
               <button
                 className="icon-button"
@@ -559,21 +1648,45 @@ export default function SceneMapApp() {
             <strong>{routeStops.length} / 5 stops</strong>
           </div>
           <button
-            className="primary-button"
-            disabled={routeStops.length < 3 || routeStatus === "loading"}
-            onClick={buildRoute}
+            className={`primary-button${routeResult ? " is-complete" : ""}`}
+            disabled={routeStops.length < 3 || routeStatus !== "idle"}
+            onClick={() => buildRoute()}
             type="button"
           >
             <Route size={18} />
-            {routeStatus === "loading" ? "Building..." : "Build route"}
+            {routeStatus === "loading"
+              ? "Building..."
+              : routeStatus === "fallback"
+                ? "Approximate route"
+                : routeResult
+                ? "Route ready"
+                : "Build route"}
           </button>
         </div>
+
+        {aiTour && (
+          <section className="ai-tour-result" aria-live="polite">
+            <p className="eyebrow">Stories at each stop</p>
+            <ol>
+              {aiTour.stops.map((stop) => {
+                const location = sourceLocations.find((item) => item.id === stop.locationId);
+
+                return (
+                  <li key={stop.locationId}>
+                    <strong>{location?.place}</strong>
+                    <span>{stop.narration}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+        )}
 
         {routeStops.length > 0 && (
           <ol className="route-list">
             {routeStops.map((stop, index) => (
               <li key={stop.id}>
-                <button type="button" onClick={() => openLocation(stop)}>
+                <button type="button" onClick={() => setActiveLocation(stop)}>
                   <span>{index + 1}</span>
                   {stop.place}
                 </button>
@@ -585,29 +1698,55 @@ export default function SceneMapApp() {
           </ol>
         )}
 
-        {(routeStatus === "ready" || routeStatus === "fallback") && (
+        {routeStatus === "loading" && (
           <p className="route-summary" role="status">
-            About {routeKm.toFixed(1)} km on foot · {routeMinutes} min. {routeStatus === "ready"
-              ? "Route follows walkable streets."
-              : "Routing is unavailable, so the stops are connected directly."}
+            Building a walking route through {cityName}...
           </p>
+        )}
+
+        {routeResult && (
+          <div
+            className={`route-summary${routeResult.source === "fallback" ? " is-fallback" : ""}`}
+            role="status"
+          >
+            <strong>
+              {routeResult.distanceKm.toFixed(1)} km on foot · {routeResult.durationMinutes} min
+            </strong>
+            {routeResult.source === "fallback" ? (
+              <span>{routeMessage}</span>
+            ) : (
+              <span>
+                {aiTour?.timed
+                  ? "Nearby planner chose the stops · "
+                  : aiTour
+                    ? "AI chose the stop order · "
+                    : ""}
+                Route follows mapped streets ·{" "}
+                <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">
+                  OpenStreetMap routing
+                </a>
+                {" · "}
+                <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">
+                  fix the map
+                </a>
+              </span>
+            )}
+          </div>
         )}
       </aside>
 
-      {activeLocation && isLocationOpen && (
+      {activeLocation && (
         <section className="location-sheet" aria-label="Location details">
           <div className="sheet-media">
-            <ImageWithFallback src={activeLocation.backdrop} alt={`Scene from ${activeLocation.film}`} />
-            <button
-              className="sheet-close"
-              type="button"
-              onClick={() => setIsLocationOpen(false)}
-              aria-label="Close location details"
-            >
-              <X size={18} />
-            </button>
+            {(activeFilmImage ?? activeLocation.now) && (
+              <img
+                src={activeFilmImage ?? activeLocation.now}
+                alt=""
+                onError={(event) => event.currentTarget.remove()}
+              />
+            )}
             <div>
-              <p>Film · Filming location</p>
+              <p><span className={`work-kind kind-${activeLocation.kind}`}>{kindLabel(activeLocation.kind)}</span>{" "}{activeLocation.film}</p>
               <h2>{activeLocation.scene}</h2>
             </div>
           </div>
@@ -617,84 +1756,147 @@ export default function SceneMapApp() {
               <MapPin size={19} />
               <div>
                 <strong>{activeLocation.place}</strong>
-                <span>{activeLocation.place}, London</span>
-                <span>{distanceKm === null ? "Enable location to see distance" : `${distanceKm.toFixed(1)} km away`}</span>
+                <span>{activeLocation.position[0].toFixed(4)}, {activeLocation.position[1].toFixed(4)}</span>
               </div>
             </div>
-            <div className="detail-meta">
-              <span>{activeLocation.film}</span>
-              <a
-                href={`https://www.openstreetmap.org/?mlat=${activeLocation.position[0]}&mlon=${activeLocation.position[1]}#map=17/${activeLocation.position[0]}/${activeLocation.position[1]}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Source: OpenStreetMap <ExternalLink size={13} />
-              </a>
-            </div>
-
-            <div className="spoiler-card">
-              <strong>Scene details</strong>
-              {spoilerOpen ? (
-                <p>{activeLocation.description}</p>
-              ) : (
-                <button type="button" onClick={() => setSpoilerOpen(true)}>
-                  <Eye size={16} /> Reveal spoiler
-                </button>
-              )}
-            </div>
-
-            <p className="location-fact">
-              <strong>SceneMap fact</strong>
-              This stop is one of {locations.filter((location) => location.filmId === activeLocation.filmId).length} mapped London locations for {activeLocation.film}.
-            </p>
-
+            <p>{activeLocation.description}</p>
+            <VoiceGuide location={activeLocation} story={activeNarration} />
             <div className="comparison-grid">
               <figure>
-                <ImageWithFallback src={activeLocation.backdrop} alt={`${activeLocation.scene} reference`} />
-                <figcaption>scene reference</figcaption>
+                {activeFilmImage ? (
+                  <img
+                    src={activeFilmImage}
+                    alt={`Film image for ${activeLocation.film}`}
+                    onError={() => setFilmImageState({
+                      locationId: activeLocation.id,
+                      url: null,
+                      sourceUrl: null,
+                      status: "unavailable",
+                    })}
+                  />
+                ) : (
+                  <div className="image-placeholder" role="status">
+                    {activeFilmImageStatus === "loading" ? "Loading film image…" : "Reference image unavailable"}
+                  </div>
+                )}
+                <figcaption>
+                  {activeFilmImage && activeFilmImageSource ? (
+                    <a href={activeFilmImageSource} target="_blank" rel="noopener noreferrer">
+                      film image · TMDB
+                    </a>
+                  ) : "scene reference"}
+                </figcaption>
               </figure>
               <figure>
-                <ImageWithFallback src={activeLocation.now} alt={`${activeLocation.place} today`} />
+                {activeLocation.now ? (
+                  <img src={activeLocation.now} alt={`${activeLocation.place} today`} />
+                ) : (
+                  <div className="image-placeholder">Place photo unavailable</div>
+                )}
                 <figcaption>the place today</figcaption>
               </figure>
             </div>
-
-            {recreatedShot && (
-              <figure className="recreated-shot">
-                <img src={recreatedShot} alt="Your recreated shot" />
-                <figcaption>Your recreated shot</figcaption>
-              </figure>
-            )}
-
-            <div className="location-actions">
-              <button type="button" onClick={checkIn}>
-                <Check size={17} /> I’m here
-              </button>
-              <button type="button" onClick={listenToScene}>
-                <Volume2 size={17} /> Listen
-              </button>
-              <label>
-                <Camera size={17} /> Recreate shot
-                <input type="file" accept="image/*" capture="environment" onChange={loadRecreatedShot} />
-              </label>
-            </div>
-            {checkInStatus && <p className="action-status" role="status">{checkInStatus}</p>}
-
             <button
-              className={`visit-button${visitIds.includes(activeLocation.id) ? " is-selected" : ""}`}
+              aria-haspopup="dialog"
+              className="wide-button recreate-launch"
+              disabled={!activeFilmImage}
+              onClick={() => setRecreateLocation({ ...activeLocation, backdrop: activeFilmImage })}
+              title={activeFilmImage ? undefined : "A reference image is required to recreate this shot"}
               type="button"
-              onClick={() => toggleWantToVisit(activeLocation.id)}
-              aria-pressed={visitIds.includes(activeLocation.id)}
             >
-              <Heart size={18} fill={visitIds.includes(activeLocation.id) ? "currentColor" : "none"} />
-              {visitIds.includes(activeLocation.id) ? "Saved to want to visit" : "Want to visit"}
+              <Clapperboard size={18} />
+              Recreate this shot
             </button>
+            {activeLocation.sourceUrl && (
+              <a className="source-link" href={activeLocation.sourceUrl} target="_blank" rel="noopener noreferrer">
+                {activeLocation.sourceTitle ?? (activeLocation.evidenceSource === "web_search" ? "Research source" : "Wikidata source")}
+                <ExternalLink size={14} />
+              </a>
+            )}
+            <a className="ghost-button image-search-link" href={makeImageSearchUrl(activeLocation)} target="_blank" rel="noopener noreferrer">
+              <Search size={18} />
+              Find place images
+              <ExternalLink size={15} />
+            </a>
             <button className="wide-button" type="button" onClick={() => addRouteStop(activeLocation)}>
               <Route size={18} />
-              {routeStops.some((stop) => stop.id === activeLocation.id) ? "In route" : "Add to route"}
+              Add to route
             </button>
           </div>
         </section>
+      )}
+
+      {accountOpen && (
+        <div className="account-backdrop" role="presentation" onMouseDown={() => setAccountOpen(false)}>
+          <section className="account-panel" role="dialog" aria-modal="true" aria-labelledby="account-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="account-heading">
+              <div className="account-avatar"><User size={22} /></div>
+              <div>
+                <p className="eyebrow">Personal library</p>
+                <h2 id="account-title">My movies</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setAccountOpen(false)} aria-label="Close movie library">
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="account-copy">Import your official account export. Your list stays on this device and can combine both services.</p>
+            <input ref={connectorInputRef} type="file" accept=".csv,text/csv" hidden onChange={importLibrary} />
+
+            <div className="connector-list">
+              <button className="connector-card" type="button" onClick={() => selectConnector("letterboxd")}>
+                <span className="connector-logo is-letterboxd"><Film size={20} /></span>
+                <span><strong>Letterboxd</strong><small>ratings.csv, watched.csv or diary.csv</small></span>
+                <Link2 size={18} />
+              </button>
+              <button className="connector-card" type="button" onClick={() => selectConnector("imdb")}>
+                <span className="connector-logo is-imdb">IMDb</span>
+                <span><strong>IMDb</strong><small>Ratings, Check-ins or list CSV</small></span>
+                <Link2 size={18} />
+              </button>
+            </div>
+
+            {importMessage && <p className="import-message" role="status"><CheckCircle2 size={16} />{importMessage}</p>}
+
+            <div className="library-toolbar">
+              <div className="film-search">
+                <Search size={16} />
+                <input aria-label="Search my movies" placeholder="Search my movies" type="search" value={libraryQuery} onChange={(event) => setLibraryQuery(event.target.value)} />
+              </div>
+              {library.length > 0 && (
+                <button className="clear-library" type="button" onClick={clearLibrary}><Trash2 size={15} />Clear</button>
+              )}
+            </div>
+
+            <div className="library-summary">
+              <span>{library.length} movies</span>
+              <span>{library.filter((movie) => movie.rating !== null).length} rated</span>
+            </div>
+
+            <div className="movie-library" aria-live="polite">
+              {filteredLibrary.map((movie) => (
+                <article className="library-movie" key={movie.id}>
+                  <span className="library-poster">{movie.title.slice(0, 2).toUpperCase()}</span>
+                  <div>
+                    <strong>{movie.title}</strong>
+                    <span>{movie.year ?? "Year unknown"} · {(movie.sources ?? []).map((source) => source === "imdb" ? "IMDb" : "Letterboxd").join(" + ")}</span>
+                  </div>
+                  {movie.rating !== null && <span className="movie-rating"><Star size={14} />{movie.rating}</span>}
+                </article>
+              ))}
+              {library.length === 0 && (
+                <div className="empty-library"><Film size={28} /><strong>Your movie list is empty</strong><span>Connect Letterboxd or IMDb to import it.</span></div>
+              )}
+              {library.length > 0 && filteredLibrary.length === 0 && <p className="empty-library">No movies match your search.</p>}
+            </div>
+
+            <div className="account-privacy"><CheckCircle2 size={17} /><span>CSV files are processed locally. GloryMap never asks for your Letterboxd or IMDb password.</span></div>
+          </section>
+        </div>
+      )}
+
+      {recreateLocation && (
+        <RecreateShot location={recreateLocation} onClose={() => setRecreateLocation(null)} />
       )}
     </main>
   );
