@@ -6,10 +6,12 @@ import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-
 import {
   CheckCircle2,
   Clapperboard,
+  Clock3,
   ExternalLink,
   Film,
   Link2,
   LoaderCircle,
+  LocateFixed,
   MapPin,
   Plus,
   Route,
@@ -21,6 +23,13 @@ import {
   X,
 } from "lucide-react";
 import { mergeLibraries, parseMediaCsv } from "../lib/media-library.mjs";
+import {
+  TOUR_BUDGETS,
+  createFallbackGuide,
+  createTimedTourCandidates,
+  routeFitsBudget,
+} from "../lib/timed-tour.mjs";
+import VoiceGuide from "./VoiceGuide";
 
 const londonCenter = [51.5094, -0.1183];
 
@@ -180,6 +189,7 @@ function locationsFromApi(records) {
       place: record.loc_name,
       description: `Filming location for ${record.work_title}${record.work_year ? ` (${record.work_year})` : ""}.`,
       position: [record.lat, record.lng],
+      locationId: record.loc_wikidata_id,
       backdrop: record.commons_image,
       now: record.commons_image,
       year: record.work_year,
@@ -299,6 +309,10 @@ export default function SceneMapApp() {
   const [aiTour, setAiTour] = useState(null);
   const [aiTourStatus, setAiTourStatus] = useState("idle");
   const [aiTourError, setAiTourError] = useState("");
+  const [tourBudget, setTourBudget] = useState(60);
+  const [timedTour, setTimedTour] = useState(null);
+  const [timedTourStatus, setTimedTourStatus] = useState("idle");
+  const [timedTourMessage, setTimedTourMessage] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
   const [pendingConnector, setPendingConnector] = useState(null);
   const [library, setLibrary] = useState(() => {
@@ -322,7 +336,7 @@ export default function SceneMapApp() {
 
     async function loadLocations() {
       try {
-        const response = await fetch(`/api/locations?lat=${mapCenter[0]}&lng=${mapCenter[1]}&radius=5&limit=30`);
+        const response = await fetch(`/api/locations?lat=${mapCenter[0]}&lng=${mapCenter[1]}&radius=15&limit=100`);
         if (!response.ok) throw new Error("Locations API failed");
         const payload = await response.json();
         const nextLocations = locationsFromApi(payload.locations ?? []);
@@ -337,6 +351,9 @@ export default function SceneMapApp() {
         setAiTour(null);
         setAiTourStatus("idle");
         setAiTourError("");
+        setTimedTour(null);
+        setTimedTourStatus("idle");
+        setTimedTourMessage("");
         setRouteStops([]);
         setRouteResult(null);
         setRouteStatus("idle");
@@ -376,6 +393,9 @@ export default function SceneMapApp() {
   }, [library, libraryQuery]);
 
   const routePositions = routeResult?.positions ?? [];
+  const activeNarration = aiTour?.stops?.find(
+    (stop) => stop.locationId === activeLocation?.id,
+  )?.narration;
 
   function invalidateRoute() {
     routeRequestId.current += 1;
@@ -387,6 +407,9 @@ export default function SceneMapApp() {
   function toggleFilm(filmId) {
     setAiTour(null);
     setAiTourError("");
+    setTimedTour(null);
+    setTimedTourStatus("idle");
+    setTimedTourMessage("");
     setSelectedFilms((current) => {
       const next = current.includes(filmId)
         ? current.filter((id) => id !== filmId)
@@ -439,6 +462,27 @@ export default function SceneMapApp() {
     setImportMessage("Your local movie list was cleared.");
   }
 
+  async function requestWalkingRoute(stops) {
+    const response = await fetch("/api/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stops: stops.map((stop) => stop.position) }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (
+      !response.ok ||
+      !Array.isArray(payload?.positions) ||
+      payload.positions.length < 2 ||
+      !Number.isFinite(payload?.distanceKm) ||
+      !Number.isFinite(payload?.durationMinutes)
+    ) {
+      throw new Error(payload?.error || "Walking route response is invalid");
+    }
+
+    return payload;
+  }
+
   async function buildRoute(stops = routeStops) {
     const requestId = routeRequestId.current + 1;
     routeRequestId.current = requestId;
@@ -447,22 +491,7 @@ export default function SceneMapApp() {
     setRouteMessage("");
 
     try {
-      const response = await fetch("/api/route", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stops: stops.map((stop) => stop.position) }),
-      });
-      const payload = await response.json();
-
-      if (
-        !response.ok ||
-        !Array.isArray(payload?.positions) ||
-        payload.positions.length < 2 ||
-        !Number.isFinite(payload?.distanceKm) ||
-        !Number.isFinite(payload?.durationMinutes)
-      ) {
-        throw new Error(payload?.error || "Walking route response is invalid");
-      }
+      const payload = await requestWalkingRoute(stops);
 
       if (requestId !== routeRequestId.current) return;
 
@@ -477,6 +506,146 @@ export default function SceneMapApp() {
         "Walking directions are unavailable, so the stops are connected directly.",
       );
     }
+  }
+
+  async function buildTimedTour() {
+    const candidates = createTimedTourCandidates(
+      visibleLocations,
+      mapCenter,
+      tourBudget,
+    );
+
+    if (candidates.length === 0) {
+      setTimedTour(null);
+      setTimedTourStatus("error");
+      setTimedTourMessage(
+        "Select films with at least three nearby locations for this time budget.",
+      );
+      return;
+    }
+
+    setTimedTour(null);
+    setTimedTourStatus("loading");
+    setTimedTourMessage("Checking nearby walking routes...");
+
+    let selectedPlan = null;
+    let plannedRoute = null;
+    let usedRouteFallback = false;
+
+    try {
+      const routeCandidates = [5, 4, 3].flatMap((stopCount) =>
+        candidates
+          .filter((candidate) => candidate.stops.length === stopCount)
+          .slice(0, 4),
+      );
+
+      for (const candidate of routeCandidates) {
+        const candidateRoute = await requestWalkingRoute(candidate.stops);
+
+        if (routeFitsBudget(candidateRoute, tourBudget)) {
+          selectedPlan = candidate;
+          plannedRoute = candidateRoute;
+          break;
+        }
+      }
+
+      if (!selectedPlan) {
+        setTimedTourStatus("error");
+        setTimedTourMessage(
+          `No three-stop walk fits ${tourBudget} minutes near this location. Try a larger budget.`,
+        );
+        return;
+      }
+    } catch {
+      selectedPlan = candidates[0];
+      plannedRoute = makeFallbackRoute(selectedPlan.stops);
+      usedRouteFallback = true;
+
+      if (!routeFitsBudget(plannedRoute, tourBudget)) {
+        setTimedTourStatus("error");
+        setTimedTourMessage(
+          `No three-stop walk fits ${tourBudget} minutes near this location. Try a larger budget.`,
+        );
+        return;
+      }
+    }
+
+    const fallbackGuide = createFallbackGuide({
+      city: cityName,
+      budgetMinutes: tourBudget,
+      stops: selectedPlan.stops,
+    });
+    let guide = fallbackGuide;
+    let usedAiFallback = false;
+
+    setTimedTourMessage("Writing short stories for the selected stops...");
+
+    try {
+      const response = await fetch("/api/tour", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          city: cityName,
+          durationMinutes: tourBudget,
+          preserveOrder: true,
+          locations: selectedPlan.stops.map(
+            ({ id, place, scene, description, film }) => ({
+              id,
+              place,
+              scene,
+              description,
+              film,
+            }),
+          ),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      const expectedIds = selectedPlan.stops.map((stop) => stop.id);
+      const returnedIds = payload?.stops?.map((stop) => stop.locationId);
+
+      if (
+        !response.ok ||
+        !Array.isArray(returnedIds) ||
+        returnedIds.some((id, index) => id !== expectedIds[index])
+      ) {
+        throw new Error(payload.error || "The AI guide returned an invalid route.");
+      }
+
+      guide = payload;
+    } catch {
+      usedAiFallback = true;
+    }
+
+    setTimedTour({
+      budgetMinutes: tourBudget,
+      guide,
+      route: plannedRoute,
+      stops: selectedPlan.stops,
+      usedAiFallback,
+      usedRouteFallback,
+    });
+    setTimedTourStatus("ready");
+    setTimedTourMessage(
+      [
+        usedAiFallback ? "AI was unavailable, so verified location descriptions were used." : null,
+        usedRouteFallback ? "Walking directions were estimated because the router was unavailable." : null,
+      ].filter(Boolean).join(" "),
+    );
+  }
+
+  async function startTimedTour() {
+    if (!timedTour) return;
+
+    const filmIds = [...new Set(
+      timedTour.stops.flatMap((stop) => stop.filmIds ?? [stop.filmId]),
+    )];
+    setSelectedFilms(filmIds);
+    setRouteStops(timedTour.stops);
+    setActiveLocation(timedTour.stops[0]);
+    setAiTour({ ...timedTour.guide, timed: true });
+    setAiTourStatus("success");
+    setAiTourError("");
+    await buildRoute(timedTour.stops);
   }
 
   async function buildAiTour() {
@@ -545,6 +714,39 @@ export default function SceneMapApp() {
     }
   }
 
+  function selectTourArea(center, name) {
+    setMapCenter(center);
+    setCityName(name);
+    setLiveLocations([]);
+    setActiveLocation(null);
+    setRouteStops([]);
+    setAiTour(null);
+    setAiTourStatus("idle");
+    setAiTourError("");
+    setTimedTour(null);
+    setTimedTourStatus("idle");
+    setTimedTourMessage("");
+    invalidateRoute();
+  }
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      setCitySearchStatus("Location access is unavailable in this browser");
+      return;
+    }
+
+    setCitySearchStatus("Finding your location...");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setCityQuery("");
+        selectTourArea([coords.latitude, coords.longitude], "Your location");
+        setCitySearchStatus("");
+      },
+      () => setCitySearchStatus("Location access was not granted"),
+      { enableHighAccuracy: false, maximumAge: 300_000, timeout: 8_000 },
+    );
+  }
+
   async function searchCity(event) {
     event.preventDefault();
     const query = cityQuery.trim();
@@ -556,15 +758,7 @@ export default function SceneMapApp() {
       const city = await response.json();
       if (!response.ok) throw new Error(city.error);
 
-      setMapCenter([city.lat, city.lng]);
-      setCityName(city.name);
-      setLiveLocations([]);
-      setActiveLocation(null);
-      setRouteStops([]);
-      setAiTour(null);
-      setAiTourStatus("idle");
-      setAiTourError("");
-      invalidateRoute();
+      selectTourArea([city.lat, city.lng], city.name);
       setCitySearchStatus("");
     } catch {
       setCitySearchStatus("City not found");
@@ -626,19 +820,25 @@ export default function SceneMapApp() {
           </button>
         </div>
 
-        <form className="city-search" onSubmit={searchCity}>
-          <Search size={17} aria-hidden="true" />
-          <input
-            aria-label="City"
-            onChange={(event) => setCityQuery(event.target.value)}
-            placeholder="City"
-            type="search"
-            value={cityQuery}
-          />
-          <button aria-label="Search city" className="ghost-button" type="submit">
-            <Search size={17} />
+        <div className="place-controls">
+          <form className="city-search" onSubmit={searchCity}>
+            <Search size={17} aria-hidden="true" />
+            <input
+              aria-label="City"
+              onChange={(event) => setCityQuery(event.target.value)}
+              placeholder="City"
+              type="search"
+              value={cityQuery}
+            />
+            <button aria-label="Search city" className="ghost-button" type="submit">
+              <Search size={17} />
+            </button>
+          </form>
+          <button className="use-location-button" type="button" onClick={useCurrentLocation}>
+            <LocateFixed size={16} />
+            Use my location
           </button>
-        </form>
+        </div>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
         <div className="film-grid" aria-label="Selected films">
@@ -662,6 +862,81 @@ export default function SceneMapApp() {
             );
           })}
         </div>
+
+        <section className="timed-tour-card" aria-labelledby="timed-tour-title">
+          <div className="timed-tour-heading">
+            <span className="timed-tour-icon" aria-hidden="true"><Clock3 size={18} /></span>
+            <div>
+              <p className="eyebrow">Area · {cityName}</p>
+              <strong id="timed-tour-title">Tour by time and place</strong>
+            </div>
+          </div>
+          <div className="budget-options" role="group" aria-label="Tour time budget">
+            {TOUR_BUDGETS.map((minutes) => (
+              <button
+                className={tourBudget === minutes ? "is-selected" : ""}
+                key={minutes}
+                type="button"
+                aria-pressed={tourBudget === minutes}
+                disabled={timedTourStatus === "loading"}
+                onClick={() => {
+                  setTourBudget(minutes);
+                  setTimedTour(null);
+                  setTimedTourStatus("idle");
+                  setTimedTourMessage("");
+                }}
+              >
+                {minutes} min
+              </button>
+            ))}
+          </div>
+          <button
+            className="timed-tour-button"
+            type="button"
+            onClick={buildTimedTour}
+            disabled={timedTourStatus === "loading" || visibleLocations.length < 3}
+          >
+            {timedTourStatus === "loading" ? (
+              <LoaderCircle className="loading-icon" size={17} />
+            ) : (
+              <Clock3 size={17} />
+            )}
+            {timedTourStatus === "loading" ? "Planning..." : "Generate nearby tour"}
+          </button>
+          {timedTourMessage && (
+            <p
+              className={`timed-tour-message${timedTourStatus === "error" ? " is-error" : ""}`}
+              role={timedTourStatus === "error" ? "alert" : "status"}
+            >
+              {timedTourMessage}
+            </p>
+          )}
+          {timedTour && (
+            <div className="timed-tour-result" aria-live="polite">
+              <div>
+                <strong>{timedTour.guide.title}</strong>
+                <p>{timedTour.guide.intro}</p>
+              </div>
+              <div className="timed-tour-metrics">
+                <span>{timedTour.route.distanceKm.toFixed(1)} km</span>
+                <span>{timedTour.route.durationMinutes} min</span>
+                <span>{timedTour.stops.length} stops</span>
+              </div>
+              <ol>
+                {timedTour.stops.map((stop) => (
+                  <li key={stop.id}>
+                    <strong>{stop.place}</strong>
+                    <span>{stop.film}</span>
+                  </li>
+                ))}
+              </ol>
+              <button className="start-tour-button" type="button" onClick={startTimedTour}>
+                <Route size={17} />
+                Start tour
+              </button>
+            </div>
+          )}
+        </section>
 
         <div className="ai-tour-card">
           <div className="ai-tour-heading">
@@ -810,7 +1085,11 @@ export default function SceneMapApp() {
               <span>{routeMessage}</span>
             ) : (
               <span>
-                {aiTour ? "AI chose the stop order · " : ""}
+                {aiTour?.timed
+                  ? "Nearby planner chose the stops · "
+                  : aiTour
+                    ? "AI chose the stop order · "
+                    : ""}
                 Route follows mapped streets ·{" "}
                 <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">
                   OpenStreetMap routing
@@ -844,6 +1123,7 @@ export default function SceneMapApp() {
               </div>
             </div>
             <p>{activeLocation.description}</p>
+            <VoiceGuide location={activeLocation} story={activeNarration} />
             <div className="comparison-grid">
               <figure>
                 <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
