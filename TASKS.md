@@ -33,5 +33,6 @@ Codex читает этот файл в начале сессии — здесь
 
 ## Done
 
+- [x] Personal account: local Letterboxd/IMDb CSV connectors and English film/book search — @walklikeaman — `feature/personal-account-connectors`
 - [x] Окружение поднято (клон репо + `./setup.sh`)
 - [x] SceneMap MVP: English UI, mapped-film search, 10 locations and street-level walking routes — @walklikeaman — `feature/scenemap-skeleton`

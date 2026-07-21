@@ -164,6 +164,209 @@ img {
   margin-bottom: 18px;
 }
 
+.account-button {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.account-button:hover,
+.account-button:focus-visible {
+  border-color: rgba(247, 183, 51, 0.65);
+  color: var(--gold-strong);
+}
+
+.book-results {
+  display: grid;
+  gap: 8px;
+  margin: -4px 0 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.book-result {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 9px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--gold-strong);
+}
+
+.book-result div {
+  display: grid;
+  gap: 2px;
+  color: var(--text);
+}
+
+.book-result span,
+.search-note {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.search-note {
+  margin: 2px 0 0;
+}
+
+.account-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 3, 3, 0.72);
+  backdrop-filter: blur(9px);
+}
+
+.account-panel {
+  width: min(620px, 100%);
+  max-height: min(720px, calc(100dvh - 40px));
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #111414;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58);
+}
+
+.account-heading {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.account-avatar {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(247, 183, 51, 0.35);
+  border-radius: 50%;
+  color: var(--gold-strong);
+  background: rgba(247, 183, 51, 0.12);
+}
+
+.account-copy {
+  margin: 20px 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.connector-list {
+  display: grid;
+  gap: 10px;
+}
+
+.connector-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.connector-card > div:nth-child(2) {
+  display: grid;
+  gap: 3px;
+}
+
+.connector-card > div:nth-child(2) span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.connector-logo {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #202323;
+}
+
+.connector-logo.is-letterboxd {
+  color: #ff8a20;
+}
+
+.connector-logo.is-imdb {
+  color: #111;
+  background: #f5c518;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.connector-button,
+.connected-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 11px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.connector-button {
+  border: 1px solid rgba(247, 183, 51, 0.42);
+  color: #17130b;
+  background: var(--gold);
+}
+
+.connected-button {
+  border: 1px solid rgba(114, 212, 156, 0.32);
+  color: var(--green);
+  background: rgba(114, 212, 156, 0.09);
+}
+
+.account-privacy {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin-top: 18px;
+  padding: 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgba(114, 212, 156, 0.07);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.account-privacy svg {
+  flex: 0 0 auto;
+  color: var(--green);
+}
+
+@media (max-width: 560px) {
+  .account-button {
+    padding: 9px;
+    font-size: 0;
+  }
+
+  .connector-card {
+    grid-template-columns: auto 1fr;
+  }
+
+  .connector-card button {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+}
+
 .brand-mark {
   width: 46px;
   height: 46px;
