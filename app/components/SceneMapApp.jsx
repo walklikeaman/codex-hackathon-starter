@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { Circle, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import {
+  Circle,
+  MapContainer,
+  Marker,
+  Polyline,
+  Popup,
+  TileLayer,
+  useMap,
+  useMapEvents,
+} from "react-leaflet";
 import {
   CheckCircle2,
   Clapperboard,
@@ -28,6 +37,7 @@ import {
   RADIUS_OPTIONS_METERS,
   findNearby,
   formatDistanceMeters,
+  mapSearchRadiusKm,
   zoomForRadius,
 } from "../lib/nearby.mjs";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
@@ -280,6 +290,22 @@ function FitRoute({ positions }) {
       });
     }
   }, [map, positions]);
+
+  return null;
+}
+
+function RefreshLocationsOnDrag({ onViewportChange }) {
+  const map = useMapEvents({
+    dragend() {
+      const center = map.getCenter();
+      const distanceToCorner = map.distance(center, map.getBounds().getNorthEast());
+
+      onViewportChange({
+        center: [Number(center.lat.toFixed(5)), Number(center.lng.toFixed(5))],
+        radiusKm: mapSearchRadiusKm(distanceToCorner),
+      });
+    },
+  });
 
   return null;
 }
@@ -541,6 +567,8 @@ export default function SceneMapApp() {
   const connectorInputRef = useRef(null);
   const [liveLocations, setLiveLocations] = useState(null);
   const [mapCenter, setMapCenter] = useState(londonCenter);
+  const [browseCenter, setBrowseCenter] = useState(londonCenter);
+  const [browseRadius, setBrowseRadius] = useState(10);
   const [cityQuery, setCityQuery] = useState("London");
   const [cityName, setCityName] = useState("London");
   const [cityRadius, setCityRadius] = useState(15);
@@ -550,6 +578,7 @@ export default function SceneMapApp() {
   const [workKind, setWorkKind] = useState("film");
   const [locationsStatus, setLocationsStatus] = useState("");
   const locationRequestId = useRef(0);
+  const preserveViewportContext = useRef(false);
   const routeRequestId = useRef(0);
   const filmImageCache = useRef(new Map());
   const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
@@ -598,11 +627,19 @@ export default function SceneMapApp() {
     localStorage.setItem("scenemap-library", JSON.stringify(library));
   }, [library]);
 
-  function applyLocationResults(nextLocations) {
+  function applyLocationResults(nextLocations, { preserveContext = false } = {}) {
     const nextFilms = worksFromLocations(nextLocations);
     setLiveLocations(nextLocations);
     setSelectedFilms(nextFilms.map((film) => film.id));
-    setActiveLocation(nextLocations[0] ?? null);
+    setActiveLocation((currentLocation) => {
+      if (!preserveContext) return nextLocations[0] ?? null;
+      return nextLocations.some((location) => location.id === currentLocation?.id)
+        ? currentLocation
+        : null;
+    });
+
+    if (preserveContext) return;
+
     setTourFilmId(nextFilms[0]?.id ?? "");
     setAiTour(null);
     setAiTourStatus("idle");
@@ -618,34 +655,38 @@ export default function SceneMapApp() {
 
   useEffect(() => {
     let cancelled = false;
+    const abortController = new AbortController();
     const requestId = locationRequestId.current + 1;
+    const preserveContext = preserveViewportContext.current;
     locationRequestId.current = requestId;
 
     async function loadLocations() {
-      setLocationsStatus(`Finding mapped ${workKind} locations…`);
+      setLocationsStatus(`Finding mapped ${workKind} locations in this map area…`);
       try {
         const params = new URLSearchParams({
-          lat: String(mapCenter[0]),
-          lng: String(mapCenter[1]),
-          radius: String(Math.min(cityRadius, 10)),
+          lat: String(browseCenter[0]),
+          lng: String(browseCenter[1]),
+          radius: String(browseRadius),
           limit: "30",
           kind: workKind,
         });
         if (cityWikidataId) params.set("exclude", cityWikidataId);
 
-        const response = await fetch(`/api/locations?${params}`);
+        const response = await fetch(`/api/locations?${params}`, {
+          signal: abortController.signal,
+        });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "Locations API failed");
         const nextLocations = locationsFromApi(payload.locations ?? []);
         if (cancelled || requestId !== locationRequestId.current) return;
 
-        applyLocationResults(nextLocations);
+        applyLocationResults(nextLocations, { preserveContext });
         setLocationsStatus(nextLocations.length
           ? `${nextLocations.length} verified places found nearby.`
           : `No mapped ${workKind} locations found nearby. Search for a title to check the whole city.`);
       } catch (error) {
         if (cancelled || requestId !== locationRequestId.current) return;
-        if (liveLocations !== null) applyLocationResults([]);
+        if (liveLocations !== null && !preserveContext) applyLocationResults([]);
         setLocationsStatus(error instanceof Error
           ? error.message
           : "Live location search is unavailable. The London demo remains available.");
@@ -653,8 +694,11 @@ export default function SceneMapApp() {
     }
 
     loadLocations();
-    return () => { cancelled = true; };
-  }, [cityRadius, cityWikidataId, mapCenter, workKind]);
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
+  }, [browseCenter, browseRadius, cityWikidataId, workKind]);
 
   useEffect(() => {
     if (!activeLocation) return undefined;
@@ -968,7 +1012,7 @@ export default function SceneMapApp() {
   async function buildTimedTour() {
     const candidates = createTimedTourCandidates(
       visibleLocations,
-      mapCenter,
+      browseCenter,
       tourBudget,
     );
 
@@ -1173,7 +1217,10 @@ export default function SceneMapApp() {
   }
 
   function selectTourArea(center, name, { radiusKm = 15, wikidataId = null } = {}) {
+    preserveViewportContext.current = false;
     setMapCenter(center);
+    setBrowseCenter(center);
+    setBrowseRadius(Math.min(radiusKm, 10));
     setCityName(name);
     setCityRadius(radiusKm);
     setCityWikidataId(wikidataId);
@@ -1189,6 +1236,18 @@ export default function SceneMapApp() {
     setTimedTourMessage("");
     setLocationsStatus(`Finding mapped ${workKind} locations in ${name}…`);
     invalidateRoute();
+  }
+
+  function refreshVisibleMap({ center, radiusKm }) {
+    preserveViewportContext.current = true;
+    setBrowseCenter(center);
+    setBrowseRadius(radiusKm);
+    setWorkQuery("");
+  }
+
+  function changeWorkKind(nextKind) {
+    preserveViewportContext.current = false;
+    setWorkKind(nextKind);
   }
 
   function useCurrentLocation() {
@@ -1344,6 +1403,7 @@ export default function SceneMapApp() {
           <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
           <FlyToUser position={userPosition} radius={nearbyRadius} />
+          <RefreshLocationsOnDrag onViewportChange={refreshVisibleMap} />
           {userPosition && (
             <>
               <Circle
@@ -1431,7 +1491,7 @@ export default function SceneMapApp() {
           <select
             aria-label="Work type"
             value={workKind}
-            onChange={(event) => setWorkKind(event.target.value)}
+            onChange={(event) => changeWorkKind(event.target.value)}
           >
             <option value="film">Film</option>
             <option value="series">Series</option>

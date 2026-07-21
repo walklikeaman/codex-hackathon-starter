@@ -72,6 +72,15 @@ export function formatDistanceMeters(meters) {
   return `${(Math.round(meters / 100) / 10).toFixed(1)} km`;
 }
 
+export function mapSearchRadiusKm(distanceToCornerMeters) {
+  if (!Number.isFinite(distanceToCornerMeters) || distanceToCornerMeters <= 0) {
+    throw new Error("distanceToCornerMeters must be a positive number");
+  }
+
+  const radiusKm = Math.ceil(distanceToCornerMeters / 100) / 10;
+  return Math.min(50, Math.max(0.5, radiusKm));
+}
+
 export function zoomForRadius(radiusMeters) {
   if (radiusMeters <= 100) return 17;
   if (radiusMeters <= 300) return 16;

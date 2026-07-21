@@ -33,6 +33,7 @@ Codex читает этот файл в начале сессии — здесь
 
 ## Done
 
+- [x] Refresh locations for the visible map area after user drag — @Codex — `feature/map-viewport-refresh` / PR #35
 - [x] Letterboxd ZIP import with automatic personal-library map filtering — @walklikeaman — `codex/interactive`
 - [x] Restore cited web research for sparse location results — @Codex — `feature/location-discovery-hotfix` / PR #33
 - [x] Gated Vercel staging/production workflows — @walklikeaman — `codex/interactive`
