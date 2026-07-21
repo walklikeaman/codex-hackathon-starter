@@ -7,6 +7,13 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Mapped-film search verified
+
+- В существующую action row добавлен поиск по названию, году и коду фильма без внешних API и новых ключей.
+- Результат синхронно фильтрует film chips, map markers, location list и активную location card; пустое состояние и очистка поиска реализованы отдельно.
+- Browser flow проверен для `harry`, `007`, пустого результата и clear: 5 фильмов/10 пинов восстанавливаются, console errors и mobile overflow отсутствуют.
+- `npm run build` зелёный; PR #8 нельзя self-approve от аккаунта автора, поэтому reviewer request отправлен `timido22`.
+
 ## [2026-07-21] update | Walking-route MVP verified
 
 - Сохранён чёрно-золотой map-first дизайн текущего Vercel deployment; пользовательский интерфейс полностью переведён на английский.
