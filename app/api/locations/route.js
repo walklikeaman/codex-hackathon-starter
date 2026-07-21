@@ -22,9 +22,13 @@ function releaseYear(value) {
   return Number(value?.match(/^([+-]?\d{1,6})-/)?.[1]) || null;
 }
 
+function secureImageUrl(value) {
+  return value?.replace(/^http:\/\//, "https://") ?? null;
+}
+
 function sparql({ lat, lng, radius, limit }) {
   return `
-SELECT ?work ?workLabel ?location ?locationLabel ?coord ?releaseDate ?image WHERE {
+SELECT ?work ?workLabel ?location ?locationLabel ?coord ?releaseDate ?tmdbId ?image WHERE {
   SERVICE wikibase:around {
     ?location wdt:P625 ?coord .
     bd:serviceParam wikibase:center "Point(${lng} ${lat})"^^geo:wktLiteral .
@@ -33,6 +37,7 @@ SELECT ?work ?workLabel ?location ?locationLabel ?coord ?releaseDate ?image WHER
   ?work wdt:P31 wd:Q11424 ;
         wdt:P915 ?location .
   OPTIONAL { ?work wdt:P577 ?releaseDate . }
+  OPTIONAL { ?work wdt:P4947 ?tmdbId . }
   OPTIONAL { ?location wdt:P18 ?image . }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en,ru" . }
 }
@@ -85,12 +90,13 @@ export async function GET(request) {
         work_wikidata_id: workWikidataId,
         work_title: row.workLabel?.value ?? workWikidataId,
         work_year: releaseYear(row.releaseDate?.value),
+        film_tmdb_id: row.tmdbId?.value ?? null,
         kind: "film",
         loc_wikidata_id: locWikidataId,
         loc_name: row.locationLabel?.value ?? locWikidataId,
         lat: point.lat,
         lng: point.lng,
-        commons_image: row.image?.value ?? null,
+        commons_image: secureImageUrl(row.image?.value),
       });
     }
 
