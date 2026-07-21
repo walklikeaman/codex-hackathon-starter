@@ -21,6 +21,13 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 - Client and CDN caches are keyed by the verified film-location pair, so two locations from the same film no longer share a result; canonical redirects, server-issued capabilities, and per-client origin limits protect the paid matcher.
 - Verified 87 unit/API tests, a live canonical Wikidata pair, the production build, the no-secret API response, and the live-data card in Chromium. A live vision call still requires the server-only TMDB and OpenAI keys in the deployment.
 
+## [2026-07-21] update | Map drag refreshes visible locations
+
+- Leaflet previously changed only its internal viewport on drag, while `/api/locations` still depended on the unchanged React city center, so no follow-up request was made.
+- A user `dragend` now updates a separate browse center and viewport-sized radius, cancels stale nearby requests, and reloads pins without reacting to programmatic marker or route movement.
+- Viewport refresh preserves an existing route and keeps the current location selected only when it remains in the new result set.
+- Verified on current `main` with 64 tests, the production build, and a real production-mode browser: the initial 10-place request was followed by exactly one changed-center request returning 9 places; the `1 / 5` route remained and the console had no errors.
+
 ## [2026-07-21] decision | Staging and production deployment gates
 
 - A merged pull request to `main` creates a Vercel Preview tracked by the GitHub `staging` environment.
