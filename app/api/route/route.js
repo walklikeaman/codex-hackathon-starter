@@ -6,12 +6,14 @@ import {
 
 const ROUTER_TIMEOUT_MS = 8_000;
 
+export const runtime = "nodejs";
+
 export async function POST(request) {
   let stops;
 
   try {
     const body = await request.json();
-    stops = validateRouteStops(body?.stops);
+    stops = validateRouteStops(body?.stops ?? body?.coordinates);
   } catch {
     return Response.json(
       { error: "Provide 2 to 5 valid route stops." },
@@ -29,7 +31,8 @@ export async function POST(request) {
       cache: "no-store",
       headers: {
         Accept: "application/json",
-        "User-Agent": "SceneMap-Hackathon/1.0 (+https://github.com/walklikeaman/codex-hackathon-starter)",
+        "User-Agent":
+          "SceneMap-Hackathon/1.0 (+https://github.com/walklikeaman/codex-hackathon-starter)",
         Referer: `${appOrigin}/`,
       },
       signal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
@@ -39,10 +42,14 @@ export async function POST(request) {
       throw new Error(`Walking router responded with ${response.status}`);
     }
 
-    const route = parseFootRoute(await response.json());
+    const routerPayload = await response.json();
+    const route = parseFootRoute(routerPayload);
+    const rawRoute = routerPayload.routes[0];
 
     return Response.json({
       ...route,
+      distanceMeters: rawRoute.distance,
+      durationSeconds: rawRoute.duration,
       source: "openstreetmap-foot",
     });
   } catch (error) {
