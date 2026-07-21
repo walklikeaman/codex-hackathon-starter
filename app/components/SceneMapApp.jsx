@@ -10,6 +10,7 @@ import {
   Film,
   Link2,
   LoaderCircle,
+  LocateFixed,
   MapPin,
   Plus,
   Route,
@@ -259,6 +260,15 @@ function makeMarkerIcon(selected, kind) {
   });
 }
 
+function makeCurrentLocationIcon() {
+  return L.divIcon({
+    className: "",
+    html: '<span class="current-location-pin"><span></span></span>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+}
+
 function kmBetween(routeStops) {
   if (routeStops.length < 2) return 0;
 
@@ -307,6 +317,7 @@ export default function SceneMapApp() {
   const [cityQuery, setCityQuery] = useState("London");
   const [cityName, setCityName] = useState("London");
   const [citySearchStatus, setCitySearchStatus] = useState("");
+  const [currentPosition, setCurrentPosition] = useState(null);
   const routeRequestId = useRef(0);
   const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
   const [activeLocation, setActiveLocation] = useState(fallbackLocations[0]);
@@ -577,6 +588,7 @@ export default function SceneMapApp() {
 
       setMapCenter([city.lat, city.lng]);
       setCityName(city.name);
+      setCurrentPosition(null);
       setLiveLocations([]);
       setActiveLocation(null);
       setRouteStops([]);
@@ -590,6 +602,39 @@ export default function SceneMapApp() {
     }
   }
 
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      setCitySearchStatus("Geolocation is not supported by this browser");
+      return;
+    }
+
+    setCitySearchStatus("Finding your location…");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const position = [coords.latitude, coords.longitude];
+        setMapCenter(position);
+        setCityName("Your location");
+        setCurrentPosition(position);
+        setLiveLocations([]);
+        setActiveLocation(null);
+        setRouteStops([]);
+        setAiTour(null);
+        setAiTourStatus("idle");
+        setAiTourError("");
+        invalidateRoute();
+        setCitySearchStatus("");
+      },
+      (error) => {
+        setCitySearchStatus(
+          error.code === 1
+            ? "Location permission was denied"
+            : "Your location could not be determined",
+        );
+      },
+      { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 },
+    );
+  }
+
   return (
     <main className="scene-shell">
       <section className="map-stage" aria-label="SceneMap locations map">
@@ -600,6 +645,11 @@ export default function SceneMapApp() {
           />
           <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
+          {currentPosition && (
+            <Marker position={currentPosition} icon={makeCurrentLocationIcon()}>
+              <Popup><strong>Your location</strong></Popup>
+            </Marker>
+          )}
           {visibleLocations.map((location) => (
             <Marker
               key={location.id}
@@ -657,6 +707,9 @@ export default function SceneMapApp() {
           />
           <button aria-label="Search city" className="ghost-button" type="submit">
             <Search size={17} />
+          </button>
+          <button aria-label="Use my current location" className="ghost-button city-location-button" onClick={useCurrentLocation} title="Use my current location" type="button">
+            <LocateFixed size={17} />
           </button>
         </form>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
