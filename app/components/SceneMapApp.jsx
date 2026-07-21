@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import { Clapperboard, MapPin, Plus, Route, Search, X } from "lucide-react";
+import { Clapperboard, ExternalLink, MapPin, Plus, Route, Search, X } from "lucide-react";
 
 const londonCenter = [51.5094, -0.1183];
 
@@ -252,6 +252,19 @@ function makeFallbackRoute(routeStops) {
   };
 }
 
+function makeImageSearchUrl(location) {
+  const scene = location.scene?.trim();
+  const query = [
+    `"${location.film}"`,
+    `"${location.place}"`,
+    scene && scene.toLowerCase() !== location.film.toLowerCase() ? `"${scene}"` : null,
+    "movie scene filming location",
+  ].filter(Boolean).join(" ");
+  const params = new URLSearchParams({ q: query });
+
+  return `https://www.bing.com/images/search?${params.toString()}`;
+}
+
 export default function SceneMapApp() {
   const [liveLocations, setLiveLocations] = useState(null);
   const [mapCenter, setMapCenter] = useState(londonCenter);
@@ -372,7 +385,7 @@ export default function SceneMapApp() {
       setRouteResult(makeFallbackRoute(routeStops));
       setRouteStatus("fallback");
       setRouteMessage(
-        "Роутер недоступен — показываем приблизительную линию между точками.",
+        "The walking router is unavailable, so the line between stops is approximate.",
       );
     }
   }
@@ -402,7 +415,7 @@ export default function SceneMapApp() {
 
   return (
     <main className="scene-shell">
-      <section className="map-stage" aria-label="Карта локаций SceneMap">
+      <section className="map-stage" aria-label="SceneMap locations map">
         <MapContainer center={mapCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
@@ -440,14 +453,14 @@ export default function SceneMapApp() {
         </MapContainer>
       </section>
 
-      <aside className="command-panel" aria-label="Выбор фильмов">
+      <aside className="command-panel" aria-label="Film selection">
         <div className="brand-row">
           <div className="brand-mark">
             <Clapperboard size={22} />
           </div>
           <div>
             <p className="eyebrow">SceneMap MVP</p>
-            <h1>Кино-карта · {cityName}</h1>
+            <h1>Film map · {cityName}</h1>
           </div>
         </div>
 
@@ -466,7 +479,7 @@ export default function SceneMapApp() {
         </form>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
-        <div className="film-grid" aria-label="Выбранные фильмы">
+        <div className="film-grid" aria-label="Selected films">
           {films.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
@@ -488,10 +501,10 @@ export default function SceneMapApp() {
           })}
         </div>
 
-        <div className="location-list" aria-label="Точки на карте">
+        <div className="location-list" aria-label="Map locations">
           <div className="section-row">
-            <p className="eyebrow">Точки</p>
-            <span>{visibleLocations.length} в {cityName}</span>
+            <p className="eyebrow">Locations</p>
+            <span>{visibleLocations.length} in {cityName}</span>
           </div>
           {visibleLocations.map((location) => (
             <div className="location-row" key={location.id}>
@@ -503,7 +516,7 @@ export default function SceneMapApp() {
                 className="icon-button"
                 type="button"
                 onClick={() => addRouteStop(location)}
-                aria-label={`Добавить ${location.place} в маршрут`}
+                aria-label={`Add ${location.place} to route`}
               >
                 <Plus size={15} />
               </button>
@@ -513,8 +526,8 @@ export default function SceneMapApp() {
 
         <div className="route-card">
           <div>
-            <p className="eyebrow">Маршрут</p>
-            <strong>{routeStops.length} / 5 точек</strong>
+            <p className="eyebrow">Route</p>
+            <strong>{routeStops.length} / 5 stops</strong>
           </div>
           <button
             className={`primary-button${routeResult ? " is-complete" : ""}`}
@@ -524,12 +537,12 @@ export default function SceneMapApp() {
           >
             <Route size={18} />
             {routeStatus === "loading"
-              ? "Строим..."
+              ? "Building..."
               : routeStatus === "fallback"
-                ? "Маршрут примерный"
+                ? "Approximate route"
                 : routeResult
-                ? "Маршрут готов"
-                : "Построить"}
+                ? "Route ready"
+                : "Build route"}
           </button>
         </div>
 
@@ -541,7 +554,7 @@ export default function SceneMapApp() {
                   <span>{index + 1}</span>
                   {stop.place}
                 </button>
-                <button className="icon-button" type="button" onClick={() => removeRouteStop(stop.id)} aria-label="Убрать точку">
+                <button className="icon-button" type="button" onClick={() => removeRouteStop(stop.id)} aria-label="Remove stop">
                   <X size={15} />
                 </button>
               </li>
@@ -551,7 +564,7 @@ export default function SceneMapApp() {
 
         {routeStatus === "loading" && (
           <p className="route-summary" role="status">
-            Строим маршрут по пешеходным улицам Лондона...
+            Building a walking route through London...
           </p>
         )}
 
@@ -561,19 +574,19 @@ export default function SceneMapApp() {
             role="status"
           >
             <strong>
-              Пешком {routeResult.distanceKm.toFixed(1)} км · {routeResult.durationMinutes} мин
+              Walk {routeResult.distanceKm.toFixed(1)} km · {routeResult.durationMinutes} min
             </strong>
             {routeResult.source === "fallback" ? (
               <span>{routeMessage}</span>
             ) : (
               <span>
-                Маршрут построен по улицам ·{" "}
+                Route follows mapped streets ·{" "}
                 <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">
                   OpenStreetMap routing
                 </a>
                 {" · "}
                 <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">
-                  исправить карту
+                  fix the map
                 </a>
               </span>
             )}
@@ -582,7 +595,7 @@ export default function SceneMapApp() {
       </aside>
 
       {activeLocation && (
-        <section className="location-sheet" aria-label="Карточка локации">
+        <section className="location-sheet" aria-label="Location details">
           <div className="sheet-media">
             <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
             <div>
@@ -603,16 +616,26 @@ export default function SceneMapApp() {
             <div className="comparison-grid">
               <figure>
                 <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
-                <figcaption>кадр / настроение сцены</figcaption>
+                <figcaption>film frame / scene mood</figcaption>
               </figure>
               <figure>
                 <img src={activeLocation.now} alt="" onError={(event) => event.currentTarget.remove()} />
-                <figcaption>место сейчас</figcaption>
+                <figcaption>location today</figcaption>
               </figure>
             </div>
+            <a
+              className="ghost-button image-search-link"
+              href={makeImageSearchUrl(activeLocation)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Search size={18} />
+              Find scenes filmed here
+              <ExternalLink size={15} />
+            </a>
             <button className="wide-button" type="button" onClick={() => addRouteStop(activeLocation)}>
               <Route size={18} />
-              В маршрут
+              Add to route
             </button>
           </div>
         </section>
