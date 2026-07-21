@@ -128,7 +128,7 @@ The root is both the Next.js application root and the agent workspace root. Do n
 - `package-lock.json`: Reproducible npm resolution.
 - `next.config.mjs`: Next.js configuration; currently an empty configuration object.
 - `vercel.json`: Vercel framework declaration.
-- `config/mcp.json`: MCP configuration for Claude Code/Cursor users.
+- `config/mcp.json`: Optional MCP configuration catalog for Cursor users.
 - `.codex/hooks.json`: Repository Codex hook configuration.
 - `.gitignore`: Secret, dependency, build, editor, tool-index, and scratch exclusions.
 - `.env.example`: Tracked environment-variable template; note its existence without placing values in documentation.
