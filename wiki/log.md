@@ -7,6 +7,11 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-22] update | Emotional story-first elevator pitch
+
+- README pitch теперь начинается с эмоциональной связи с фильмами, сериалами и книгами, которые сопровождают человека годами.
+- Product vision описывает единую личную карту для библиотек из Letterboxd, Netflix, Prime Video, Goodreads и Kindle, не сводя идею к механике одного ZIP-импорта.
+
 ## [2026-07-22] update | Product README and elevator pitch
 
 - Корневой README заменён с описания hackathon starter kit на англоязычную продуктовую страницу GloryMap.
