@@ -1236,6 +1236,16 @@ figure img {
   text-align: center;
 }
 
+.image-placeholder-retry {
+  border: 0;
+  padding: 0;
+  color: var(--gold-strong);
+  background: transparent;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 figcaption {
   padding: 8px;
   color: var(--muted);

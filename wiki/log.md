@@ -18,12 +18,34 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 - Добавлены elevator pitch, live demo, проверяемый demo flow, функции, архитектура, privacy model, API/env reference, ограничения и roadmap.
 - Текст использует подтверждённые результаты Letterboxd browser-проверок и не обещает покрытие городов, которого нет в источниках.
 
+## [2026-07-22] update | Restore scene-matcher candidate recall
+
+- Production checks reproduced `no_high_confidence_match` across three current London film/location pairs; the request pipeline and signed capabilities were healthy.
+- The matcher inspected only the six most popular TMDB backdrops even when a plausible location frame appeared later in the gallery, so the relevant image could never reach vision.
+- Expanded the same single low-detail vision request to a bounded 24 candidates without weakening the high-confidence gate; the matcher now uses the canonical Wikidata relationship while allowing a present-day exterior and filmed interior to be different views of the same place.
+- Versioned the matcher URL to bypass stale cached no-match responses and added a regression for a verified match at index 10.
+- Verified `npm test` (89/89), the production build, and `git diff --check` on current `main`.
+
 ## [2026-07-22] update | Letterboxd ZIP drives the personal map
 
 - Personal Library принимает полный Letterboxd ZIP и локально читает корневые `watched.csv` и `ratings.csv`; архив и список не отправляются на сервер.
 - После импорта карта автоматически показывает пересечение личной библиотеки с доступными локациями выбранного города; фильтр можно отключить в library panel.
 - Реальный export импортировал 2 422 фильма и 2 407 оценок; в текущих London data нашлось 3 фильма и 6 локаций.
 - ZIP ограничен 25 MB, извлечённые CSV — 10 MB; отдельные Letterboxd/IMDb CSV продолжают работать. `npm test` (62/62) и `npm run build` зелёные.
+
+## [2026-07-21] update | Location-specific film scene matching
+
+- Replaced the per-film top-backdrop lookup with a conservative OpenAI Vision comparison between a canonical Wikidata place photo and up to six TMDB candidates.
+- A film image is now returned only for a high-confidence visual match; uncertain, failed, or unconfigured matches render an honest placeholder and keep the exact Bing Images fallback.
+- Client and CDN caches are keyed by the verified film-location pair, so two locations from the same film no longer share a result; canonical redirects, server-issued capabilities, and per-client origin limits protect the paid matcher.
+- Verified 87 unit/API tests, a live canonical Wikidata pair, the production build, the no-secret API response, and the live-data card in Chromium. A live vision call still requires the server-only TMDB and OpenAI keys in the deployment.
+
+## [2026-07-21] update | Map drag refreshes visible locations
+
+- Leaflet previously changed only its internal viewport on drag, while `/api/locations` still depended on the unchanged React city center, so no follow-up request was made.
+- A user `dragend` now updates a separate browse center and viewport-sized radius, cancels stale nearby requests, and reloads pins without reacting to programmatic marker or route movement.
+- Viewport refresh preserves an existing route and keeps the current location selected only when it remains in the new result set.
+- Verified on current `main` with 64 tests, the production build, and a real production-mode browser: the initial 10-place request was followed by exactly one changed-center request returning 9 places; the `1 / 5` route remained and the console had no errors.
 
 ## [2026-07-21] decision | Staging and production deployment gates
 
