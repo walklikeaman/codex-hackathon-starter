@@ -285,6 +285,12 @@ h2 {
   filter: grayscale(0.6);
 }
 
+.primary-button.is-complete:disabled {
+  cursor: default;
+  opacity: 1;
+  filter: none;
+}
+
 .film-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -470,6 +476,25 @@ h2 {
   margin: 12px 0 0;
   color: var(--muted);
   font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.route-summary strong,
+.route-summary span {
+  display: block;
+}
+
+.route-summary strong {
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.route-summary a {
+  color: var(--gold-strong);
+}
+
+.route-summary.is-fallback {
+  color: #e2bd78;
 }
 
 .location-sheet {
