@@ -32,7 +32,7 @@ export async function POST(request) {
       headers: {
         Accept: "application/json",
         "User-Agent":
-          "SceneMap-Hackathon/1.0 (+https://github.com/walklikeaman/codex-hackathon-starter)",
+          "GloryMap-Hackathon/1.0 (+https://github.com/walklikeaman/codex-hackathon-starter)",
         Referer: `${appOrigin}/`,
       },
       signal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
