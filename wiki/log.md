@@ -7,6 +7,11 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Books and series in the live map
+
+- Expanded the Wikidata endpoint to return films and television series by filming location (`P915`), plus books by narrative location (`P840`), all restricted to the selected map area.
+- The map balances returned work types and labels every result, map pin, list entry, and detail card as Film, Series, or Book.
+
 ## [2026-07-21] update | Local recreate-the-shot demo
 
 - Added the issue #21 mobile flow from each location card: local photo upload, adjustable overlay, then/now comparison, reset, and repeat upload.
