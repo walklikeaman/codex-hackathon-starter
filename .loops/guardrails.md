@@ -16,6 +16,8 @@ the Supabase MCP args that get committed.
 
 ## Guardrail: Preview deploys only — no production domain without asking
 `vercel` (preview) is free to run. A real domain / `--prod` is a human call.
+For a newly linked project, use `vercel deploy --target=preview`; the first plain
+`vercel deploy` can create a production deployment even without `--prod`.
 
 ## Guardrail: Protect the demo path
 Before starting a new feature, confirm the one locked demo flow still works.
