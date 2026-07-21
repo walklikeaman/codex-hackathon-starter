@@ -7,6 +7,13 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | AI-guided film tour
+
+- Добавлен серверный `POST /api/tour`: Responses API с `gpt-5.6-terra` возвращает русскоязычную экскурсию по выбранному фильму через Structured Outputs.
+- Модель работает только с проверенными локациями SceneMap; схема и пост-проверка отклоняют неизвестные, пропущенные и повторяющиеся точки.
+- UI фильтрует карту до выбранного фильма, показывает AI-рассказ и строит реальный пешеходный маршрут в предложенном порядке; ручной маршрут из 3–5 точек сохранён.
+- Проверено: unit-тесты, production build, реальный API-вызов и оба браузерных пути (AI Skyfall и ручной маршрут) прошли успешно.
+
 ## [2026-07-21] update | Real walking routes
 
 - Added a server-side proxy to the public OpenStreetMap foot-routing service with validated coordinates, an 8-second timeout, and a clearly labeled straight-line fallback.
