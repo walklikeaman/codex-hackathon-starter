@@ -6,6 +6,7 @@ import {
   distanceMeters,
   findNearby,
   formatDistanceMeters,
+  mapSearchRadiusKm,
   zoomForRadius,
 } from "../app/lib/nearby.mjs";
 
@@ -82,6 +83,14 @@ test("formatDistanceMeters switches from meters to kilometers", () => {
   assert.equal(formatDistanceMeters(2340), "2.3 km");
   assert.throws(() => formatDistanceMeters(-1));
   assert.throws(() => formatDistanceMeters(Number.NaN));
+});
+
+test("mapSearchRadiusKm covers the viewport and respects API limits", () => {
+  assert.equal(mapSearchRadiusKm(120), 0.5);
+  assert.equal(mapSearchRadiusKm(5250), 5.3);
+  assert.equal(mapSearchRadiusKm(72_000), 50);
+  assert.throws(() => mapSearchRadiusKm(0));
+  assert.throws(() => mapSearchRadiusKm(Number.NaN));
 });
 
 test("zoomForRadius maps the selectable radii to sensible zoom levels", () => {
