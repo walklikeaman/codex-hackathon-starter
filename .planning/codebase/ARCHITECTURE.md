@@ -50,7 +50,7 @@ The repository is a hackathon starter rather than an implemented domain product.
 | Knowledge base | Stores the agent-maintained index, overview, operation log, sources, entities, and concepts | `wiki/` |
 | Learning state | Persists hard constraints and failed debugging attempts across sessions | `.loops/guardrails.md`, `.loops/reflexion.md` |
 | Human graph view | Configures Obsidian to visualize the `wiki/` knowledge graph while ignoring tooling output | `.obsidian/*.json` |
-| Alternative-client MCP catalog | Declares CodeGraph, Supabase, Vercel, and optional Playwright servers for Claude Code or Cursor users | `config/mcp.json` |
+| Alternative-client MCP catalog | Declares CodeGraph, Supabase, Vercel, and optional Playwright servers for Cursor users | `config/mcp.json` |
 | Static onboarding site | Serves a self-contained bilingual team guide with client-side language and copy controls | `docs/index.html` |
 | Deployment declaration | Forces Vercel to treat the root package as a Next.js application | `vercel.json` |
 
