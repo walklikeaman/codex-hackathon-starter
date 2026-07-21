@@ -7,6 +7,11 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] decision | Product renamed to GloryMap
+
+- Renamed the active product brand, page metadata, accessibility copy and routing User-Agent from SceneMap to GloryMap.
+- Preserved historical logs, raw context, internal component names and existing `scenemap-*` localStorage keys for traceability and backward compatibility.
+
 ## [2026-07-21] update | Correct image PR synced with current main
 
 - Resolved PR #24 conflicts with the books/series, nearby-location, timed-tour, voice-guide, and recreate-the-shot changes from current `main` without rewriting branch history.

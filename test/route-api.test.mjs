@@ -38,7 +38,7 @@ function routerResponse() {
   });
 }
 
-test("route API accepts the SceneMap stops contract and returns normalized metrics", async (context) => {
+test("route API accepts the GloryMap stops contract and returns normalized metrics", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
   globalThis.fetch = async () => routerResponse();
