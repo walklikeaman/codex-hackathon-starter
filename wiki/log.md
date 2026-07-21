@@ -7,6 +7,10 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Filter placeholder Wikidata labels
+
+- Excluded work and location records whose displayed label is an unresolved Wikidata identifier beginning with `Q`, including television-series (`Q6769811`) results without a human-readable name.
+
 ## [2026-07-21] update | Show every fetched work in the map UI
 
 - Removed the five-work client cap, so the work selector and map now use every film, series, and book returned for the selected area.
