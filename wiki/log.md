@@ -7,6 +7,12 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-22] update | Account-backed personal libraries
+
+- Supabase Auth adds Google and Facebook OAuth entry points to the existing Personal Library without uploading source ZIP/CSV files.
+- Guest imports remain local; after login they merge with the user's device and cloud libraries and sync as a normalized JSON list protected by user-scoped RLS.
+- Added the database migration, client-side sync boundary, provider setup documentation, and regression tests for cloud payload validation and user-scoped reads/writes.
+
 ## [2026-07-22] update | Retire alternate-agent references
 
 - GitHub permissions and Contributors API confirmed that the retired agent is neither a collaborator nor a listed contributor.

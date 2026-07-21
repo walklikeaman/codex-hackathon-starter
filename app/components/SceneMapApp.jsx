@@ -15,6 +15,7 @@ import {
 import {
   CheckCircle2,
   Clapperboard,
+  Cloud,
   Clock3,
   Crosshair,
   ExternalLink,
@@ -22,6 +23,7 @@ import {
   Link2,
   LoaderCircle,
   LocateFixed,
+  LogOut,
   MapPin,
   Plus,
   Route,
@@ -41,7 +43,9 @@ import {
   zoomForRadius,
 } from "../lib/nearby.mjs";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
+import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { mergeLibraries, parseMediaCsv, workIsInLibrary } from "../lib/media-library.mjs";
+import { getSupabaseBrowserClient } from "../lib/supabase-browser.mjs";
 import { filmLocationImageKey } from "../lib/tmdb-images.mjs";
 import {
   TOUR_BUDGETS,
@@ -52,6 +56,17 @@ import {
 import VoiceGuide from "./VoiceGuide";
 
 const londonCenter = [51.5094, -0.1183];
+const GUEST_LIBRARY_KEY = "scenemap-library";
+
+function readStoredLibrary(key) {
+  if (typeof window === "undefined") return [];
+  try {
+    const storedLibrary = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(storedLibrary) ? storedLibrary : [];
+  } catch {
+    return [];
+  }
+}
 
 const kindLabels = {
   film: "Film",
@@ -608,24 +623,103 @@ export default function SceneMapApp() {
   const [timedTourStatus, setTimedTourStatus] = useState("idle");
   const [timedTourMessage, setTimedTourMessage] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const [accountUser, setAccountUser] = useState(null);
+  const [accountStatus, setAccountStatus] = useState(supabase ? "loading" : "unavailable");
+  const [cloudStatus, setCloudStatus] = useState("Saved on this device");
+  const [cloudReady, setCloudReady] = useState(false);
+  const [libraryStorageKey, setLibraryStorageKey] = useState(GUEST_LIBRARY_KEY);
   const [pendingConnector, setPendingConnector] = useState(null);
-  const [library, setLibrary] = useState(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const storedLibrary = JSON.parse(localStorage.getItem("scenemap-library") || "[]");
-      return Array.isArray(storedLibrary) ? storedLibrary : [];
-    } catch {
-      return [];
-    }
-  });
+  const [library, setLibrary] = useState(() => readStoredLibrary(GUEST_LIBRARY_KEY));
   const [libraryQuery, setLibraryQuery] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const [libraryMapOnly, setLibraryMapOnly] = useState(false);
   const [recreateLocation, setRecreateLocation] = useState(null);
 
   useEffect(() => {
-    localStorage.setItem("scenemap-library", JSON.stringify(library));
-  }, [library]);
+    localStorage.setItem(libraryStorageKey, JSON.stringify(library));
+  }, [library, libraryStorageKey]);
+
+  useEffect(() => {
+    if (!supabase) return undefined;
+
+    let cancelled = false;
+    let hydrationId = 0;
+
+    async function applySession(session) {
+      const requestId = hydrationId + 1;
+      hydrationId = requestId;
+      const user = session?.user ?? null;
+
+      if (!user) {
+        setAccountUser(null);
+        setAccountStatus("signed_out");
+        setCloudReady(false);
+        setLibraryStorageKey(GUEST_LIBRARY_KEY);
+        setLibrary(readStoredLibrary(GUEST_LIBRARY_KEY));
+        setCloudStatus("Saved on this device");
+        return;
+      }
+
+      const userStorageKey = `${GUEST_LIBRARY_KEY}:${user.id}`;
+      setAccountUser(user);
+      setAccountStatus("loading");
+      setCloudReady(false);
+      setCloudStatus("Loading your account…");
+
+      const cachedAccountLibrary = readStoredLibrary(userStorageKey);
+      const guestLibrary = readStoredLibrary(GUEST_LIBRARY_KEY);
+
+      try {
+        const cloudLibrary = await loadCloudLibrary(supabase, user.id);
+        const mergedLibrary = mergeLibraries(
+          cloudLibrary,
+          mergeLibraries(cachedAccountLibrary, guestLibrary),
+        );
+        await saveCloudLibrary(supabase, user.id, mergedLibrary);
+        if (cancelled || requestId !== hydrationId) return;
+
+        localStorage.removeItem(GUEST_LIBRARY_KEY);
+        setLibraryStorageKey(userStorageKey);
+        setLibrary(mergedLibrary);
+        setAccountStatus("signed_in");
+        setCloudReady(true);
+        setCloudStatus("Synced to your account");
+      } catch {
+        if (cancelled || requestId !== hydrationId) return;
+        setLibraryStorageKey(userStorageKey);
+        setLibrary(mergeLibraries(cachedAccountLibrary, guestLibrary));
+        setAccountStatus("error");
+        setCloudStatus("Cloud sync is unavailable. Your library is still saved on this device.");
+      }
+    }
+
+    supabase.auth.getSession().then(({ data }) => applySession(data.session));
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      queueMicrotask(() => applySession(session));
+    });
+
+    return () => {
+      cancelled = true;
+      authListener.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!supabase || !accountUser || !cloudReady) return undefined;
+
+    setCloudStatus("Saving…");
+    const timeout = window.setTimeout(async () => {
+      try {
+        await saveCloudLibrary(supabase, accountUser.id, library);
+        setCloudStatus("Synced to your account");
+      } catch {
+        setCloudStatus("Cloud sync failed. Your device copy is safe.");
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [accountUser, cloudReady, library, supabase]);
 
   function applyLocationResults(nextLocations, { preserveContext = false } = {}) {
     const nextFilms = worksFromLocations(nextLocations);
@@ -930,6 +1024,32 @@ export default function SceneMapApp() {
         : ".csv,text/csv";
       connectorInputRef.current.click();
     }
+  }
+
+  async function signInWithProvider(provider) {
+    if (!supabase) {
+      setCloudStatus("Supabase Auth is not configured.");
+      return;
+    }
+
+    setAccountStatus("authorizing");
+    setCloudStatus(`Opening ${provider === "google" ? "Google" : "Facebook"}…`);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: window.location.origin },
+    });
+
+    if (error) {
+      setAccountStatus("signed_out");
+      setCloudStatus("Sign-in could not be started. Please try again.");
+    }
+  }
+
+  async function signOut() {
+    if (!supabase) return;
+    setCloudStatus("Signing out…");
+    const { error } = await supabase.auth.signOut();
+    if (error) setCloudStatus("Sign-out failed. Please try again.");
   }
 
   async function importLibrary(event) {
@@ -1971,15 +2091,46 @@ export default function SceneMapApp() {
             <div className="account-heading">
               <div className="account-avatar"><User size={22} /></div>
               <div>
-                <p className="eyebrow">Personal library</p>
-                <h2 id="account-title">My movies</h2>
+                <p className="eyebrow">Personal account</p>
+                <h2 id="account-title">My library</h2>
               </div>
               <button className="icon-button" type="button" onClick={() => setAccountOpen(false)} aria-label="Close movie library">
                 <X size={18} />
               </button>
             </div>
 
-            <p className="account-copy">Import your official account export. Your list stays on this device and can combine both services.</p>
+            <p className="account-copy">
+              Import your official account export. Sign in to keep the normalized movie list in your private account and access it on another device.
+            </p>
+
+            <div className="account-auth">
+              {accountUser ? (
+                <div className="account-session">
+                  <span className="account-user-mark">{(accountUser.user_metadata?.name || accountUser.email || "U").slice(0, 1).toUpperCase()}</span>
+                  <span>
+                    <strong>{accountUser.user_metadata?.name || "Signed in"}</strong>
+                    <small>{accountUser.email}</small>
+                  </span>
+                  <button type="button" onClick={signOut}><LogOut size={16} />Sign out</button>
+                </div>
+              ) : (
+                <div className="oauth-buttons">
+                  <button type="button" onClick={() => signInWithProvider("google")} disabled={accountStatus === "authorizing" || accountStatus === "loading"}>
+                    <span className="oauth-logo is-google">G</span>
+                    Login with Google
+                  </button>
+                  <button type="button" onClick={() => signInWithProvider("facebook")} disabled={accountStatus === "authorizing" || accountStatus === "loading"}>
+                    <span className="oauth-logo is-facebook">f</span>
+                    Login with Facebook
+                  </button>
+                </div>
+              )}
+              <p className={accountUser && cloudReady ? "cloud-status is-synced" : "cloud-status"} role="status">
+                {accountStatus === "loading" || accountStatus === "authorizing" ? <LoaderCircle className="spin" size={15} /> : <Cloud size={15} />}
+                {cloudStatus}
+              </p>
+            </div>
+
             <input
               ref={connectorInputRef}
               type="file"
@@ -2044,7 +2195,7 @@ export default function SceneMapApp() {
               {library.length > 0 && filteredLibrary.length === 0 && <p className="empty-library">No movies match your search.</p>}
             </div>
 
-            <div className="account-privacy"><CheckCircle2 size={17} /><span>Import files are processed locally. GloryMap never asks for your Letterboxd or IMDb password.</span></div>
+            <div className="account-privacy"><CheckCircle2 size={17} /><span>The ZIP or CSV is processed locally and is never uploaded. When you sign in, only the normalized movie list is stored under your account.</span></div>
           </section>
         </div>
       )}
