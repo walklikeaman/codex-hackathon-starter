@@ -18,7 +18,7 @@ export async function GET(request) {
     const response = await fetch(endpoint, {
       headers: {
         Accept: "application/json",
-        "User-Agent": "SceneMap/1.0 (city search for film locations)",
+        "User-Agent": "GloryMap/1.0 (city search for story locations)",
       },
       next: { revalidate: 86400 },
     });

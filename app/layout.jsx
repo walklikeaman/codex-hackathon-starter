@@ -2,7 +2,7 @@ import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 export const metadata = {
-  title: "SceneMap",
+  title: "GloryMap",
   description: "Walk through places from your favourite films, series, and books",
 };
 

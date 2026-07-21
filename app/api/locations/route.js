@@ -120,7 +120,7 @@ export async function GET(request) {
       const response = await fetch(endpoint, {
         headers: {
           Accept: "application/sparql-results+json",
-          "User-Agent": "SceneMap/1.0 (film-book-series location map API)",
+          "User-Agent": "GloryMap/1.0 (film-book-series location map API)",
         },
         signal: AbortSignal.timeout(30_000),
         next: { revalidate: 3600 },

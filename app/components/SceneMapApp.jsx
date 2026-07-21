@@ -1136,7 +1136,7 @@ export default function SceneMapApp() {
 
   return (
     <main className="scene-shell">
-      <section className="map-stage" aria-label="SceneMap locations map">
+      <section className="map-stage" aria-label="GloryMap locations map">
         <MapContainer center={mapCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
@@ -1198,7 +1198,7 @@ export default function SceneMapApp() {
             <Clapperboard size={22} />
           </div>
           <div>
-            <p className="eyebrow">SceneMap MVP</p>
+            <p className="eyebrow">GloryMap</p>
             <h1>Stories on the map · {cityName}</h1>
           </div>
           <button className="account-button" type="button" onClick={() => setAccountOpen(true)}>
@@ -1719,7 +1719,7 @@ export default function SceneMapApp() {
               {library.length > 0 && filteredLibrary.length === 0 && <p className="empty-library">No movies match your search.</p>}
             </div>
 
-            <div className="account-privacy"><CheckCircle2 size={17} /><span>CSV files are processed locally. SceneMap never asks for your Letterboxd or IMDb password.</span></div>
+            <div className="account-privacy"><CheckCircle2 size={17} /><span>CSV files are processed locally. GloryMap never asks for your Letterboxd or IMDb password.</span></div>
           </section>
         </div>
       )}
