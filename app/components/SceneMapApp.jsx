@@ -3,7 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import { Clapperboard, MapPin, Plus, Route, Search, Upload, X } from "lucide-react";
+import {
+  Camera,
+  Check,
+  Clapperboard,
+  ExternalLink,
+  Eye,
+  Heart,
+  ImageOff,
+  MapPin,
+  Plus,
+  Route,
+  Search,
+  Upload,
+  Volume2,
+  X,
+} from "lucide-react";
 
 const londonCenter = [51.5094, -0.1183];
 
@@ -153,6 +168,21 @@ const locations = [
   },
 ];
 
+function ImageWithFallback({ src, alt }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <div className="image-fallback" role="img" aria-label={`${alt} unavailable`}>
+        <ImageOff size={22} />
+        <span>Image unavailable</span>
+      </div>
+    );
+  }
+
+  return <img src={src} alt={alt} onError={() => setFailed(true)} />;
+}
+
 function RecenterOnSelection({ position }) {
   const map = useMap();
 
@@ -211,9 +241,23 @@ export default function SceneMapApp() {
   const [selectedFilms, setSelectedFilms] = useState(() => films.map((film) => film.id));
   const [filmQuery, setFilmQuery] = useState("");
   const [activeLocation, setActiveLocation] = useState(locations[0]);
+  const [isLocationOpen, setIsLocationOpen] = useState(true);
   const [routeStops, setRouteStops] = useState([]);
   const [route, setRoute] = useState(null);
   const [routeStatus, setRouteStatus] = useState("idle");
+  const [spoilerOpen, setSpoilerOpen] = useState(false);
+  const [visitIds, setVisitIds] = useState(() => {
+    if (typeof window === "undefined") return [];
+
+    try {
+      return JSON.parse(window.localStorage.getItem("scenemap-want-to-visit") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [userPosition, setUserPosition] = useState(null);
+  const [checkInStatus, setCheckInStatus] = useState("");
+  const [recreatedShot, setRecreatedShot] = useState("");
 
   const matchingFilms = useMemo(() => {
     const query = filmQuery.trim().toLowerCase();
@@ -244,11 +288,32 @@ export default function SceneMapApp() {
     }
   }, [activeLocation, visibleLocations]);
 
+  useEffect(() => {
+    window.localStorage.setItem("scenemap-want-to-visit", JSON.stringify(visitIds));
+  }, [visitIds]);
+
+  useEffect(() => {
+    setSpoilerOpen(false);
+    setCheckInStatus("");
+    setRecreatedShot("");
+  }, [activeLocation?.id]);
+
   const routePositions = route?.positions ?? [];
   const routeKm = route ? route.distanceMeters / 1000 : kmBetween(routeStops);
   const routeMinutes = route
     ? Math.max(1, Math.round(route.durationSeconds / 60))
     : Math.max(8, Math.round((routeKm / 4.6) * 60));
+  const distanceKm = userPosition && activeLocation
+    ? kmBetween([
+        { position: userPosition },
+        { position: activeLocation.position },
+      ])
+    : null;
+
+  function openLocation(location) {
+    setActiveLocation(location);
+    setIsLocationOpen(true);
+  }
 
   function clearRoute() {
     setRoute(null);
@@ -276,6 +341,64 @@ export default function SceneMapApp() {
   function removeRouteStop(locationId) {
     setRouteStops((current) => current.filter((stop) => stop.id !== locationId));
     clearRoute();
+  }
+
+  function toggleWantToVisit(locationId) {
+    setVisitIds((current) =>
+      current.includes(locationId)
+        ? current.filter((id) => id !== locationId)
+        : [...current, locationId],
+    );
+  }
+
+  function checkIn() {
+    if (!navigator.geolocation) {
+      setCheckInStatus("Location access is not supported by this browser.");
+      return;
+    }
+
+    setCheckInStatus("Finding your location...");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const position = [coords.latitude, coords.longitude];
+        const distance = kmBetween([
+          { position },
+          { position: activeLocation.position },
+        ]);
+        setUserPosition(position);
+        setCheckInStatus(
+          distance <= 0.25
+            ? `Checked in at ${activeLocation.place}.`
+            : `You are ${distance.toFixed(1)} km away — get closer to check in.`,
+        );
+      },
+      () => setCheckInStatus("Location permission was not granted."),
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }
+
+  function listenToScene() {
+    if (!("speechSynthesis" in window)) {
+      setCheckInStatus("Audio narration is not supported by this browser.");
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(
+      new SpeechSynthesisUtterance(
+        `${activeLocation.scene}. ${activeLocation.description}`,
+      ),
+    );
+    setCheckInStatus("Playing scene narration.");
+  }
+
+  function loadRecreatedShot(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => setRecreatedShot(String(reader.result));
+    reader.readAsDataURL(file);
   }
 
   async function buildRoute() {
@@ -325,7 +448,7 @@ export default function SceneMapApp() {
               position={location.position}
               icon={makeMarkerIcon(activeLocation?.id === location.id)}
               eventHandlers={{
-                click: () => setActiveLocation(location),
+                click: () => openLocation(location),
               }}
             >
               <Popup>
@@ -414,7 +537,7 @@ export default function SceneMapApp() {
           </div>
           {visibleLocations.map((location) => (
             <div className="location-row" key={location.id}>
-              <button type="button" onClick={() => setActiveLocation(location)}>
+              <button type="button" onClick={() => openLocation(location)}>
                 <strong>{location.place}</strong>
                 <span>{location.film}</span>
               </button>
@@ -450,7 +573,7 @@ export default function SceneMapApp() {
           <ol className="route-list">
             {routeStops.map((stop, index) => (
               <li key={stop.id}>
-                <button type="button" onClick={() => setActiveLocation(stop)}>
+                <button type="button" onClick={() => openLocation(stop)}>
                   <span>{index + 1}</span>
                   {stop.place}
                 </button>
@@ -471,12 +594,20 @@ export default function SceneMapApp() {
         )}
       </aside>
 
-      {activeLocation && (
+      {activeLocation && isLocationOpen && (
         <section className="location-sheet" aria-label="Location details">
           <div className="sheet-media">
-            <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
+            <ImageWithFallback src={activeLocation.backdrop} alt={`Scene from ${activeLocation.film}`} />
+            <button
+              className="sheet-close"
+              type="button"
+              onClick={() => setIsLocationOpen(false)}
+              aria-label="Close location details"
+            >
+              <X size={18} />
+            </button>
             <div>
-              <p>{activeLocation.film}</p>
+              <p>Film · Filming location</p>
               <h2>{activeLocation.scene}</h2>
             </div>
           </div>
@@ -486,23 +617,81 @@ export default function SceneMapApp() {
               <MapPin size={19} />
               <div>
                 <strong>{activeLocation.place}</strong>
-                <span>{activeLocation.position[0].toFixed(4)}, {activeLocation.position[1].toFixed(4)}</span>
+                <span>{activeLocation.place}, London</span>
+                <span>{distanceKm === null ? "Enable location to see distance" : `${distanceKm.toFixed(1)} km away`}</span>
               </div>
             </div>
-            <p>{activeLocation.description}</p>
+            <div className="detail-meta">
+              <span>{activeLocation.film}</span>
+              <a
+                href={`https://www.openstreetmap.org/?mlat=${activeLocation.position[0]}&mlon=${activeLocation.position[1]}#map=17/${activeLocation.position[0]}/${activeLocation.position[1]}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Source: OpenStreetMap <ExternalLink size={13} />
+              </a>
+            </div>
+
+            <div className="spoiler-card">
+              <strong>Scene details</strong>
+              {spoilerOpen ? (
+                <p>{activeLocation.description}</p>
+              ) : (
+                <button type="button" onClick={() => setSpoilerOpen(true)}>
+                  <Eye size={16} /> Reveal spoiler
+                </button>
+              )}
+            </div>
+
+            <p className="location-fact">
+              <strong>SceneMap fact</strong>
+              This stop is one of {locations.filter((location) => location.filmId === activeLocation.filmId).length} mapped London locations for {activeLocation.film}.
+            </p>
+
             <div className="comparison-grid">
               <figure>
-                <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
+                <ImageWithFallback src={activeLocation.backdrop} alt={`${activeLocation.scene} reference`} />
                 <figcaption>scene reference</figcaption>
               </figure>
               <figure>
-                <img src={activeLocation.now} alt="" onError={(event) => event.currentTarget.remove()} />
+                <ImageWithFallback src={activeLocation.now} alt={`${activeLocation.place} today`} />
                 <figcaption>the place today</figcaption>
               </figure>
             </div>
+
+            {recreatedShot && (
+              <figure className="recreated-shot">
+                <img src={recreatedShot} alt="Your recreated shot" />
+                <figcaption>Your recreated shot</figcaption>
+              </figure>
+            )}
+
+            <div className="location-actions">
+              <button type="button" onClick={checkIn}>
+                <Check size={17} /> I’m here
+              </button>
+              <button type="button" onClick={listenToScene}>
+                <Volume2 size={17} /> Listen
+              </button>
+              <label>
+                <Camera size={17} /> Recreate shot
+                <input type="file" accept="image/*" capture="environment" onChange={loadRecreatedShot} />
+              </label>
+            </div>
+            {checkInStatus && <p className="action-status" role="status">{checkInStatus}</p>}
+
+            <button
+              className={`visit-button${visitIds.includes(activeLocation.id) ? " is-selected" : ""}`}
+              type="button"
+              onClick={() => toggleWantToVisit(activeLocation.id)}
+              aria-pressed={visitIds.includes(activeLocation.id)}
+            >
+              <Heart size={18} fill={visitIds.includes(activeLocation.id) ? "currentColor" : "none"} />
+              {visitIds.includes(activeLocation.id) ? "Saved to want to visit" : "Want to visit"}
+            </button>
             <button className="wide-button" type="button" onClick={() => addRouteStop(activeLocation)}>
               <Route size={18} />
-              Add to route
+              {routeStops.some((stop) => stop.id === activeLocation.id) ? "In route" : "Add to route"}
             </button>
           </div>
         </section>
