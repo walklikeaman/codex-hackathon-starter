@@ -46,10 +46,10 @@ export async function POST(request) {
       max_output_tokens: 700,
       reasoning: { effort: "low" },
       instructions: [
-        "You are a concise and engaging English-language guide to film locations.",
+        "You are a concise and engaging English-language guide to screen and story locations.",
         film
           ? "Create a coherent short walking tour for the specified film."
-          : "Create a coherent short walking tour across the supplied films.",
+          : "Create a coherent short walking tour across the supplied works.",
         "Use every supplied location exactly once and preserve each id unchanged.",
         preserveOrder
           ? "Keep the supplied location order exactly."

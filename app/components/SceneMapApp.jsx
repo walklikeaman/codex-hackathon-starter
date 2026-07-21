@@ -33,6 +33,12 @@ import VoiceGuide from "./VoiceGuide";
 
 const londonCenter = [51.5094, -0.1183];
 
+const kindLabels = {
+  film: "Film",
+  series: "Series",
+  book: "Book",
+};
+
 const fallbackFilms = [
   {
     id: "notting-hill",
@@ -64,7 +70,7 @@ const fallbackFilms = [
     year: 2003,
     code: "LA",
   },
-];
+].map((work) => ({ ...work, kind: "film" }));
 
 const fallbackLocations = [
   {
@@ -177,33 +183,46 @@ const fallbackLocations = [
     backdrop: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
     now: "https://images.unsplash.com/photo-1577048982768-5cb3e7ddfa23?auto=format&fit=crop&w=1200&q=80",
   },
-];
+].map((location) => ({ ...location, kind: "film" }));
+
+function kindLabel(kind) {
+  return kindLabels[kind] ?? "Work";
+}
+
+function locationDescription(kind, locationSource, title, year) {
+  const datedTitle = `${title}${year ? ` (${year})` : ""}`;
+  return locationSource === "narrative"
+    ? `Narrative location in the ${kind === "book" ? "book" : "series"} “${datedTitle}”.`
+    : `Filming location for the ${kind === "series" ? "series" : "film"} “${datedTitle}”.`;
+}
 
 function locationsFromApi(records) {
   return records
     .map((record) => ({
-      id: `${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+      id: `${record.kind}-${record.work_wikidata_id}-${record.loc_wikidata_id}`,
       filmId: record.work_wikidata_id,
       film: record.work_title,
       scene: record.work_title,
       place: record.loc_name,
-      description: `Filming location for ${record.work_title}${record.work_year ? ` (${record.work_year})` : ""}.`,
+      description: locationDescription(record.kind, record.location_source, record.work_title, record.work_year),
       position: [record.lat, record.lng],
       locationId: record.loc_wikidata_id,
       backdrop: record.commons_image,
       now: record.commons_image,
       year: record.work_year,
+      kind: record.kind,
     }))
     .filter((location) => Number.isFinite(location.position[0]) && Number.isFinite(location.position[1]));
 }
 
-function filmsFromLocations(sourceLocations) {
+function worksFromLocations(sourceLocations) {
   return [...new Map(sourceLocations.map((location) => [
     location.filmId,
     {
       id: location.filmId,
       title: location.film,
       year: location.year,
+      kind: location.kind,
       code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
     },
   ])).values()].slice(0, 5);
@@ -241,10 +260,10 @@ function FitRoute({ positions }) {
   return null;
 }
 
-function makeMarkerIcon(selected) {
+function makeMarkerIcon(selected, kind) {
   return L.divIcon({
     className: "",
-    html: `<span class="scene-pin${selected ? " is-selected" : ""}"><span></span></span>`,
+    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}"><span></span></span>`,
     iconSize: [34, 42],
     iconAnchor: [17, 34],
   });
@@ -291,6 +310,172 @@ function makeImageSearchUrl(location) {
   return `https://www.bing.com/images/search?${new URLSearchParams({ q: query })}`;
 }
 
+function RecreateShot({ location, onClose }) {
+  const inputRef = useRef(null);
+  const photoUrlRef = useRef("");
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [view, setView] = useState("overlay");
+  const [opacity, setOpacity] = useState(55);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  function loadPhoto(event) {
+    const [file] = event.target.files;
+    if (!file?.type.startsWith("image/")) return;
+
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    const nextUrl = URL.createObjectURL(file);
+    photoUrlRef.current = nextUrl;
+    setPhotoUrl(nextUrl);
+    setView("overlay");
+  }
+
+  function resetPhoto() {
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    photoUrlRef.current = "";
+    setPhotoUrl("");
+    setView("overlay");
+    setOpacity(55);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  return (
+    <div className="recreate-backdrop">
+      <section
+        aria-labelledby="recreate-title"
+        aria-modal="true"
+        className="recreate-dialog"
+        role="dialog"
+      >
+        <header className="recreate-header">
+          <div>
+            <p className="eyebrow">Recreate the shot</p>
+            <h2 id="recreate-title">{location.scene}</h2>
+            <span>{location.film} · {location.place}</span>
+          </div>
+          <button
+            aria-label="Close recreate shot"
+            autoFocus
+            className="icon-button recreate-close"
+            onClick={onClose}
+            type="button"
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="recreate-stage">
+          {view === "overlay" ? (
+            <div className="recreate-canvas">
+              <img src={location.backdrop} alt={`Reference frame for ${location.film}`} />
+              {photoUrl && (
+                <img
+                  className="recreate-user-photo"
+                  src={photoUrl}
+                  alt="Your uploaded recreation"
+                  style={{ opacity: opacity / 100 }}
+                />
+              )}
+            </div>
+          ) : (
+            <div className="recreate-comparison" aria-label="Then and now comparison">
+              <figure>
+                <img src={location.backdrop} alt={`Reference frame for ${location.film}`} />
+                <figcaption>Then · reference</figcaption>
+              </figure>
+              <figure>
+                <img src={photoUrl} alt="Your uploaded recreation" />
+                <figcaption>Now · your photo</figcaption>
+              </figure>
+            </div>
+          )}
+          {!photoUrl && (
+            <div className="recreate-empty">
+              <strong>Match the framing</strong>
+              <span>Upload a photo from this device to line it up with the reference.</span>
+            </div>
+          )}
+        </div>
+
+        <div className="recreate-controls">
+          <input
+            accept="image/*"
+            className="recreate-file-input"
+            id="recreate-photo"
+            onChange={loadPhoto}
+            ref={inputRef}
+            type="file"
+          />
+          <label className="wide-button recreate-upload" htmlFor="recreate-photo">
+            {photoUrl ? "Choose another photo" : "Upload your photo"}
+          </label>
+
+          {photoUrl && (
+            <>
+              <div className="recreate-view-switch" aria-label="Comparison mode">
+                <button
+                  aria-pressed={view === "overlay"}
+                  className="ghost-button"
+                  onClick={() => setView("overlay")}
+                  type="button"
+                >
+                  Overlay
+                </button>
+                <button
+                  aria-pressed={view === "compare"}
+                  className="ghost-button"
+                  onClick={() => setView("compare")}
+                  type="button"
+                >
+                  Then / now
+                </button>
+              </div>
+
+              {view === "overlay" && (
+                <label className="recreate-opacity">
+                  <span>Your photo opacity</span>
+                  <input
+                    aria-label="Your photo opacity"
+                    max="100"
+                    min="0"
+                    onChange={(event) => setOpacity(Number(event.target.value))}
+                    type="range"
+                    value={opacity}
+                  />
+                  <output>{opacity}%</output>
+                </label>
+              )}
+
+              <button className="ghost-button recreate-reset" onClick={resetPhoto} type="button">
+                Reset photo
+              </button>
+            </>
+          )}
+
+          <p className="recreate-privacy">Your photo stays in this browser tab and is never uploaded.</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function SceneMapApp() {
   const connectorInputRef = useRef(null);
   const [liveLocations, setLiveLocations] = useState(null);
@@ -326,6 +511,7 @@ export default function SceneMapApp() {
   });
   const [libraryQuery, setLibraryQuery] = useState("");
   const [importMessage, setImportMessage] = useState("");
+  const [recreateLocation, setRecreateLocation] = useState(null);
 
   useEffect(() => {
     localStorage.setItem("scenemap-library", JSON.stringify(library));
@@ -343,11 +529,11 @@ export default function SceneMapApp() {
         if (!nextLocations.length) throw new Error("Locations API returned no usable points");
         if (cancelled) return;
 
-        const nextFilms = filmsFromLocations(nextLocations);
+        const nextWorks = worksFromLocations(nextLocations);
         setLiveLocations(nextLocations);
-        setSelectedFilms(nextFilms.map((film) => film.id));
+        setSelectedFilms(nextWorks.map((work) => work.id));
         setActiveLocation(nextLocations[0]);
-        setTourFilmId(nextFilms[0]?.id ?? "");
+        setTourFilmId(nextWorks[0]?.id ?? "");
         setAiTour(null);
         setAiTourStatus("idle");
         setAiTourError("");
@@ -369,7 +555,7 @@ export default function SceneMapApp() {
 
   const sourceLocations = liveLocations ?? fallbackLocations;
   const films = useMemo(
-    () => liveLocations ? filmsFromLocations(sourceLocations) : fallbackFilms,
+    () => liveLocations ? worksFromLocations(sourceLocations) : fallbackFilms,
     [liveLocations, sourceLocations],
   );
 
@@ -779,12 +965,13 @@ export default function SceneMapApp() {
             <Marker
               key={location.id}
               position={location.position}
-              icon={makeMarkerIcon(activeLocation?.id === location.id)}
+              icon={makeMarkerIcon(activeLocation?.id === location.id, location.kind)}
               eventHandlers={{
                 click: () => setActiveLocation(location),
               }}
             >
               <Popup>
+                <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
                 <strong>{location.film}</strong>
                 <br />
                 {location.place}
@@ -805,14 +992,14 @@ export default function SceneMapApp() {
         </MapContainer>
       </section>
 
-      <aside className="command-panel" aria-label="Film selection">
+      <aside className="command-panel" aria-label="Work selection">
         <div className="brand-row">
           <div className="brand-mark">
             <Clapperboard size={22} />
           </div>
           <div>
             <p className="eyebrow">SceneMap MVP</p>
-            <h1>Film map · {cityName}</h1>
+            <h1>Stories on the map · {cityName}</h1>
           </div>
           <button className="account-button" type="button" onClick={() => setAccountOpen(true)}>
             <User size={18} />
@@ -841,7 +1028,7 @@ export default function SceneMapApp() {
         </div>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
-        <div className="film-grid" aria-label="Selected films">
+        <div className="film-grid" aria-label="Selected works">
           {films.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
@@ -856,7 +1043,10 @@ export default function SceneMapApp() {
                 <span className="poster-tile" aria-hidden="true">{film.code}</span>
                 <span>
                   <strong>{film.title}</strong>
-                  <small>{film.year}</small>
+                  <small>
+                    <span className={`work-kind kind-${film.kind}`}>{kindLabel(film.kind)}</span>
+                    {film.year ? ` · ${film.year}` : ""}
+                  </small>
                 </span>
               </button>
             );
@@ -945,12 +1135,12 @@ export default function SceneMapApp() {
             </span>
             <div>
               <p className="eyebrow">AI guide</p>
-              <strong>Tour by film</strong>
+              <strong>Tour by work</strong>
             </div>
           </div>
           <div className="ai-tour-controls">
             <label>
-              <span className="sr-only">Film for the AI tour</span>
+              <span className="sr-only">Work for the AI tour</span>
               <select
                 value={tourFilmId}
                 onChange={(event) => {
@@ -997,7 +1187,10 @@ export default function SceneMapApp() {
             <div className="location-row" key={location.id}>
               <button type="button" onClick={() => setActiveLocation(location)}>
                 <strong>{location.place}</strong>
-                <span>{location.film}</span>
+                <span>
+                  <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
+                  {location.film}
+                </span>
               </button>
               <button
                 className="icon-button"
@@ -1109,7 +1302,7 @@ export default function SceneMapApp() {
           <div className="sheet-media">
             <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
             <div>
-              <p>{activeLocation.film}</p>
+              <p><span className={`work-kind kind-${activeLocation.kind}`}>{kindLabel(activeLocation.kind)}</span>{" "}{activeLocation.film}</p>
               <h2>{activeLocation.scene}</h2>
             </div>
           </div>
@@ -1134,6 +1327,15 @@ export default function SceneMapApp() {
                 <figcaption>the place today</figcaption>
               </figure>
             </div>
+            <button
+              aria-haspopup="dialog"
+              className="wide-button recreate-launch"
+              onClick={() => setRecreateLocation(activeLocation)}
+              type="button"
+            >
+              <Clapperboard size={18} />
+              Recreate this shot
+            </button>
             <a className="ghost-button image-search-link" href={makeImageSearchUrl(activeLocation)} target="_blank" rel="noopener noreferrer">
               <Search size={18} />
               Find scene images
@@ -1214,6 +1416,10 @@ export default function SceneMapApp() {
             <div className="account-privacy"><CheckCircle2 size={17} /><span>CSV files are processed locally. SceneMap never asks for your Letterboxd or IMDb password.</span></div>
           </section>
         </div>
+      )}
+
+      {recreateLocation && (
+        <RecreateShot location={recreateLocation} onClose={() => setRecreateLocation(null)} />
       )}
     </main>
   );

@@ -114,7 +114,7 @@ function combineLocationWorks(locations) {
       film: filmLabel,
       filmIds,
       films,
-      description: `Verified filming location for ${filmLabel}.`,
+      description: `Verified screen or story location connected to ${filmLabel}.`,
     });
   }
 
@@ -187,8 +187,8 @@ export function routeFitsBudget(route, budgetMinutes) {
 
 export function createFallbackGuide({ city, budgetMinutes, stops }) {
   return {
-    title: `${budgetMinutes}-minute film walk · ${city}`,
-    intro: `A nearby ${stops.length}-stop route built from verified filming locations.`,
+    title: `${budgetMinutes}-minute SceneMap walk · ${city}`,
+    intro: `A nearby ${stops.length}-stop route built from verified screen and story locations.`,
     stops: stops.map((location) => ({
       locationId: location.id,
       narration: location.description,
