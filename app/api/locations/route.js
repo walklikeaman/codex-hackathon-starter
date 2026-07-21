@@ -16,6 +16,9 @@ import {
   workKindConfig,
   workMatchesTypeGraph,
 } from "../../lib/location-search.mjs";
+import {
+  addSceneMatchTokens,
+} from "../../lib/scene-match-token.mjs";
 
 const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
 const DEFAULTS = { lat: 51.5072, lng: -0.1276, radius: 15, limit: 30, kind: "film" };
@@ -217,7 +220,7 @@ export async function GET(request) {
           kind,
           search_mode: "work",
           matched_work: result.matchedWork,
-          locations: result.locations,
+          locations: addSceneMatchTokens(result.locations),
         },
         { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" } },
       );
@@ -245,7 +248,7 @@ export async function GET(request) {
         kind,
         search_mode: "nearby",
         matched_work: null,
-        locations,
+        locations: addSceneMatchTokens(locations),
       },
       { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" } },
     );
