@@ -31,6 +31,7 @@ import {
   zoomForRadius,
 } from "../lib/nearby.mjs";
 import { mergeLibraries, parseMediaCsv } from "../lib/media-library.mjs";
+import { filmLocationImageKey } from "../lib/tmdb-images.mjs";
 import {
   TOUR_BUDGETS,
   createFallbackGuide,
@@ -89,7 +90,7 @@ const fallbackLocations = [
     place: "Portobello Road Market",
     description: "William walks through the changing seasons of Notting Hill, turning a street market into the film's emotional timeline.",
     position: [51.5156, -0.2057],
-    backdrop: "https://images.unsplash.com/photo-1533929736458-ca588d08c8be?auto=format&fit=crop&w=1200&q=80",
+    backdrop: null,
     now: "https://images.unsplash.com/photo-1555085634-25c3c9c10b6b?auto=format&fit=crop&w=1200&q=80",
   },
   {
@@ -100,7 +101,7 @@ const fallbackLocations = [
     place: "Westbourne Park Road",
     description: "The private home behind the blue door anchors the romance in a real London neighborhood.",
     position: [51.5174, -0.1993],
-    backdrop: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1200&q=80",
+    backdrop: null,
     now: "https://images.unsplash.com/photo-1578269174936-2709b6aeb913?auto=format&fit=crop&w=1200&q=80",
   },
   {
@@ -111,7 +112,7 @@ const fallbackLocations = [
     place: "Vauxhall Cross",
     description: "Bond's world is framed by the real MI6 headquarters on the river, one of modern spy cinema's clearest London signals.",
     position: [51.4874, -0.1247],
-    backdrop: "https://images.unsplash.com/photo-1510279770292-4b34de9f5c23?auto=format&fit=crop&w=1200&q=80",
+    backdrop: null,
     now: "https://images.unsplash.com/photo-1529655683826-aba9b3e77383?auto=format&fit=crop&w=1200&q=80",
   },
   {
@@ -122,7 +123,7 @@ const fallbackLocations = [
     place: "National Gallery",
     description: "Bond and Q meet in front of Turner's painting, setting the old-versus-new theme in a public landmark.",
     position: [51.5089, -0.1283],
-    backdrop: "https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=1200&q=80",
+    backdrop: null,
     now: "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1200&q=80",
   },
   {
@@ -133,7 +134,7 @@ const fallbackLocations = [
     place: "King's Cross Station",
     description: "The gateway to Hogwarts turns a busy railway station into a pilgrimage point for fans.",
     position: [51.532, -0.1233],
-    backdrop: "https://images.unsplash.com/photo-1517563259479-5b9d0f9d0448?auto=format&fit=crop&w=1200&q=80",
+    backdrop: null,
     now: "https://images.unsplash.com/photo-1590253230532-a67f6bc61c9e?auto=format&fit=crop&w=1200&q=80",
   },
   {
@@ -144,7 +145,7 @@ const fallbackLocations = [
     place: "Leadenhall Market",
     description: "Victorian arches stand in for the magical shopping street hidden inside ordinary London.",
     position: [51.5126, -0.0834],
-    backdrop: "https://images.unsplash.com/photo-1533929736458-ca588d08c8be?auto=format&fit=crop&w=1200&q=80",
+    backdrop: null,
     now: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
   },
   {
@@ -155,7 +156,7 @@ const fallbackLocations = [
     place: "St Paul's Cathedral",
     description: "The cathedral and surrounding streets sell the film's smoky, industrial version of London.",
     position: [51.5138, -0.0984],
-    backdrop: "https://images.unsplash.com/photo-1543832923-44667a44c804?auto=format&fit=crop&w=1200&q=80",
+    backdrop: null,
     now: "https://images.unsplash.com/photo-1520986606214-8b456906c813?auto=format&fit=crop&w=1200&q=80",
   },
   {
@@ -166,7 +167,7 @@ const fallbackLocations = [
     place: "Houses of Parliament",
     description: "The detective story borrows Westminster's silhouette to make the conspiracy feel national.",
     position: [51.4995, -0.1248],
-    backdrop: "https://images.unsplash.com/photo-1529655683826-aba9b3e77383?auto=format&fit=crop&w=1200&q=80",
+    backdrop: null,
     now: "https://images.unsplash.com/photo-1496307653780-42ee777d4833?auto=format&fit=crop&w=1200&q=80",
   },
   {
@@ -177,7 +178,7 @@ const fallbackLocations = [
     place: "South Bank",
     description: "The ensemble romance uses the Thames walk to make separate lives feel connected by the same city.",
     position: [51.5066, -0.1162],
-    backdrop: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1200&q=80",
+    backdrop: null,
     now: "https://images.unsplash.com/photo-1505761671935-60b3a7427bad?auto=format&fit=crop&w=1200&q=80",
   },
   {
@@ -188,13 +189,20 @@ const fallbackLocations = [
     place: "Somerset House",
     description: "A classic central London courtyard gives the film its polished winter-city texture.",
     position: [51.5111, -0.1171],
-    backdrop: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
+    backdrop: null,
     now: "https://images.unsplash.com/photo-1577048982768-5cb3e7ddfa23?auto=format&fit=crop&w=1200&q=80",
   },
-].map((location) => ({ ...location, kind: "film" }));
+].map((location) => ({ ...location, kind: "film", backdropVerified: false }));
 
 function kindLabel(kind) {
   return kindLabels[kind] ?? "Work";
+}
+
+function filmImagePlaceholderLabel(status) {
+  if (status === "loading") return "Matching scene to this place…";
+  if (status === "no_match") return "No verified scene match";
+  if (status === "error") return "Scene matching failed";
+  return "Scene matching unavailable";
 }
 
 function locationsFromApi(records) {
@@ -214,9 +222,11 @@ function locationsFromApi(records) {
           ?? `${record.loc_name} is connected with ${record.work_title}.`,
         position: [record.lat, record.lng],
         locationId: record.loc_wikidata_id,
-        backdrop: record.backdrop ?? null,
-        now: record.commons_image,
+        backdrop: record.backdrop_verified === true ? record.backdrop ?? null : null,
+        backdropVerified: record.backdrop_verified === true,
+        now: record.commons_image?.replace(/^http:\/\//, "https://") ?? null,
         filmTmdbId: record.film_tmdb_id,
+        sceneMatchToken: record.scene_match_token ?? null,
         year: record.work_year,
         kind,
         relationKind: record.relation_kind,
@@ -545,10 +555,11 @@ export default function SceneMapApp() {
   const [activeLocation, setActiveLocation] = useState(fallbackLocations[0]);
   const [filmImageState, setFilmImageState] = useState({
     locationId: fallbackLocations[0].id,
-    url: fallbackLocations[0].backdrop,
+    url: null,
     sourceUrl: null,
-    status: "ready",
+    status: "unavailable",
   });
+  const [filmImageRetry, setFilmImageRetry] = useState(0);
   const [routeStops, setRouteStops] = useState([]);
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
@@ -646,7 +657,7 @@ export default function SceneMapApp() {
   useEffect(() => {
     if (!activeLocation) return undefined;
 
-    if (activeLocation.backdrop) {
+    if (activeLocation.backdrop && activeLocation.backdropVerified) {
       setFilmImageState({
         locationId: activeLocation.id,
         url: activeLocation.backdrop,
@@ -656,7 +667,7 @@ export default function SceneMapApp() {
       return undefined;
     }
 
-    if (!activeLocation.filmTmdbId) {
+    if (!activeLocation.filmTmdbId || !activeLocation.filmId || !activeLocation.locationId || !activeLocation.sceneMatchToken) {
       setFilmImageState({
         locationId: activeLocation.id,
         url: null,
@@ -666,14 +677,15 @@ export default function SceneMapApp() {
       return undefined;
     }
 
-    const cacheKey = String(activeLocation.filmTmdbId);
+    const locationCacheId = activeLocation.locationId ?? activeLocation.id;
+    const cacheKey = filmLocationImageKey(activeLocation.filmTmdbId, locationCacheId);
     if (filmImageCache.current.has(cacheKey)) {
       const cached = filmImageCache.current.get(cacheKey);
       setFilmImageState({
         locationId: activeLocation.id,
         url: cached?.url ?? null,
         sourceUrl: cached?.sourceUrl ?? null,
-        status: cached?.url ? "ready" : "unavailable",
+        status: cached?.status ?? (cached?.url ? "ready" : "unavailable"),
       });
       return undefined;
     }
@@ -688,22 +700,30 @@ export default function SceneMapApp() {
 
     async function loadFilmImage() {
       try {
-        const response = await fetch(
-          `/api/film-image?tmdbId=${encodeURIComponent(activeLocation.filmTmdbId)}`,
-          { signal: controller.signal },
-        );
-        if (!response.ok) throw new Error("Film image API failed");
-
+        const query = new URLSearchParams({
+          tmdbId: String(activeLocation.filmTmdbId),
+          workId: String(activeLocation.filmId),
+          locationId: String(locationCacheId),
+          token: activeLocation.sceneMatchToken,
+        });
+        const response = await fetch(`/api/film-image?${query}`, { signal: controller.signal });
         const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Film image API failed");
+
+        const status = payload.image_url
+          ? "ready"
+          : ["no_candidates", "no_high_confidence_match"].includes(payload.reason)
+            ? "no_match"
+            : "unavailable";
         const cached = {
           url: payload.image_url ?? null,
           sourceUrl: payload.source_url ?? null,
+          status,
         };
         filmImageCache.current.set(cacheKey, cached);
         setFilmImageState({
           locationId: activeLocation.id,
           ...cached,
-          status: cached.url ? "ready" : "unavailable",
         });
       } catch (error) {
         if (error.name === "AbortError") return;
@@ -711,14 +731,14 @@ export default function SceneMapApp() {
           locationId: activeLocation.id,
           url: null,
           sourceUrl: null,
-          status: "unavailable",
+          status: "error",
         });
       }
     }
 
     loadFilmImage();
     return () => controller.abort();
-  }, [activeLocation]);
+  }, [activeLocation, filmImageRetry]);
 
   const sourceLocations = liveLocations ?? fallbackLocations;
   const films = useMemo(
@@ -746,9 +766,10 @@ export default function SceneMapApp() {
   }, [library, libraryQuery]);
 
   const routePositions = routeResult?.positions ?? [];
-  const activeFilmImage = activeLocation?.backdrop
-    ?? (filmImageState.locationId === activeLocation?.id ? filmImageState.url : null);
-  const activeFilmImageStatus = activeLocation?.backdrop
+  const activeFilmImage = activeLocation?.backdrop && activeLocation?.backdropVerified
+    ? activeLocation.backdrop
+    : (filmImageState.locationId === activeLocation?.id ? filmImageState.url : null);
+  const activeFilmImageStatus = activeLocation?.backdrop && activeLocation?.backdropVerified
     ? "ready"
     : filmImageState.locationId === activeLocation?.id
       ? filmImageState.status
@@ -1762,23 +1783,44 @@ export default function SceneMapApp() {
                 {activeFilmImage ? (
                   <img
                     src={activeFilmImage}
-                    alt={`Film image for ${activeLocation.film}`}
-                    onError={() => setFilmImageState({
-                      locationId: activeLocation.id,
-                      url: null,
-                      sourceUrl: null,
-                      status: "unavailable",
-                    })}
+                    alt={`Matched film scene for ${activeLocation.film} at ${activeLocation.place}`}
+                    onError={() => {
+                      filmImageCache.current.delete(filmLocationImageKey(
+                        activeLocation.filmTmdbId,
+                        activeLocation.locationId ?? activeLocation.id,
+                      ));
+                      setFilmImageState({
+                        locationId: activeLocation.id,
+                        url: null,
+                        sourceUrl: null,
+                        status: "error",
+                      });
+                    }}
                   />
                 ) : (
                   <div className="image-placeholder" role="status">
-                    {activeFilmImageStatus === "loading" ? "Loading film image…" : "Reference image unavailable"}
+                    <span>{filmImagePlaceholderLabel(activeFilmImageStatus)}</span>
+                    {activeFilmImageStatus === "error" && (
+                      <button
+                        className="image-placeholder-retry"
+                        onClick={() => {
+                          filmImageCache.current.delete(filmLocationImageKey(
+                            activeLocation.filmTmdbId,
+                            activeLocation.locationId ?? activeLocation.id,
+                          ));
+                          setFilmImageRetry((value) => value + 1);
+                        }}
+                        type="button"
+                      >
+                        Try again
+                      </button>
+                    )}
                   </div>
                 )}
                 <figcaption>
                   {activeFilmImage && activeFilmImageSource ? (
                     <a href={activeFilmImageSource} target="_blank" rel="noopener noreferrer">
-                      film image · TMDB
+                      AI-matched scene · TMDB
                     </a>
                   ) : "scene reference"}
                 </figcaption>
