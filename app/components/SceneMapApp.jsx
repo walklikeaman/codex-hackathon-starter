@@ -165,6 +165,21 @@ function RecenterOnSelection({ position }) {
   return null;
 }
 
+function FitRoute({ positions }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (positions.length > 1) {
+      map.fitBounds(L.latLngBounds(positions), {
+        padding: [64, 64],
+        maxZoom: 14,
+      });
+    }
+  }, [map, positions]);
+
+  return null;
+}
+
 function makeMarkerIcon(selected) {
   return L.divIcon({
     className: "",
@@ -196,16 +211,24 @@ export default function SceneMapApp() {
   const [selectedFilms, setSelectedFilms] = useState(() => films.map((film) => film.id));
   const [activeLocation, setActiveLocation] = useState(locations[0]);
   const [routeStops, setRouteStops] = useState([]);
-  const [routeVisible, setRouteVisible] = useState(false);
+  const [route, setRoute] = useState(null);
+  const [routeStatus, setRouteStatus] = useState("idle");
 
   const visibleLocations = useMemo(
     () => locations.filter((location) => selectedFilms.includes(location.filmId)),
     [selectedFilms],
   );
 
-  const routePositions = routeVisible ? routeStops.map((stop) => stop.position) : [];
-  const routeKm = kmBetween(routeStops);
-  const routeMinutes = Math.max(8, Math.round((routeKm / 4.6) * 60));
+  const routePositions = route?.positions ?? [];
+  const routeKm = route ? route.distanceMeters / 1000 : kmBetween(routeStops);
+  const routeMinutes = route
+    ? Math.max(1, Math.round(route.durationSeconds / 60))
+    : Math.max(8, Math.round((routeKm / 4.6) * 60));
+
+  function clearRoute() {
+    setRoute(null);
+    setRouteStatus("idle");
+  }
 
   function toggleFilm(filmId) {
     setSelectedFilms((current) => {
@@ -222,23 +245,55 @@ export default function SceneMapApp() {
       if (current.some((stop) => stop.id === location.id)) return current;
       return [...current, location].slice(0, 5);
     });
-    setRouteVisible(false);
+    clearRoute();
   }
 
   function removeRouteStop(locationId) {
     setRouteStops((current) => current.filter((stop) => stop.id !== locationId));
-    setRouteVisible(false);
+    clearRoute();
+  }
+
+  async function buildRoute() {
+    const fallbackKm = kmBetween(routeStops);
+    const fallback = {
+      positions: routeStops.map((stop) => stop.position),
+      distanceMeters: fallbackKm * 1000,
+      durationSeconds: Math.max(8, Math.round((fallbackKm / 4.6) * 60)) * 60,
+    };
+
+    setRoute(null);
+    setRouteStatus("loading");
+
+    try {
+      const response = await fetch("/api/route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coordinates: routeStops.map((stop) => stop.position) }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !Array.isArray(data.positions) || data.positions.length < 2) {
+        throw new Error(data.error || "Route unavailable");
+      }
+
+      setRoute(data);
+      setRouteStatus("ready");
+    } catch {
+      setRoute(fallback);
+      setRouteStatus("fallback");
+    }
   }
 
   return (
     <main className="scene-shell">
-      <section className="map-stage" aria-label="Карта локаций SceneMap">
+      <section className="map-stage" aria-label="SceneMap locations map">
         <MapContainer center={londonCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
           <RecenterOnSelection position={activeLocation?.position} />
+          <FitRoute positions={routePositions} />
           {visibleLocations.map((location) => (
             <Marker
               key={location.id}
@@ -261,29 +316,29 @@ export default function SceneMapApp() {
         </MapContainer>
       </section>
 
-      <aside className="command-panel" aria-label="Выбор фильмов">
+      <aside className="command-panel" aria-label="Film selection">
         <div className="brand-row">
           <div className="brand-mark">
             <Clapperboard size={22} />
           </div>
           <div>
             <p className="eyebrow">SceneMap MVP</p>
-            <h1>Кино-прогулка по Лондону</h1>
+            <h1>A film walk through London</h1>
           </div>
         </div>
 
         <div className="action-row">
           <button className="ghost-button" type="button">
             <Search size={17} />
-            Галерея
+            Gallery
           </button>
           <button className="ghost-button" type="button">
             <Upload size={17} />
-            CSV позже
+            CSV later
           </button>
         </div>
 
-        <div className="film-grid" aria-label="Выбранные фильмы">
+        <div className="film-grid" aria-label="Selected films">
           {films.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
@@ -305,10 +360,10 @@ export default function SceneMapApp() {
           })}
         </div>
 
-        <div className="location-list" aria-label="Точки на карте">
+        <div className="location-list" aria-label="Map locations">
           <div className="section-row">
-            <p className="eyebrow">Точки</p>
-            <span>{visibleLocations.length} в Лондоне</span>
+            <p className="eyebrow">Locations</p>
+            <span>{visibleLocations.length} in London</span>
           </div>
           {visibleLocations.map((location) => (
             <div className="location-row" key={location.id}>
@@ -320,7 +375,7 @@ export default function SceneMapApp() {
                 className="icon-button"
                 type="button"
                 onClick={() => addRouteStop(location)}
-                aria-label={`Добавить ${location.place} в маршрут`}
+                aria-label={`Add ${location.place} to the route`}
               >
                 <Plus size={15} />
               </button>
@@ -330,17 +385,17 @@ export default function SceneMapApp() {
 
         <div className="route-card">
           <div>
-            <p className="eyebrow">Маршрут</p>
-            <strong>{routeStops.length} / 5 точек</strong>
+            <p className="eyebrow">Route</p>
+            <strong>{routeStops.length} / 5 stops</strong>
           </div>
           <button
             className="primary-button"
-            disabled={routeStops.length < 3}
-            onClick={() => setRouteVisible(true)}
+            disabled={routeStops.length < 3 || routeStatus === "loading"}
+            onClick={buildRoute}
             type="button"
           >
             <Route size={18} />
-            Построить
+            {routeStatus === "loading" ? "Building..." : "Build route"}
           </button>
         </div>
 
@@ -352,7 +407,7 @@ export default function SceneMapApp() {
                   <span>{index + 1}</span>
                   {stop.place}
                 </button>
-                <button className="icon-button" type="button" onClick={() => removeRouteStop(stop.id)} aria-label="Убрать точку">
+                <button className="icon-button" type="button" onClick={() => removeRouteStop(stop.id)} aria-label="Remove stop">
                   <X size={15} />
                 </button>
               </li>
@@ -360,15 +415,17 @@ export default function SceneMapApp() {
           </ol>
         )}
 
-        {routeVisible && (
-          <p className="route-summary">
-            Пешком около {routeKm.toFixed(1)} км · {routeMinutes} мин. Сейчас линия строится локально; OSRM подключаем следующим срезом.
+        {(routeStatus === "ready" || routeStatus === "fallback") && (
+          <p className="route-summary" role="status">
+            About {routeKm.toFixed(1)} km on foot · {routeMinutes} min. {routeStatus === "ready"
+              ? "Route follows walkable streets."
+              : "Routing is unavailable, so the stops are connected directly."}
           </p>
         )}
       </aside>
 
       {activeLocation && (
-        <section className="location-sheet" aria-label="Карточка локации">
+        <section className="location-sheet" aria-label="Location details">
           <div className="sheet-media">
             <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
             <div>
@@ -389,16 +446,16 @@ export default function SceneMapApp() {
             <div className="comparison-grid">
               <figure>
                 <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
-                <figcaption>кадр / настроение сцены</figcaption>
+                <figcaption>scene reference</figcaption>
               </figure>
               <figure>
                 <img src={activeLocation.now} alt="" onError={(event) => event.currentTarget.remove()} />
-                <figcaption>место сейчас</figcaption>
+                <figcaption>the place today</figcaption>
               </figure>
             </div>
             <button className="wide-button" type="button" onClick={() => addRouteStop(activeLocation)}>
               <Route size={18} />
-              В маршрут
+              Add to route
             </button>
           </div>
         </section>
