@@ -7,6 +7,13 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Multi-place story search across cities
+
+- Fixed the Wikidata pair limit so duplicate release/image rows no longer consume the result window before distinct work-location pairs are selected.
+- Added city-bounds-aware title search for films, series, and books. Known works use the faster Wikidata entity API; sparse results can be supplemented only by in-city, directly cited web research.
+- Location cards now explain whether a place is a filming location or story setting, include the place description, and link to the supporting Wikidata or research source.
+- Rebased onto current `main` while preserving nearby geolocation, timed tours, voice guide, TMDB imagery, recreate-the-shot, and the GloryMap brand. Verified 57 tests, the production build, 16 nearby London places, and 13 `Mission: Impossible – Fallout` places in Paris in a real browser.
+
 ## [2026-07-21] decision | Product renamed to GloryMap
 
 - Renamed the active product brand, page metadata, accessibility copy and routing User-Agent from SceneMap to GloryMap.
