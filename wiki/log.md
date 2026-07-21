@@ -7,13 +7,24 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
-## [2026-07-21] update | Timed nearby tours and browser voice guide
+## [2026-07-21] update | Timed nearby tours and OpenAI voice guide
 
 - Added 30/60/120-minute tour planning from a searched city or browser geolocation. The deterministic planner combines duplicate works at one physical place, chooses 3–5 nearby stops, and accepts only walking-router results within the 15% budget tolerance.
 - `Start tour` transfers the planned stops into the existing route and rebuilds them through `/api/route`; the route handler now supports both merged request contracts and returns normalized plus legacy metrics.
 - AI adds short original stories when available; verified location descriptions remain a deterministic fallback when `OPENAI_API_KEY` or the AI service is unavailable.
-- Added browser Speech Synthesis controls with Play, Pause/Resume, Stop, spoiler-free copy, a neutral guide, a non-celebrity Curious Archivist profile, unsupported-browser fallback, and automatic stop on location changes.
-- Verified with 27 unit tests, a production build, a real `gpt-5.6-terra` timed tour (3 stops, 4.2 km, 53 min), deterministic AI-off fallback, geolocation, and a clean-console browser flow.
+- Added server-side `gpt-4o-mini-tts` MP3 narration with Play, Pause/Resume, Stop, spoiler-free copy, high-quality `marin` and `cedar` voices, and automatic stop on location changes. `OPENAI_API_KEY` never reaches the browser.
+- Verified with 30 unit tests, a production build, real `gpt-5.6-terra` timed tours, a real 89 KB OpenAI MP3, Play/Pause/Resume/Stop, automatic stop on location change, a post-merge 5-stop route (4.7 km, 63 min), deterministic AI-off fallback, geolocation, and a clean-console normal browser flow.
+
+## [2026-07-21] update | Books and series in the live map
+
+- Expanded the Wikidata endpoint to return films and television series by filming location (`P915`), plus books by narrative location (`P840`), all restricted to the selected map area.
+- The map balances returned work types and labels every result, map pin, list entry, and detail card as Film, Series, or Book.
+
+## [2026-07-21] update | Local recreate-the-shot demo
+
+- Added the issue #21 mobile flow from each location card: local photo upload, adjustable overlay, then/now comparison, reset, and repeat upload.
+- User images remain browser-only object URLs; the flow has no upload request or persistent storage.
+- Verified the complete flow at 390 px in Chromium, including a long live-location title, keyboard opacity control, reset/re-upload, zero mutating network requests, all unit tests, and a production build.
 
 ## [2026-07-21] update | AI-guided film tour
 

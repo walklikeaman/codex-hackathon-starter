@@ -1,17 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pause, Play, Square, Volume2 } from "lucide-react";
-import {
-  NARRATOR_PROFILES,
-  narrationText,
-  selectNarratorVoice,
-} from "../lib/voice-guide.mjs";
+import { LoaderCircle, Pause, Play, Square, Volume2 } from "lucide-react";
+import { NARRATOR_PROFILES, narrationText } from "../lib/voice-guide.mjs";
 
 export default function VoiceGuide({ location, story }) {
-  const utteranceRef = useRef(null);
+  const audioRef = useRef(null);
+  const audioUrlRef = useRef("");
+  const abortRef = useRef(null);
+  const requestIdRef = useRef(0);
   const [supported, setSupported] = useState(null);
-  const [voices, setVoices] = useState([]);
   const [profileId, setProfileId] = useState("neutral");
   const [spoilerFree, setSpoilerFree] = useState(true);
   const [speechState, setSpeechState] = useState("idle");
@@ -21,83 +19,133 @@ export default function VoiceGuide({ location, story }) {
     [location, spoilerFree, story],
   );
 
+  function releaseAudio() {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    audioRef.current = null;
+
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = "";
+    }
+  }
+
+  function cancelCurrentRequest() {
+    requestIdRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    releaseAudio();
+  }
+
   useEffect(() => {
-    const available =
+    setSupported(
       typeof window !== "undefined" &&
-      "speechSynthesis" in window &&
-      "SpeechSynthesisUtterance" in window;
-    setSupported(available);
-
-    if (!available) return undefined;
-
-    const loadVoices = () => setVoices(window.speechSynthesis.getVoices());
-    loadVoices();
-    window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+      typeof window.Audio === "function" &&
+      typeof window.URL?.createObjectURL === "function",
+    );
 
     return () => {
-      window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
-      window.speechSynthesis.cancel();
+      requestIdRef.current += 1;
+      abortRef.current?.abort();
+      releaseAudio();
     };
   }, []);
 
   useEffect(() => {
-    if (supported) window.speechSynthesis.cancel();
-    utteranceRef.current = null;
+    cancelCurrentRequest();
     setSpeechState("idle");
     setMessage("");
-  }, [location?.id, profileId, spoilerFree, story, supported]);
+  }, [location?.id, profileId, spoilerFree, story]);
 
-  function play() {
+  async function play() {
     if (!supported || !text) return;
 
-    window.speechSynthesis.cancel();
-    const profile = NARRATOR_PROFILES[profileId];
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voice = selectNarratorVoice(voices, profileId);
+    cancelCurrentRequest();
+    const requestId = requestIdRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setSpeechState("loading");
+    setMessage("Generating high-quality narration…");
 
-    utterance.lang = voice?.lang || "en-GB";
-    utterance.voice = voice;
-    utterance.rate = profile.rate;
-    utterance.pitch = profile.pitch;
-    utterance.onend = () => {
-      utteranceRef.current = null;
-      setSpeechState("idle");
-      setMessage("Narration finished.");
-    };
-    utterance.onerror = (event) => {
-      utteranceRef.current = null;
-      setSpeechState("idle");
-      setMessage(
-        event.error === "canceled" || event.error === "interrupted"
-          ? "Narration stopped."
-          : "Voice playback failed. You can still read the story above.",
-      );
-    };
+    try {
+      const response = await fetch("/api/narration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, profileId }),
+        signal: controller.signal,
+      });
 
-    utteranceRef.current = utterance;
-    setMessage("");
-    setSpeechState("playing");
-    window.speechSynthesis.speak(utterance);
-  }
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Voice generation failed.");
+      }
 
-  function togglePause() {
-    if (!supported) return;
+      const audioBlob = await response.blob();
+      if (requestId !== requestIdRef.current) return;
 
-    if (speechState === "playing") {
-      window.speechSynthesis.pause();
-      setSpeechState("paused");
-      setMessage("Narration paused.");
-    } else if (speechState === "paused") {
-      window.speechSynthesis.resume();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audioUrlRef.current = audioUrl;
+      audioRef.current = audio;
+      abortRef.current = null;
+
+      audio.onended = () => {
+        if (requestId !== requestIdRef.current) return;
+        releaseAudio();
+        setSpeechState("idle");
+        setMessage("Narration finished.");
+      };
+      audio.onerror = () => {
+        if (requestId !== requestIdRef.current) return;
+        releaseAudio();
+        setSpeechState("idle");
+        setMessage("Audio playback failed. You can still read the story above.");
+      };
+
+      await audio.play();
+      if (requestId !== requestIdRef.current) return;
       setSpeechState("playing");
       setMessage("");
+    } catch (error) {
+      if (error?.name === "AbortError" || requestId !== requestIdRef.current) return;
+      releaseAudio();
+      abortRef.current = null;
+      setSpeechState("idle");
+      setMessage(error?.message || "Voice generation failed. Try again.");
+    }
+  }
+
+  async function togglePause() {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (speechState === "playing") {
+      audio.pause();
+      setSpeechState("paused");
+      setMessage("Narration paused.");
+      return;
+    }
+
+    if (speechState === "paused") {
+      try {
+        await audio.play();
+        setSpeechState("playing");
+        setMessage("");
+      } catch {
+        setMessage("Press Play again to continue narration.");
+      }
     }
   }
 
   function stop() {
     if (!supported) return;
-    window.speechSynthesis.cancel();
-    utteranceRef.current = null;
+    cancelCurrentRequest();
     setSpeechState("idle");
     setMessage("Narration stopped.");
   }
@@ -106,7 +154,7 @@ export default function VoiceGuide({ location, story }) {
     return (
       <section className="voice-guide is-unavailable" aria-label="Voice guide">
         <Volume2 size={18} />
-        <span>Voice playback is not supported in this browser. The story remains available above.</span>
+        <span>Audio playback is not supported in this browser. The story remains available above.</span>
       </section>
     );
   }
@@ -134,9 +182,10 @@ export default function VoiceGuide({ location, story }) {
       </label>
       <div className="voice-controls">
         <button type="button" onClick={play} disabled={supported !== true || speechState !== "idle"}>
-          <Play size={15} /> Play
+          {speechState === "loading" ? <LoaderCircle className="spin" size={15} /> : <Play size={15} />}
+          {speechState === "loading" ? "Generating" : "Play"}
         </button>
-        <button type="button" onClick={togglePause} disabled={!['playing', 'paused'].includes(speechState)}>
+        <button type="button" onClick={togglePause} disabled={!["playing", "paused"].includes(speechState)}>
           {speechState === "paused" ? <Play size={15} /> : <Pause size={15} />}
           {speechState === "paused" ? "Resume" : "Pause"}
         </button>
@@ -145,7 +194,7 @@ export default function VoiceGuide({ location, story }) {
         </button>
       </div>
       <p className="voice-status" aria-live="polite">
-        {message || (speechState === "playing" ? `Playing as ${NARRATOR_PROFILES[profileId].label.toLowerCase()}.` : "Ready to play a short original recap.")}
+        {message || (speechState === "playing" ? `Playing as ${NARRATOR_PROFILES[profileId].label.toLowerCase()}.` : "Ready to stream an AI-generated original recap.")}
       </p>
     </section>
   );
