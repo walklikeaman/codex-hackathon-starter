@@ -7,6 +7,12 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-22] update | Retire alternate-agent references
+
+- GitHub permissions and Contributors API confirmed that the retired agent is neither a collaborator nor a listed contributor.
+- Removed its current references from tracked files and retired its already-merged remote branch.
+- Historical commit trailers were left intact because rewriting shared history would require a disruptive force-push and is unnecessary for the current contributor list.
+
 ## [2026-07-22] update | README architecture and Codex development story
 
 - README теперь включает воспроизводимые инструкции локального запуска и проверочный путь для оценки проекта.
