@@ -9,10 +9,20 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ## [2026-07-21] update | AI-guided film tour
 
-- Добавлен server-only `POST /api/tour`: Responses API с `gpt-5.6-terra` возвращает русскоязычную экскурсию по выбранному фильму через Structured Outputs.
-- Модель получает только выбранный фильм и до пяти текущих проверенных локаций SceneMap — как live Wikidata, так и fallback; схема и пост-проверка отклоняют неизвестные, пропущенные и повторяющиеся точки.
-- UI показывает AI-рассказ и строит реальный пешеходный маршрут в предложенном порядке; поиск города и ручной маршрут из 3–5 точек сохранены.
-- Проверено: 9 unit-тестов, production build, реальный API-вызов и браузерные AI/manual paths; консоль без ошибок.
+- Added server-only `POST /api/tour`: OpenAI Responses API with `gpt-5.6-terra` returns an English tour through Structured Outputs.
+- The model receives only the selected film and up to five current verified SceneMap locations, whether live Wikidata or fallback; schema and post-validation reject unknown, missing, or duplicated stops.
+- The English-only UI shows the AI story and builds a real walking route in the suggested order while preserving city search, location image search, and the manual 3–5 stop route.
+- Verified with 9 unit tests, a production build, a real API call, and browser AI/manual paths with a clean console.
+
+## [2026-07-21] update | English-only UI review fix
+
+- Translated all user-facing copy, accessibility labels, loading text, metadata, and API error messages under `app/` to English in response to PR #13 review feedback.
+- Verified zero Cyrillic strings remain under `app/`, all four unit tests pass, the production build succeeds, and the live-data card plus image-search link work in an isolated browser session.
+
+## [2026-07-21] update | Location image search
+
+- Added a "Find scenes filmed here" action to every location card; it builds a focused image-search query from the film, place, and scene and opens Bing Images in a new tab.
+- Kept the demo independent from API keys and embedded third-party results; verified the production build, unit tests, two location-specific queries, and the external search flow in a real browser.
 
 ## [2026-07-21] update | City search for the live film map
 
