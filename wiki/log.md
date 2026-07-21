@@ -17,6 +17,12 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 - Expanded the Wikidata endpoint to return films and television series by filming location (`P915`), plus books by narrative location (`P840`), all restricted to the selected map area.
 - The map balances returned work types and labels every result, map pin, list entry, and detail card as Film, Series, or Book.
 
+## [2026-07-21] update | Local recreate-the-shot demo
+
+- Added the issue #21 mobile flow from each location card: local photo upload, adjustable overlay, then/now comparison, reset, and repeat upload.
+- User images remain browser-only object URLs; the flow has no upload request or persistent storage.
+- Verified the complete flow at 390 px in Chromium, including a long live-location title, keyboard opacity control, reset/re-upload, zero mutating network requests, all unit tests, and a production build.
+
 ## [2026-07-21] update | AI-guided film tour
 
 - Added server-only `POST /api/tour`: OpenAI Responses API with `gpt-5.6-terra` returns an English tour through Structured Outputs.
