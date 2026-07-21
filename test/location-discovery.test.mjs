@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { zodTextFormat } from "openai/helpers/zod";
 import {
   discoveredLocationsSchema,
   discoveryRequestSchema,
@@ -11,6 +12,14 @@ const request = discoveryRequestSchema.parse({
   city: { name: "London", lat: 51.5072, lng: -0.1276, radiusKm: 20 },
   work: { id: "Q4941", title: "Skyfall", kind: "film" },
   existingLocations: [{ place: "National Gallery", lat: 51.5089, lng: -0.1283 }],
+});
+
+test("uses a Structured Outputs schema supported by OpenAI", () => {
+  const format = zodTextFormat(discoveredLocationsSchema, "researched_story_locations");
+  const sourceUrl = format.schema.properties.locations.items.properties.sourceUrl;
+
+  assert.equal(sourceUrl.type, "string");
+  assert.equal(sourceUrl.format, undefined);
 });
 
 test("extracts complete consulted sources from web search output", () => {
