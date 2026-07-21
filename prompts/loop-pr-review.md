@@ -8,7 +8,7 @@ Step 1 (pass 1 — correctness): Review the full diff with `git diff main...HEAD
 
 Step 2 (pass 2 — completeness): Check for: tests missing for new code, stale comments, dead code introduced by the change, TODO hacks that need resolution before ship, probe/scratch files that should be deleted.
 
-Step 3 (pass 3 — style/wiki): Check for: naming inconsistencies, formatting drift, CLAUDE.md rules violated, wiki pages that need updating, cross-links missing.
+Step 3 (pass 3 — style/wiki): Check for: naming inconsistencies, formatting drift, AGENTS.md rules violated, wiki pages that need updating, cross-links missing.
 
 Apply fixes for each finding before the next pass. After three clean passes, report a summary of what was found and fixed.
 
