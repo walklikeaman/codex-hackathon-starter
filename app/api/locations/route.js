@@ -2,6 +2,35 @@ import { NextResponse } from "next/server";
 
 const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
 const DEFAULTS = { lat: 51.5072, lng: -0.1276, radius: 15, limit: 100 };
+const WORK_QUERIES = [
+  {
+    kind: "film",
+    statement: `
+      ?work wdt:P31 wd:Q11424 ;
+            wdt:P915 ?location .
+      BIND("film" AS ?kind)
+      BIND("filming" AS ?locationSource)`,
+  },
+  {
+    kind: "series",
+    statement: `
+      ?work wdt:P31/wdt:P279* wd:Q5398426 ;
+            ?locationProperty ?location .
+      VALUES ?locationProperty { wdt:P915 wdt:P840 }
+      BIND("series" AS ?kind)
+      BIND(IF(?locationProperty = wdt:P840, "narrative", "filming") AS ?locationSource)`,
+  },
+  {
+    kind: "book",
+    geoFirst: false,
+    statement: `
+      hint:Query hint:optimizer "None" .
+      ?work wdt:P31 wd:Q571 ;
+            wdt:P840 ?location .
+      BIND("book" AS ?kind)
+      BIND("narrative" AS ?locationSource)`,
+  },
+];
 
 function numberParam(value, fallback, { min, max }) {
   if (value === null) return fallback;
@@ -26,22 +55,45 @@ function secureImageUrl(value) {
   return value?.replace(/^http:\/\//, "https://") ?? null;
 }
 
-function sparql({ lat, lng, radius, limit }) {
+function sparql({ lat, lng, radius, limit, statement, geoFirst = true }) {
+  const around = `
+    SERVICE wikibase:around {
+      ?location wdt:P625 ?coord .
+      bd:serviceParam wikibase:center "Point(${lng} ${lat})"^^geo:wktLiteral .
+      bd:serviceParam wikibase:radius "${radius}" .
+    }`;
+
   return `
-SELECT ?work ?workLabel ?location ?locationLabel ?coord ?releaseDate ?tmdbId ?image WHERE {
-  SERVICE wikibase:around {
-    ?location wdt:P625 ?coord .
-    bd:serviceParam wikibase:center "Point(${lng} ${lat})"^^geo:wktLiteral .
-    bd:serviceParam wikibase:radius "${radius}" .
-  }
-  ?work wdt:P31 wd:Q11424 ;
-        wdt:P915 ?location .
+SELECT ?work ?workLabel ?location ?locationLabel ?coord ?kind ?locationSource ?releaseDate ?inceptionDate ?tmdbId ?image WHERE {
+  ${geoFirst ? around : ""}
+  ${statement}
+  ${geoFirst ? "" : around}
   OPTIONAL { ?work wdt:P577 ?releaseDate . }
+  OPTIONAL { ?work wdt:P571 ?inceptionDate . }
   OPTIONAL { ?work wdt:P4947 ?tmdbId . }
   OPTIONAL { ?location wdt:P18 ?image . }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en,ru" . }
 }
-LIMIT ${limit * 3}`;
+LIMIT ${limit}`;
+}
+
+function balanceKinds(locationMap, limit) {
+  const groups = { film: [], series: [], book: [] };
+
+  for (const location of locationMap.values()) {
+    groups[location.kind]?.push(location);
+  }
+
+  const balanced = [];
+  while (balanced.length < limit && Object.values(groups).some((group) => group.length)) {
+    for (const kind of ["film", "series", "book"]) {
+      const location = groups[kind].shift();
+      if (location) balanced.push(location);
+      if (balanced.length === limit) break;
+    }
+  }
+
+  return balanced;
 }
 
 export async function GET(request) {
@@ -58,58 +110,71 @@ export async function GET(request) {
     );
   }
 
-  const endpoint = new URL(WIKIDATA_ENDPOINT);
-  endpoint.searchParams.set("query", sparql({ lat, lng, radius, limit }));
-  endpoint.searchParams.set("format", "json");
-
   try {
-    const response = await fetch(endpoint, {
-      headers: {
-        Accept: "application/sparql-results+json",
-        "User-Agent": "SceneMap/1.0 (film-location map API)",
-      },
-      next: { revalidate: 3600 },
-    });
+    const perKindLimit = Math.max(10, Math.ceil(limit / WORK_QUERIES.length) * 2);
+    const results = await Promise.allSettled(WORK_QUERIES.map(async ({ kind, statement, geoFirst }) => {
+      const endpoint = new URL(WIKIDATA_ENDPOINT);
+      endpoint.searchParams.set("query", sparql({ lat, lng, radius, limit: perKindLimit, statement, geoFirst }));
+      endpoint.searchParams.set("format", "json");
 
-    if (!response.ok) {
-      throw new Error(`Wikidata responded with ${response.status}`);
-    }
+      const response = await fetch(endpoint, {
+        headers: {
+          Accept: "application/sparql-results+json",
+          "User-Agent": "SceneMap/1.0 (film-book-series location map API)",
+        },
+        signal: AbortSignal.timeout(30_000),
+        next: { revalidate: 3600 },
+      });
 
-    const payload = await response.json();
+      if (!response.ok) throw new Error(`${kind}: Wikidata responded with ${response.status}`);
+      return response.json();
+    }));
+
+    const payloads = results
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value);
+    if (!payloads.length) throw new Error("Wikidata returned no successful work-location responses");
+
     const locations = new Map();
 
-    for (const row of payload.results.bindings) {
-      const workWikidataId = wikidataId(row.work?.value);
-      const locWikidataId = wikidataId(row.location?.value);
-      const point = coordinates(row.coord?.value);
-      if (!workWikidataId || !locWikidataId || !point) continue;
+    for (const payload of payloads) {
+      for (const row of payload.results.bindings) {
+        const workWikidataId = wikidataId(row.work?.value);
+        const locWikidataId = wikidataId(row.location?.value);
+        const point = coordinates(row.coord?.value);
+        if (!workWikidataId || !locWikidataId || !point) continue;
 
-      const key = `${workWikidataId}:${locWikidataId}`;
-      const current = locations.get(key);
-      locations.set(key, current ?? {
-        work_wikidata_id: workWikidataId,
-        work_title: row.workLabel?.value ?? workWikidataId,
-        work_year: releaseYear(row.releaseDate?.value),
-        film_tmdb_id: row.tmdbId?.value ?? null,
-        kind: "film",
-        loc_wikidata_id: locWikidataId,
-        loc_name: row.locationLabel?.value ?? locWikidataId,
-        lat: point.lat,
-        lng: point.lng,
-        commons_image: secureImageUrl(row.image?.value),
-      });
+        const kind = row.kind?.value;
+        if (!Object.hasOwn({ film: true, series: true, book: true }, kind)) continue;
+
+        const key = `${kind}:${workWikidataId}:${locWikidataId}`;
+        const current = locations.get(key);
+        locations.set(key, current ?? {
+          work_wikidata_id: workWikidataId,
+          work_title: row.workLabel?.value ?? workWikidataId,
+          work_year: releaseYear(row.releaseDate?.value ?? row.inceptionDate?.value),
+          film_tmdb_id: kind === "film" ? row.tmdbId?.value ?? null : null,
+          kind,
+          location_source: row.locationSource?.value ?? null,
+          loc_wikidata_id: locWikidataId,
+          loc_name: row.locationLabel?.value ?? locWikidataId,
+          lat: point.lat,
+          lng: point.lng,
+          commons_image: secureImageUrl(row.image?.value),
+        });
+      }
     }
 
     return NextResponse.json(
       {
         center: { lat, lng },
         radius_km: radius,
-        locations: [...locations.values()].slice(0, limit),
+        locations: balanceKinds(locations, limit),
       },
       { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" } },
     );
   } catch (error) {
     console.error("Wikidata locations request failed", error);
-    return NextResponse.json({ error: "Unable to retrieve filming locations from Wikidata" }, { status: 502 });
+    return NextResponse.json({ error: "Unable to retrieve work locations from Wikidata" }, { status: 502 });
   }
 }
