@@ -22,3 +22,7 @@ For a newly linked project, use `vercel deploy --target=preview`; the first plai
 ## Guardrail: Protect the demo path
 Before starting a new feature, confirm the one locked demo flow still works.
 A green demo that does one thing beats a broken one that tries five.
+
+## Guardrail: One Next.js writer per checkout
+Never run `next build` while `next dev` or another build uses the same checkout.
+They share `.next` and concurrent writers can corrupt the dev/runtime manifest.
