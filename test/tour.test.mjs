@@ -78,3 +78,53 @@ test("rejects duplicated location ids in a tour request", () => {
     locations: [location, location],
   }).success, false);
 });
+
+test("accepts a timed multi-film tour in a preserved order", () => {
+  const request = tourRequestSchema.parse({
+    city: "London",
+    durationMinutes: 60,
+    preserveOrder: true,
+    locations: [
+      {
+        id: "first",
+        place: "First place",
+        scene: "First scene",
+        description: "First verified description.",
+        film: "First film",
+      },
+      {
+        id: "second",
+        place: "Second place",
+        scene: "Second scene",
+        description: "Second verified description.",
+        film: "Second film",
+      },
+      {
+        id: "third",
+        place: "Third place",
+        scene: "Third scene",
+        description: "Third verified description.",
+        film: "Third film",
+      },
+    ],
+  });
+
+  assert.equal(request.film, undefined);
+  assert.equal(request.preserveOrder, true);
+});
+
+test("rejects a changed stop order when the route must be preserved", () => {
+  const tour = {
+    title: "Changed order",
+    intro: "A short introduction",
+    stops: [
+      { locationId: "second", narration: "Second" },
+      { locationId: "first", narration: "First" },
+    ],
+  };
+
+  assert.throws(
+    () => assertCompleteTour(tour, locationIds, true),
+    /changed the verified route order/,
+  );
+});

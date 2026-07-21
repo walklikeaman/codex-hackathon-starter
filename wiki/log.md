@@ -13,9 +13,22 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ## [2026-07-21] update | Correct image PR synced with current main
 
-- Resolved PR #24 conflicts with the books/series, nearby-location, and recreate-the-shot changes from current `main` without rewriting branch history.
+- Resolved PR #24 conflicts with the books/series, nearby-location, timed-tour, voice-guide, and recreate-the-shot changes from current `main` without rewriting branch history.
 - Preserved TMDB IDs only for films, HTTPS Commons place images, and the balanced Film/Series/Book API response.
-- Recreate-the-shot now opens only with a real reference image; verified 23 unit tests, the production build, no-token fallback, and the TMDB-backed dialog in Chromium.
+- Recreate-the-shot opens only with a real reference image; the combined branch is covered by the final PR checks.
+
+## [2026-07-21] update | Nearby search integrated with timed and voice tours
+
+- Integrated current `main` and its #17 nearby-radius flow while preserving city/geolocation tour planning, books and series, recreate-the-shot, real walking routes, and OpenAI MP3 narration.
+- Verified the resolved component with 38 unit tests, a production build, and a real browser flow: geolocation found National Gallery at 101 m, the timed planner built five stops at 4.7 km / 63 min, and the voice guide played the generated narration.
+
+## [2026-07-21] update | Timed nearby tours and OpenAI voice guide
+
+- Added 30/60/120-minute tour planning from a searched city or browser geolocation. The deterministic planner combines duplicate works at one physical place, chooses 3–5 nearby stops, and accepts only walking-router results within the 15% budget tolerance.
+- `Start tour` transfers the planned stops into the existing route and rebuilds them through `/api/route`; the route handler now supports both merged request contracts and returns normalized plus legacy metrics.
+- AI adds short original stories when available; verified location descriptions remain a deterministic fallback when `OPENAI_API_KEY` or the AI service is unavailable.
+- Added server-side `gpt-4o-mini-tts` MP3 narration with Play, Pause/Resume, Stop, spoiler-free copy, high-quality `marin` and `cedar` voices, and automatic stop on location changes. `OPENAI_API_KEY` never reaches the browser.
+- Verified with 30 unit tests, a production build, real `gpt-5.6-terra` timed tours, a real 89 KB OpenAI MP3, Play/Pause/Resume/Stop, automatic stop on location change, a post-merge 5-stop route (4.7 km, 63 min), deterministic AI-off fallback, geolocation, and a clean-console normal browser flow.
 
 ## [2026-07-21] update | Show every fetched work in the map UI
 
