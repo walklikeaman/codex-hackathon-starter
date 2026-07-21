@@ -4,13 +4,13 @@
 
 GloryMap transforms your personal film library into an interactive map of real filming locations and story settings. Import a Letterboxd export, pick a city, discover which of your movies were filmed nearby, and build a walk that takes you from one scene to the next.
 
-[🌍 Open the live demo](https://codex-hackathon-starter-nakonechnyin-8566-walklikeaman1904.vercel.app)
+[🌍 Open the live demo](https://codex-hackathon-starter.vercel.app)
 
 ## ⚡ The elevator pitch
 
 Every day, we spend hours inside stories. Some films stay with us for life. Some series become companions we follow for ten years. Some books describe places so vividly that they begin to feel familiar before we have ever been there.
 
-GloryMap turns those emotional connections into real journeys. It brings together favorites from services such as Letterboxd, Netflix, Prime Video, Goodreads, and Kindle, then places their filming locations and story settings on one personal map.
+GloryMap turns those emotional connections into real journeys. Our long-term vision is to bring together favorites from services such as Letterboxd, Netflix, Prime Video, Goodreads, and Kindle, then place their filming locations and story settings on one personal map. Today, the working product imports Letterboxd and IMDb files and supports title search for films, series, and books.
 
 Choose a city and GloryMap shows you the places connected to the stories you already love. Revisit the scene, compare then and now, listen to its story, save the places you want to visit, and build a walking route through several meaningful locations.
 
@@ -174,8 +174,56 @@ wiki/                       Decisions, incidents and accumulated project knowled
 - Shareable personal tours without exposing a full library
 - Broader city coverage while keeping every location traceable to a source
 
+## 🤖 How GPT-5.6 powers GloryMap
+
+GPT-5.6 is part of the product workflow, not a decorative chat layer.
+
+- **Grounded location discovery:** when Wikidata coverage is sparse,
+  `app/api/locations/discover/route.js` uses GPT-5.6 with OpenAI web search.
+  Every returned location must be supported by a consulted source, stay inside
+  the selected city boundary, preserve an exact source URL, pass a Zod
+  Structured Outputs schema, and survive application-level validation.
+- **Validated tour generation:** `app/api/tour/route.js` sends only verified
+  locations to GPT-5.6. The model writes short original guide narration through
+  Structured Outputs. Server-side checks reject missing, duplicated, unknown, or
+  reordered stops; timed tours preserve the order already validated against real
+  walking directions.
+- **Honest supporting AI:** OpenAI vision handles conservative place-to-scene
+  matching, while OpenAI text-to-speech creates optional narration. These use
+  separate model paths and are not presented as GPT-5.6 features.
+
+All Responses API calls run on server routes with `store: false`. API keys never
+reach the browser, and untrusted user or source strings are treated as data
+rather than instructions.
+
+## 🧑‍💻 How Codex accelerated the build
+
+Codex was our primary engineering environment during OpenAI Build Week. The
+repository's dated commit history and primary Codex session record document that
+work.
+
+We used Codex to:
+
+- turn one demo goal into small feature branches with explicit success criteria;
+- implement the Next.js interface, API routes, validation schemas, local
+  Letterboxd/IMDb import, walking planner, and OpenAI integrations;
+- inspect and integrate concurrent teammate branches without losing the complete
+  demo path;
+- reproduce live failures against Wikidata, OpenAI Structured Outputs, TMDB, the
+  walking router, and Vercel instead of guessing from local code;
+- write regression tests for imports, schemas, sources, routing, tours, scene
+  matching, and negative API paths;
+- run the test suite, production builds, and real-browser checks after meaningful
+  changes;
+- record decisions and incidents in `wiki/log.md`, allowing later Codex sessions
+  and teammates to reuse verified findings.
+
+The most important decisions were collaborative: prefer traceable evidence over
+plausible-looking volume, keep personal imports and photos local, validate every
+AI boundary, and protect one complete end-to-end journey before expanding scope.
+
 ## 🤝 Built for OpenAI Build Week
 
 GloryMap started as a focused hackathon idea: make one end-to-end experience feel real. The project is built with Codex-assisted engineering, a cumulative `wiki/`, explicit guardrails, and browser-verified demo loops so the repository remembers not only what changed, but why.
 
-If you are reviewing the project, start with the [live demo](https://codex-hackathon-starter-nakonechnyin-8566-walklikeaman1904.vercel.app), import a Letterboxd ZIP, and take your movies for a walk. 🍿
+If you are reviewing the project, start with the [live demo](https://codex-hackathon-starter.vercel.app), import a Letterboxd ZIP, and take your movies for a walk. 🍿
