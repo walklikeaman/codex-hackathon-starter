@@ -14,7 +14,7 @@ export async function POST(request) {
     stops = validateRouteStops(body?.stops);
   } catch {
     return Response.json(
-      { error: "Передайте от 2 до 5 корректных точек маршрута." },
+      { error: "Provide 2 to 5 valid route stops." },
       { status: 400 },
     );
   }
@@ -52,7 +52,7 @@ export async function POST(request) {
     });
 
     return Response.json(
-      { error: "Пешеходный роутер временно недоступен." },
+      { error: "The walking router is temporarily unavailable." },
       { status: 502 },
     );
   }
