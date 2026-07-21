@@ -3,11 +3,191 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import { Clapperboard, LoaderCircle, MapPin, Plus, Route, Search, Sparkles, Upload, X } from "lucide-react";
-import { films, locations, londonCenter } from "../lib/scenemap-data";
+import { Clapperboard, LoaderCircle, MapPin, Plus, Route, Search, Sparkles, X } from "lucide-react";
 
-function RecenterOnSelection({ position }) {
+const londonCenter = [51.5094, -0.1183];
+
+const fallbackFilms = [
+  {
+    id: "notting-hill",
+    title: "Notting Hill",
+    year: 1999,
+    code: "NH",
+  },
+  {
+    id: "skyfall",
+    title: "Skyfall",
+    year: 2012,
+    code: "007",
+  },
+  {
+    id: "harry-potter",
+    title: "Harry Potter",
+    year: 2001,
+    code: "HP",
+  },
+  {
+    id: "sherlock",
+    title: "Sherlock Holmes",
+    year: 2009,
+    code: "SH",
+  },
+  {
+    id: "love-actually",
+    title: "Love Actually",
+    year: 2003,
+    code: "LA",
+  },
+];
+
+const fallbackLocations = [
+  {
+    id: "portobello-road",
+    filmId: "notting-hill",
+    film: "Notting Hill",
+    scene: "Portobello morning walk",
+    place: "Portobello Road Market",
+    description: "William walks through the changing seasons of Notting Hill, turning a street market into the film's emotional timeline.",
+    position: [51.5156, -0.2057],
+    backdrop: "https://images.unsplash.com/photo-1533929736458-ca588d08c8be?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1555085634-25c3c9c10b6b?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "blue-door",
+    filmId: "notting-hill",
+    film: "Notting Hill",
+    scene: "The blue door",
+    place: "Westbourne Park Road",
+    description: "The private home behind the blue door anchors the romance in a real London neighborhood.",
+    position: [51.5174, -0.1993],
+    backdrop: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1578269174936-2709b6aeb913?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "mi6",
+    filmId: "skyfall",
+    film: "Skyfall",
+    scene: "MI6 on the Thames",
+    place: "Vauxhall Cross",
+    description: "Bond's world is framed by the real MI6 headquarters on the river, one of modern spy cinema's clearest London signals.",
+    position: [51.4874, -0.1247],
+    backdrop: "https://images.unsplash.com/photo-1510279770292-4b34de9f5c23?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1529655683826-aba9b3e77383?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "national-gallery",
+    filmId: "skyfall",
+    film: "Skyfall",
+    scene: "Q meets Bond",
+    place: "National Gallery",
+    description: "Bond and Q meet in front of Turner's painting, setting the old-versus-new theme in a public landmark.",
+    position: [51.5089, -0.1283],
+    backdrop: "https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "kings-cross",
+    filmId: "harry-potter",
+    film: "Harry Potter",
+    scene: "Platform 9 3/4",
+    place: "King's Cross Station",
+    description: "The gateway to Hogwarts turns a busy railway station into a pilgrimage point for fans.",
+    position: [51.532, -0.1233],
+    backdrop: "https://images.unsplash.com/photo-1517563259479-5b9d0f9d0448?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1590253230532-a67f6bc61c9e?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "leadenhall",
+    filmId: "harry-potter",
+    film: "Harry Potter",
+    scene: "Entrance to Diagon Alley",
+    place: "Leadenhall Market",
+    description: "Victorian arches stand in for the magical shopping street hidden inside ordinary London.",
+    position: [51.5126, -0.0834],
+    backdrop: "https://images.unsplash.com/photo-1533929736458-ca588d08c8be?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "st-pauls",
+    filmId: "sherlock",
+    film: "Sherlock Holmes",
+    scene: "Old London pursuit",
+    place: "St Paul's Cathedral",
+    description: "The cathedral and surrounding streets sell the film's smoky, industrial version of London.",
+    position: [51.5138, -0.0984],
+    backdrop: "https://images.unsplash.com/photo-1543832923-44667a44c804?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1520986606214-8b456906c813?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "parliament",
+    filmId: "sherlock",
+    film: "Sherlock Holmes",
+    scene: "Westminster stakes",
+    place: "Houses of Parliament",
+    description: "The detective story borrows Westminster's silhouette to make the conspiracy feel national.",
+    position: [51.4995, -0.1248],
+    backdrop: "https://images.unsplash.com/photo-1529655683826-aba9b3e77383?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1496307653780-42ee777d4833?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "south-bank",
+    filmId: "love-actually",
+    film: "Love Actually",
+    scene: "Riverside London",
+    place: "South Bank",
+    description: "The ensemble romance uses the Thames walk to make separate lives feel connected by the same city.",
+    position: [51.5066, -0.1162],
+    backdrop: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1505761671935-60b3a7427bad?auto=format&fit=crop&w=1200&q=80",
+  },
+  {
+    id: "somerset-house",
+    filmId: "love-actually",
+    film: "Love Actually",
+    scene: "Christmas London",
+    place: "Somerset House",
+    description: "A classic central London courtyard gives the film its polished winter-city texture.",
+    position: [51.5111, -0.1171],
+    backdrop: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1577048982768-5cb3e7ddfa23?auto=format&fit=crop&w=1200&q=80",
+  },
+];
+
+function locationsFromApi(records) {
+  return records
+    .map((record) => ({
+      id: `${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+      filmId: record.work_wikidata_id,
+      film: record.work_title,
+      scene: record.work_title,
+      place: record.loc_name,
+      description: `Filming location for ${record.work_title}${record.work_year ? ` (${record.work_year})` : ""}.`,
+      position: [record.lat, record.lng],
+      backdrop: record.commons_image,
+      now: record.commons_image,
+      year: record.work_year,
+    }))
+    .filter((location) => Number.isFinite(location.position[0]) && Number.isFinite(location.position[1]));
+}
+
+function filmsFromLocations(sourceLocations) {
+  return [...new Map(sourceLocations.map((location) => [
+    location.filmId,
+    {
+      id: location.filmId,
+      title: location.film,
+      year: location.year,
+      code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
+    },
+  ])).values()].slice(0, 5);
+}
+
+function RecenterOnSelection({ center, position }) {
   const map = useMap();
+
+  useEffect(() => {
+    map.flyTo(center, 12, { duration: 0.8 });
+  }, [center, map]);
 
   useEffect(() => {
     if (position) {
@@ -73,21 +253,71 @@ function makeFallbackRoute(routeStops) {
 }
 
 export default function SceneMapApp() {
+  const [liveLocations, setLiveLocations] = useState(null);
+  const [mapCenter, setMapCenter] = useState(londonCenter);
+  const [cityQuery, setCityQuery] = useState("London");
+  const [cityName, setCityName] = useState("London");
+  const [citySearchStatus, setCitySearchStatus] = useState("");
   const routeRequestId = useRef(0);
-  const [selectedFilms, setSelectedFilms] = useState(() => films.map((film) => film.id));
-  const [activeLocation, setActiveLocation] = useState(locations[0]);
+  const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
+  const [activeLocation, setActiveLocation] = useState(fallbackLocations[0]);
   const [routeStops, setRouteStops] = useState([]);
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
   const [routeMessage, setRouteMessage] = useState("");
-  const [tourFilmId, setTourFilmId] = useState(films[0].id);
+  const [tourFilmId, setTourFilmId] = useState(fallbackFilms[0].id);
   const [aiTour, setAiTour] = useState(null);
   const [aiTourStatus, setAiTourStatus] = useState("idle");
   const [aiTourError, setAiTourError] = useState("");
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLocations() {
+      try {
+        const response = await fetch(`/api/locations?lat=${mapCenter[0]}&lng=${mapCenter[1]}&radius=5&limit=30`);
+        if (!response.ok) throw new Error("Locations API failed");
+        const payload = await response.json();
+        const nextLocations = locationsFromApi(payload.locations ?? []);
+        if (!nextLocations.length) throw new Error("Locations API returned no usable points");
+        if (cancelled) return;
+
+        const nextFilms = filmsFromLocations(nextLocations);
+        setLiveLocations(nextLocations);
+        setSelectedFilms(nextFilms.map((film) => film.id));
+        setActiveLocation(nextLocations[0]);
+        setTourFilmId(nextFilms[0]?.id ?? "");
+        setAiTour(null);
+        setAiTourStatus("idle");
+        setAiTourError("");
+        setRouteStops([]);
+        setRouteResult(null);
+        setRouteStatus("idle");
+        setRouteMessage("");
+      } catch {
+        // Keep the local demo locations visible if Wikidata is temporarily unavailable.
+      }
+    }
+
+    loadLocations();
+    return () => { cancelled = true; };
+  }, [mapCenter]);
+
+  const sourceLocations = liveLocations ?? fallbackLocations;
+  const films = useMemo(
+    () => liveLocations ? filmsFromLocations(sourceLocations) : fallbackFilms,
+    [liveLocations, sourceLocations],
+  );
+
+  useEffect(() => {
+    if (!films.some((film) => film.id === tourFilmId)) {
+      setTourFilmId(films[0]?.id ?? "");
+    }
+  }, [films, tourFilmId]);
+
   const visibleLocations = useMemo(
-    () => locations.filter((location) => selectedFilms.includes(location.filmId)),
-    [selectedFilms],
+    () => sourceLocations.filter((location) => selectedFilms.includes(location.filmId)),
+    [selectedFilms, sourceLocations],
   );
 
   const routePositions = routeResult?.positions ?? [];
@@ -168,6 +398,18 @@ export default function SceneMapApp() {
   }
 
   async function buildAiTour() {
+    const film = films.find((item) => item.id === tourFilmId);
+    const filmLocations = sourceLocations
+      .filter((location) => location.filmId === tourFilmId)
+      .slice(0, 5);
+
+    if (!film || filmLocations.length === 0) {
+      setAiTourStatus("error");
+      setAiTourError("Для этого фильма пока нет проверенных локаций");
+      return;
+    }
+
+    setAiTour(null);
     setAiTourStatus("loading");
     setAiTourError("");
 
@@ -175,7 +417,20 @@ export default function SceneMapApp() {
       const response = await fetch("/api/tour", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filmId: tourFilmId }),
+        body: JSON.stringify({
+          city: cityName,
+          film: {
+            id: film.id,
+            title: film.title,
+            year: film.year ?? null,
+          },
+          locations: filmLocations.map(({ id, place, scene, description }) => ({
+            id,
+            place,
+            scene,
+            description,
+          })),
+        }),
       });
       const payload = await response.json().catch(() => ({}));
 
@@ -183,9 +438,8 @@ export default function SceneMapApp() {
         throw new Error(payload.error || "Не удалось собрать AI-экскурсию");
       }
 
-      const orderedStops = payload.stops.map((stop) =>
-        locations.find((location) => location.id === stop.locationId),
-      );
+      const locationsById = new Map(filmLocations.map((location) => [location.id, location]));
+      const orderedStops = payload.stops.map((stop) => locationsById.get(stop.locationId));
 
       if (orderedStops.some((stop) => !stop)) {
         throw new Error("AI вернул неизвестную точку маршрута");
@@ -196,7 +450,12 @@ export default function SceneMapApp() {
       setActiveLocation(orderedStops[0]);
       setAiTour(payload);
       setAiTourStatus("success");
-      await buildRoute(orderedStops);
+
+      if (orderedStops.length > 1) {
+        await buildRoute(orderedStops);
+      } else {
+        invalidateRoute();
+      }
     } catch (error) {
       setAiTour(null);
       setAiTourStatus("error");
@@ -204,15 +463,41 @@ export default function SceneMapApp() {
     }
   }
 
+  async function searchCity(event) {
+    event.preventDefault();
+    const query = cityQuery.trim();
+    if (!query) return;
+
+    setCitySearchStatus("Searching city…");
+    try {
+      const response = await fetch(`/api/cities?q=${encodeURIComponent(query)}`);
+      const city = await response.json();
+      if (!response.ok) throw new Error(city.error);
+
+      setMapCenter([city.lat, city.lng]);
+      setCityName(city.name);
+      setLiveLocations([]);
+      setActiveLocation(null);
+      setRouteStops([]);
+      setAiTour(null);
+      setAiTourStatus("idle");
+      setAiTourError("");
+      invalidateRoute();
+      setCitySearchStatus("");
+    } catch {
+      setCitySearchStatus("City not found");
+    }
+  }
+
   return (
     <main className="scene-shell">
       <section className="map-stage" aria-label="Карта локаций SceneMap">
-        <MapContainer center={londonCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
+        <MapContainer center={mapCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
-          <RecenterOnSelection position={activeLocation?.position} />
+          <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
           {visibleLocations.map((location) => (
             <Marker
@@ -251,20 +536,24 @@ export default function SceneMapApp() {
           </div>
           <div>
             <p className="eyebrow">SceneMap MVP</p>
-            <h1>Кино-прогулка по Лондону</h1>
+            <h1>Кино-карта · {cityName}</h1>
           </div>
         </div>
 
-        <div className="action-row">
-          <button className="ghost-button" type="button">
+        <form className="city-search" onSubmit={searchCity}>
+          <Search size={17} aria-hidden="true" />
+          <input
+            aria-label="City"
+            onChange={(event) => setCityQuery(event.target.value)}
+            placeholder="City"
+            type="search"
+            value={cityQuery}
+          />
+          <button aria-label="Search city" className="ghost-button" type="submit">
             <Search size={17} />
-            Галерея
           </button>
-          <button className="ghost-button" type="button">
-            <Upload size={17} />
-            CSV позже
-          </button>
-        </div>
+        </form>
+        {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
         <div className="film-grid" aria-label="Выбранные фильмы">
           {films.map((film) => {
@@ -308,7 +597,7 @@ export default function SceneMapApp() {
                   setAiTour(null);
                   setAiTourError("");
                 }}
-                disabled={aiTourStatus === "loading"}
+                disabled={aiTourStatus === "loading" || films.length === 0}
               >
                 {films.map((film) => (
                   <option key={film.id} value={film.id}>{film.title}</option>
@@ -319,7 +608,7 @@ export default function SceneMapApp() {
               className="ai-tour-button"
               type="button"
               onClick={buildAiTour}
-              disabled={aiTourStatus === "loading"}
+              disabled={aiTourStatus === "loading" || !tourFilmId}
             >
               {aiTourStatus === "loading" ? (
                 <LoaderCircle className="loading-icon" size={17} />
@@ -341,7 +630,7 @@ export default function SceneMapApp() {
         <div className="location-list" aria-label="Точки на карте">
           <div className="section-row">
             <p className="eyebrow">Точки</p>
-            <span>{visibleLocations.length} в Лондоне</span>
+            <span>{visibleLocations.length} в {cityName}</span>
           </div>
           {visibleLocations.map((location) => (
             <div className="location-row" key={location.id}>
@@ -388,7 +677,7 @@ export default function SceneMapApp() {
             <p className="eyebrow">Истории на остановках</p>
             <ol>
               {aiTour.stops.map((stop) => {
-                const location = locations.find((item) => item.id === stop.locationId);
+                const location = sourceLocations.find((item) => item.id === stop.locationId);
 
                 return (
                   <li key={stop.locationId}>
@@ -419,7 +708,7 @@ export default function SceneMapApp() {
 
         {routeStatus === "loading" && (
           <p className="route-summary" role="status">
-            Строим маршрут по пешеходным улицам Лондона...
+            Строим маршрут по пешеходным улицам {cityName}...
           </p>
         )}
 

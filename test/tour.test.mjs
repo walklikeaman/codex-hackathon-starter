@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertCompleteTour, createTourSchema } from "../app/lib/tour-schema.mjs";
+import {
+  assertCompleteTour,
+  createTourSchema,
+  tourRequestSchema,
+} from "../app/lib/tour-schema.mjs";
 
 const locationIds = ["first", "second"];
 
@@ -41,4 +45,36 @@ test("schema rejects unknown location ids", () => {
       ],
     }),
   );
+});
+
+test("accepts a tour request built from live locations", () => {
+  const request = tourRequestSchema.parse({
+    city: "London",
+    film: { id: "Q123", title: "Example Film", year: 2024 },
+    locations: [
+      {
+        id: "Q123-Q456",
+        place: "Example Square",
+        scene: "Example Film",
+        description: "Filming location for Example Film (2024).",
+      },
+    ],
+  });
+
+  assert.equal(request.locations[0].id, "Q123-Q456");
+});
+
+test("rejects duplicated location ids in a tour request", () => {
+  const location = {
+    id: "same-location",
+    place: "Example Square",
+    scene: "Example Film",
+    description: "A known filming location.",
+  };
+
+  assert.equal(tourRequestSchema.safeParse({
+    city: "London",
+    film: { id: "Q123", title: "Example Film", year: null },
+    locations: [location, location],
+  }).success, false);
 });
