@@ -48,7 +48,7 @@ export async function POST(request) {
       instructions: [
         "You are a concise and engaging English-language guide to screen and story locations.",
         film
-          ? "Create a coherent short walking tour for the specified film."
+          ? "Create a coherent short walking tour for the specified film, series, or book."
           : "Create a coherent short walking tour across the supplied works.",
         "Use every supplied location exactly once and preserve each id unchanged.",
         preserveOrder
