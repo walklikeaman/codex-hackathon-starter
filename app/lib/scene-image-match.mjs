@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const MAX_TMDB_CANDIDATES = 6;
+export const MAX_TMDB_CANDIDATES = 24;
+export const SCENE_IMAGE_MATCH_VERSION = "2";
 
 const sceneImageRequestSchema = z.object({
   tmdbId: z.string().regex(/^[1-9]\d*$/),
@@ -40,6 +41,7 @@ export function parseSceneImageRequest(searchParams) {
 export function canonicalSceneImageQuery({ tmdbId, workId, locationId }, token = null) {
   const params = new URLSearchParams({ tmdbId, workId, locationId });
   if (token) params.set("token", token);
+  params.set("v", SCENE_IMAGE_MATCH_VERSION);
   return params.toString();
 }
 
@@ -115,10 +117,11 @@ export function buildSceneImageContent({
       type: "input_text",
       text: [
         `Context data: ${context}`,
-        "The first image is a present-day reference photo of the named place.",
+        "The first image is a present-day contextual photo of the named place and may show a different side from the filmed scene.",
         "The remaining numbered images are candidate backdrops from the film.",
-        "Return a candidate only when distinctive visible architecture, layout, or signage proves that it shows the same physical place.",
-        "Film or place names alone are not evidence. If the match is uncertain or the place is not visible, return candidateIndex -1 and confidence none.",
+        "The canonical film-location relationship is already verified; identify which candidate visually fits that location, including an interior-to-exterior or changed-era match.",
+        "Require visible support such as architecture, institutional setting, layout, landscape, or signage. Names alone are not enough.",
+        "If no candidate visibly fits the location or the choice is uncertain, return candidateIndex -1 and confidence none.",
       ].join(" "),
     },
     { type: "input_text", text: "REFERENCE LOCATION IMAGE" },
