@@ -54,6 +54,18 @@ function libraryKey(movie) {
   return movie.imdbId || `${movie.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}:${movie.year ?? ""}`;
 }
 
+function normalizedTitle(value) {
+  return value.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+export function workIsInLibrary(work, library) {
+  const title = normalizedTitle(work.title);
+  return library.some((movie) =>
+    normalizedTitle(movie.title) === title
+      && (!work.year || !movie.year || work.year === movie.year),
+  );
+}
+
 export function parseMediaCsv(text, source) {
   if (!new Set(["letterboxd", "imdb"]).has(source)) throw new Error("Unsupported media source");
   const [headerRow, ...dataRows] = parseCsvRows(text);
