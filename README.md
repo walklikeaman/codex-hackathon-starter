@@ -8,9 +8,13 @@ GloryMap transforms your personal film library into an interactive map of real f
 
 ## ⚡ The elevator pitch
 
-Streaming platforms remember what we watched, but they rarely help us experience those stories beyond the screen. GloryMap connects a personal movie library to the real world: upload a Letterboxd ZIP, choose a city, and instantly see the filming locations that belong to films you already care about. From there, you can explore scene context, compare the reference with the place today, hear an AI guide, and turn several stops into a walkable movie tour.
+Every day, we spend hours inside stories. Some films stay with us for life. Some series become companions we follow for ten years. Some books describe places so vividly that they begin to feel familiar before we have ever been there.
 
-It is part travel planner, part film companion, and part excuse to look at a familiar city differently.
+GloryMap turns those emotional connections into real journeys. It brings together favorites from services such as Letterboxd, Netflix, Prime Video, Goodreads, and Kindle, then places their filming locations and story settings on one personal map.
+
+Choose a city and GloryMap shows you the places connected to the stories you already love. Revisit the scene, compare then and now, listen to its story, save the places you want to visit, and build a walking route through several meaningful locations.
+
+GloryMap does not give you another generic list of tourist attractions. It helps you visit places that already mean something to you.
 
 ## ✨ What you can do
 
