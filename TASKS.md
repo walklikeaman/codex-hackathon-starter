@@ -29,10 +29,13 @@ Codex читает этот файл в начале сессии — здесь
 
 ## In progress
 
-- [ ] Restore cited web research for sparse location results — @Codex — `feature/location-discovery-hotfix` / PR #33
+- [ ] …
 
 ## Done
 
+- [x] Letterboxd ZIP import with automatic personal-library map filtering — @walklikeaman — `codex/interactive`
+- [x] Restore cited web research for sparse location results — @Codex — `feature/location-discovery-hotfix` / PR #33
+- [x] Gated Vercel staging/production workflows — @walklikeaman — `codex/interactive`
 - [x] Multi-place film/series/book search with city bounds, relation descriptions and cited sparse-result research — @Codex — `feature/multi-location-search`
 - [x] #18: 30/60/120-minute nearby tours from a city/geolocation with real walking-time validation and deterministic fallback — `feature/timed-voice-tour`
 - [x] #20: OpenAI TTS voice guide with narrator profiles, spoiler-free mode and Play/Pause/Resume/Stop — `feature/timed-voice-tour`
