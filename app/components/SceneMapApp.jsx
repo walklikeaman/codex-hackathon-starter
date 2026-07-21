@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import { Clapperboard, MapPin, Plus, Route, Search, Upload, X } from "lucide-react";
+import { Clapperboard, ExternalLink, MapPin, Plus, Route, Search, Upload, X } from "lucide-react";
 
 const londonCenter = [51.5094, -0.1183];
 
@@ -217,6 +217,18 @@ function makeFallbackRoute(routeStops) {
     durationMinutes: Math.max(8, Math.round((distanceKm / 4.6) * 60)),
     source: "fallback",
   };
+}
+
+function makeImageSearchUrl(location) {
+  const query = [
+    `"${location.film}"`,
+    `"${location.place}"`,
+    `"${location.scene}"`,
+    "movie scene filming location",
+  ].join(" ");
+  const params = new URLSearchParams({ q: query });
+
+  return `https://www.bing.com/images/search?${params.toString()}`;
 }
 
 export default function SceneMapApp() {
@@ -510,6 +522,16 @@ export default function SceneMapApp() {
                 <figcaption>место сейчас</figcaption>
               </figure>
             </div>
+            <a
+              className="ghost-button image-search-link"
+              href={makeImageSearchUrl(activeLocation)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Search size={18} />
+              Найти кадры здесь
+              <ExternalLink size={15} />
+            </a>
             <button className="wide-button" type="button" onClick={() => addRouteStop(activeLocation)}>
               <Route size={18} />
               В маршрут
