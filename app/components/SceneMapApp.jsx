@@ -30,7 +30,8 @@ import {
   formatDistanceMeters,
   zoomForRadius,
 } from "../lib/nearby.mjs";
-import { mergeLibraries, parseMediaCsv } from "../lib/media-library.mjs";
+import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
+import { mergeLibraries, parseMediaCsv, workIsInLibrary } from "../lib/media-library.mjs";
 import {
   TOUR_BUDGETS,
   createFallbackGuide,
@@ -579,6 +580,7 @@ export default function SceneMapApp() {
   });
   const [libraryQuery, setLibraryQuery] = useState("");
   const [importMessage, setImportMessage] = useState("");
+  const [libraryMapOnly, setLibraryMapOnly] = useState(false);
   const [recreateLocation, setRecreateLocation] = useState(null);
 
   useEffect(() => {
@@ -725,17 +727,35 @@ export default function SceneMapApp() {
     () => liveLocations ? worksFromLocations(sourceLocations) : fallbackFilms,
     [liveLocations, sourceLocations],
   );
+  const libraryFilmIds = useMemo(
+    () => new Set(films.filter((film) => workIsInLibrary(film, library)).map((film) => film.id)),
+    [films, library],
+  );
+  const mapFilms = useMemo(
+    () => libraryMapOnly ? films.filter((film) => libraryFilmIds.has(film.id)) : films,
+    [films, libraryFilmIds, libraryMapOnly],
+  );
 
   useEffect(() => {
-    if (!films.some((film) => film.id === tourFilmId)) {
-      setTourFilmId(films[0]?.id ?? "");
+    if (!mapFilms.some((film) => film.id === tourFilmId)) {
+      setTourFilmId(mapFilms[0]?.id ?? "");
     }
-  }, [films, tourFilmId]);
+  }, [mapFilms, tourFilmId]);
 
   const visibleLocations = useMemo(
-    () => sourceLocations.filter((location) => selectedFilms.includes(location.filmId)),
-    [selectedFilms, sourceLocations],
+    () => sourceLocations.filter((location) =>
+      selectedFilms.includes(location.filmId)
+        && (!libraryMapOnly || libraryFilmIds.has(location.filmId)),
+    ),
+    [libraryFilmIds, libraryMapOnly, selectedFilms, sourceLocations],
   );
+
+  useEffect(() => {
+    if (!libraryMapOnly) return;
+    if (!visibleLocations.some((location) => location.id === activeLocation?.id)) {
+      setActiveLocation(visibleLocations[0] ?? null);
+    }
+  }, [activeLocation?.id, libraryMapOnly, visibleLocations]);
 
   const filteredLibrary = useMemo(() => {
     const query = libraryQuery.trim().toLowerCase();
@@ -838,7 +858,12 @@ export default function SceneMapApp() {
   function selectConnector(connector) {
     setPendingConnector(connector);
     setImportMessage("");
-    connectorInputRef.current?.click();
+    if (connectorInputRef.current) {
+      connectorInputRef.current.accept = connector === "letterboxd"
+        ? ".zip,.csv,application/zip,text/csv"
+        : ".csv,text/csv";
+      connectorInputRef.current.click();
+    }
   }
 
   async function importLibrary(event) {
@@ -846,11 +871,21 @@ export default function SceneMapApp() {
     if (!file || !pendingConnector) return;
 
     try {
-      const imported = parseMediaCsv(await file.text(), pendingConnector);
-      setLibrary((current) => mergeLibraries(current, imported));
-      setImportMessage(`${imported.length} movies imported from ${pendingConnector === "imdb" ? "IMDb" : "Letterboxd"}.`);
+      const isZip = file.name.toLowerCase().endsWith(".zip") || file.type === "application/zip";
+      if (isZip && pendingConnector !== "letterboxd") {
+        throw new Error("ZIP imports are supported for Letterboxd exports only.");
+      }
+
+      const imported = isZip
+        ? await parseLetterboxdArchive(await file.arrayBuffer(), file.size)
+        : parseMediaCsv(await file.text(), pendingConnector);
+      const nextLibrary = mergeLibraries(library, imported);
+      const mappedCount = films.filter((film) => workIsInLibrary(film, nextLibrary)).length;
+      setLibrary(nextLibrary);
+      setLibraryMapOnly(true);
+      setImportMessage(`${imported.length} movies imported from ${pendingConnector === "imdb" ? "IMDb" : "Letterboxd"}${isZip ? " ZIP" : ""}. ${mappedCount} mapped ${mappedCount === 1 ? "title" : "titles"} shown in ${cityName}.`);
     } catch (error) {
-      setImportMessage(error instanceof Error ? error.message : "The CSV file could not be imported.");
+      setImportMessage(error instanceof Error ? error.message : "The file could not be imported.");
     } finally {
       event.target.value = "";
       setPendingConnector(null);
@@ -859,6 +894,7 @@ export default function SceneMapApp() {
 
   function clearLibrary() {
     setLibrary([]);
+    setLibraryMapOnly(false);
     setImportMessage("Your local movie list was cleared.");
   }
 
@@ -1467,7 +1503,7 @@ export default function SceneMapApp() {
         </div>
 
         <div className="film-grid" aria-label="Selected stories">
-          {films.map((film) => {
+          {mapFilms.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
             return (
@@ -1586,9 +1622,9 @@ export default function SceneMapApp() {
                   setAiTour(null);
                   setAiTourError("");
                 }}
-                disabled={aiTourStatus === "loading" || films.length === 0}
+                disabled={aiTourStatus === "loading" || mapFilms.length === 0}
               >
-                {films.map((film) => (
+                {mapFilms.map((film) => (
                   <option key={film.id} value={film.id}>{film.title}</option>
                 ))}
               </select>
@@ -1841,12 +1877,18 @@ export default function SceneMapApp() {
             </div>
 
             <p className="account-copy">Import your official account export. Your list stays on this device and can combine both services.</p>
-            <input ref={connectorInputRef} type="file" accept=".csv,text/csv" hidden onChange={importLibrary} />
+            <input
+              ref={connectorInputRef}
+              type="file"
+              accept={pendingConnector === "letterboxd" ? ".zip,.csv,application/zip,text/csv" : ".csv,text/csv"}
+              hidden
+              onChange={importLibrary}
+            />
 
             <div className="connector-list">
               <button className="connector-card" type="button" onClick={() => selectConnector("letterboxd")}>
                 <span className="connector-logo is-letterboxd"><Film size={20} /></span>
-                <span><strong>Letterboxd</strong><small>ratings.csv, watched.csv or diary.csv</small></span>
+                <span><strong>Letterboxd</strong><small>Upload the complete ZIP export or a CSV</small></span>
                 <Link2 size={18} />
               </button>
               <button className="connector-card" type="button" onClick={() => selectConnector("imdb")}>
@@ -1871,6 +1913,15 @@ export default function SceneMapApp() {
             <div className="library-summary">
               <span>{library.length} movies</span>
               <span>{library.filter((movie) => movie.rating !== null).length} rated</span>
+              <button
+                type="button"
+                className={libraryMapOnly ? "is-selected" : ""}
+                onClick={() => setLibraryMapOnly((current) => !current)}
+                disabled={library.length === 0}
+                aria-pressed={libraryMapOnly}
+              >
+                {libraryMapOnly ? `${libraryFilmIds.size} mapped on map` : "Show library on map"}
+              </button>
             </div>
 
             <div className="movie-library" aria-live="polite">
@@ -1890,7 +1941,7 @@ export default function SceneMapApp() {
               {library.length > 0 && filteredLibrary.length === 0 && <p className="empty-library">No movies match your search.</p>}
             </div>
 
-            <div className="account-privacy"><CheckCircle2 size={17} /><span>CSV files are processed locally. GloryMap never asks for your Letterboxd or IMDb password.</span></div>
+            <div className="account-privacy"><CheckCircle2 size={17} /><span>Import files are processed locally. GloryMap never asks for your Letterboxd or IMDb password.</span></div>
           </section>
         </div>
       )}
