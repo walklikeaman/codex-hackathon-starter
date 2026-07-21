@@ -7,31 +7,40 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
-## [2026-07-21] update | Personal account and media discovery
+## [2026-07-21] update | Letterboxd and IMDb personal movie library
 
-- Added an English-only account dialog with local Letterboxd and IMDb CSV connectors; no credentials or files are sent to a server.
-- Expanded the existing mapped-film search to cover a small deterministic book catalogue while keeping books off the film map until book-location data exists.
-- Integrated current `origin/main`, passed 4 route tests and `next build`, and verified the production server and live walking-route API on port 3101.
+- Replaced title-only connector matching with schema-aware Letterboxd and IMDb CSV parsing for titles, years, personal ratings, dates, URLs and IMDb IDs.
+- Imports from both services merge into one searchable library, deduplicate matching movies and persist locally without account passwords or server uploads.
+- Synced current `origin/main`, restored English-only app copy, passed 7 tests and `next build`, and verified an IMDb import with two persisted movies in a real browser.
+- The live Wikidata request took 25–43 seconds during browser smoke; the deterministic fallback map remained interactive while it loaded.
 
-## [2026-07-21] update | Real walking routes from main integrated
+## [2026-07-21] update | City search for the live film map
 
-- Integrated the latest `origin/main` routing work while retaining the verified Nocturne client contract and English-only API responses.
-- Preserved the shared walking-route parser and tests for regression coverage.
+- Added a city-search control with London as the default. It geocodes only a submitted city query, recenters the map, and reloads nearby Wikidata filming locations.
+- The city endpoint uses server-side cached Nominatim requests with an identifying User-Agent; no user location or search history is stored.
+- Verified the flow by switching the local app from London to Paris and receiving Paris-area film locations.
 
-## [2026-07-21] update | Mapped-film search verified
+## [2026-07-21] decision | IMDb integration deferred
 
-- В существующую action row добавлен поиск по названию, году и коду фильма без внешних API и новых ключей.
-- Результат синхронно фильтрует film chips, map markers, location list и активную location card; пустое состояние и очистка поиска реализованы отдельно.
-- Browser flow проверен для `harry`, `007`, пустого результата и clear: 5 фильмов/10 пинов восстанавливаются, console errors и mobile overflow отсутствуют.
-- `npm run build` зелёный; PR #8 нельзя self-approve от аккаунта автора, поэтому reviewer request отправлен `timido22`.
+- Removed the Check-ins CSV import and IMDb-specific API filtering. IMDb does not offer a supported personal-account API, and the project does not use scraping.
 
-## [2026-07-21] update | Walking-route MVP verified
+## [2026-07-21] update | SceneMap frontend consumes live locations API
 
-- Сохранён чёрно-золотой map-first дизайн текущего Vercel deployment; пользовательский интерфейс полностью переведён на английский.
-- Добавлен серверный `POST /api/route`, который валидирует 2–5 координат и получает пешую GeoJSON-геометрию у публичного OSRM `routed-foot`.
-- Клиент строит маршрут по улицам для 3–5 выбранных точек, показывает расстояние/время и откатывается к прямой линии при недоступности роутера.
-- `npm run build`, API contract и desktop/mobile browser flow зелёные; Supabase и production deployment не менялись.
-- Vercel Preview `codex-hackathon-starter-b760nc4e5-kitpos.vercel.app` имеет статус Ready и проверен через protection bypass; обычное открытие требует доступ к проекту Vercel.
+- The map now fetches `/api/locations` on load for the London viewport and replaces its demo pins, film chips, location list, card, and route inputs with Wikidata results.
+- The static London set remains a client-side fallback when the upstream request fails, so the MVP demo path stays available without persisting data.
+- Verified visually in the local app: live film locations and Commons imagery render in the map and location card.
+
+## [2026-07-21] update | Live Wikidata film-location API
+
+- Added `GET /api/locations` for SceneMap. It requests Wikidata directly using the visible map center (`lat`, `lng`), `radius` in kilometres, and `limit`; defaults target London.
+- The response normalizes film/location Wikidata IDs, labels, year, coordinates, and Commons image URL. Results are deduplicated per film-location pair and HTTP-cached for one hour.
+- No Wikidata data is persisted in Supabase; the endpoint was verified with a live London request returning HTTP 200 and three coordinate-bearing locations.
+
+## [2026-07-21] update | Real walking routes
+
+- Added a server-side proxy to the public OpenStreetMap foot-routing service with validated coordinates, an 8-second timeout, and a clearly labeled straight-line fallback.
+- The map now fits and draws the returned street geometry; the route summary uses router distance and duration and includes source attribution.
+- Verified with 4 unit tests, a production build, a live API request, and the browser flow from 3 selected stops to a 13.1 km / 174 min London walking route.
 
 ## [2026-07-21] incident | First Vercel deploy targeted production
 
