@@ -1,58 +1,76 @@
-import {
-  buildFootRouteUrl,
-  parseFootRoute,
-  validateRouteStops,
-} from "../../lib/walking-route.mjs";
+const WALKING_ROUTER_URL = "https://routing.openstreetmap.de/routed-foot/route/v1/driving";
+const MAX_STOPS = 5;
 
-const ROUTER_TIMEOUT_MS = 8_000;
+export const runtime = "nodejs";
+
+function isCoordinate(value) {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    Number.isFinite(value[0]) &&
+    Number.isFinite(value[1]) &&
+    value[0] >= -90 &&
+    value[0] <= 90 &&
+    value[1] >= -180 &&
+    value[1] <= 180
+  );
+}
 
 export async function POST(request) {
-  let stops;
+  let payload;
 
   try {
-    const body = await request.json();
-    stops = validateRouteStops(body?.stops);
+    payload = await request.json();
   } catch {
+    return Response.json({ error: "Invalid JSON." }, { status: 400 });
+  }
+
+  const coordinates = payload?.coordinates;
+
+  if (
+    !Array.isArray(coordinates) ||
+    coordinates.length < 2 ||
+    coordinates.length > MAX_STOPS ||
+    !coordinates.every(isCoordinate)
+  ) {
     return Response.json(
-      { error: "Provide 2 to 5 valid route stops." },
+      { error: `Provide between 2 and ${MAX_STOPS} valid coordinates.` },
       { status: 400 },
     );
   }
 
+  const path = coordinates.map(([lat, lng]) => `${lng},${lat}`).join(";");
+  const url = `${WALKING_ROUTER_URL}/${path}?overview=full&geometries=geojson&steps=false`;
+
   try {
-    const routeUrl = buildFootRouteUrl(
-      stops,
-      process.env.WALKING_ROUTER_URL || undefined,
-    );
-    const appOrigin = new URL(request.url).origin;
-    const response = await fetch(routeUrl, {
+    const response = await fetch(url, {
       cache: "no-store",
       headers: {
         Accept: "application/json",
-        "User-Agent":
-          "SceneMap-Hackathon/1.0 (+https://github.com/walklikeaman/codex-hackathon-starter)",
-        Referer: `${appOrigin}/`,
+        "User-Agent": "SceneMap-MVP/1.0",
       },
-      signal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
-      throw new Error(`Walking router responded with ${response.status}`);
+      throw new Error(`OSRM responded with ${response.status}`);
     }
 
-    const route = parseFootRoute(await response.json());
+    const data = await response.json();
+    const result = data.routes?.[0];
+
+    if (data.code !== "Ok" || !result?.geometry?.coordinates?.length) {
+      throw new Error("OSRM returned no route");
+    }
 
     return Response.json({
-      ...route,
-      source: "openstreetmap-foot",
+      positions: result.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+      distanceMeters: result.distance,
+      durationSeconds: result.duration,
     });
-  } catch (error) {
-    console.error("Walking route request failed", {
-      message: error instanceof Error ? error.message : "Unknown error",
-    });
-
+  } catch {
     return Response.json(
-      { error: "The walking router is temporarily unavailable." },
+      { error: "The walking route service is temporarily unavailable." },
       { status: 502 },
     );
   }
