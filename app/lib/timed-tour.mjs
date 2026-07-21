@@ -187,7 +187,7 @@ export function routeFitsBudget(route, budgetMinutes) {
 
 export function createFallbackGuide({ city, budgetMinutes, stops }) {
   return {
-    title: `${budgetMinutes}-minute SceneMap walk · ${city}`,
+    title: `${budgetMinutes}-minute GloryMap walk · ${city}`,
     intro: `A nearby ${stops.length}-stop route built from verified screen and story locations.`,
     stops: stops.map((location) => ({
       locationId: location.id,
