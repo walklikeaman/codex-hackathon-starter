@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { Clapperboard, MapPin, Plus, Route, Search, X } from "lucide-react";
@@ -198,6 +198,22 @@ function RecenterOnSelection({ center, position }) {
   return null;
 }
 
+function FitRoute({ positions }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (positions.length > 1) {
+      map.fitBounds(L.latLngBounds(positions), {
+        animate: true,
+        maxZoom: 14,
+        padding: [48, 48],
+      });
+    }
+  }, [map, positions]);
+
+  return null;
+}
+
 function makeMarkerIcon(selected) {
   return L.divIcon({
     className: "",
@@ -225,16 +241,30 @@ function kmBetween(routeStops) {
   }, 0);
 }
 
+function makeFallbackRoute(routeStops) {
+  const distanceKm = kmBetween(routeStops);
+
+  return {
+    positions: routeStops.map((stop) => stop.position),
+    distanceKm: Math.round(distanceKm * 10) / 10,
+    durationMinutes: Math.max(8, Math.round((distanceKm / 4.6) * 60)),
+    source: "fallback",
+  };
+}
+
 export default function SceneMapApp() {
   const [liveLocations, setLiveLocations] = useState(null);
   const [mapCenter, setMapCenter] = useState(londonCenter);
   const [cityQuery, setCityQuery] = useState("London");
   const [cityName, setCityName] = useState("London");
   const [citySearchStatus, setCitySearchStatus] = useState("");
+  const routeRequestId = useRef(0);
   const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
   const [activeLocation, setActiveLocation] = useState(fallbackLocations[0]);
   const [routeStops, setRouteStops] = useState([]);
-  const [routeVisible, setRouteVisible] = useState(false);
+  const [routeStatus, setRouteStatus] = useState("idle");
+  const [routeResult, setRouteResult] = useState(null);
+  const [routeMessage, setRouteMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -253,6 +283,9 @@ export default function SceneMapApp() {
         setSelectedFilms(nextFilms.map((film) => film.id));
         setActiveLocation(nextLocations[0]);
         setRouteStops([]);
+        setRouteResult(null);
+        setRouteStatus("idle");
+        setRouteMessage("");
       } catch {
         // Keep the local demo locations visible if Wikidata is temporarily unavailable.
       }
@@ -273,9 +306,14 @@ export default function SceneMapApp() {
     [selectedFilms, sourceLocations],
   );
 
-  const routePositions = routeVisible ? routeStops.map((stop) => stop.position) : [];
-  const routeKm = kmBetween(routeStops);
-  const routeMinutes = Math.max(8, Math.round((routeKm / 4.6) * 60));
+  const routePositions = routeResult?.positions ?? [];
+
+  function invalidateRoute() {
+    routeRequestId.current += 1;
+    setRouteResult(null);
+    setRouteStatus("idle");
+    setRouteMessage("");
+  }
 
   function toggleFilm(filmId) {
     setSelectedFilms((current) => {
@@ -288,16 +326,55 @@ export default function SceneMapApp() {
   }
 
   function addRouteStop(location) {
-    setRouteStops((current) => {
-      if (current.some((stop) => stop.id === location.id)) return current;
-      return [...current, location].slice(0, 5);
-    });
-    setRouteVisible(false);
+    if (routeStops.some((stop) => stop.id === location.id) || routeStops.length >= 5) return;
+
+    setRouteStops([...routeStops, location]);
+    invalidateRoute();
   }
 
   function removeRouteStop(locationId) {
-    setRouteStops((current) => current.filter((stop) => stop.id !== locationId));
-    setRouteVisible(false);
+    setRouteStops(routeStops.filter((stop) => stop.id !== locationId));
+    invalidateRoute();
+  }
+
+  async function buildRoute() {
+    const requestId = routeRequestId.current + 1;
+    routeRequestId.current = requestId;
+    setRouteResult(null);
+    setRouteStatus("loading");
+    setRouteMessage("");
+
+    try {
+      const response = await fetch("/api/route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stops: routeStops.map((stop) => stop.position) }),
+      });
+      const payload = await response.json();
+
+      if (
+        !response.ok ||
+        !Array.isArray(payload?.positions) ||
+        payload.positions.length < 2 ||
+        !Number.isFinite(payload?.distanceKm) ||
+        !Number.isFinite(payload?.durationMinutes)
+      ) {
+        throw new Error(payload?.error || "Walking route response is invalid");
+      }
+
+      if (requestId !== routeRequestId.current) return;
+
+      setRouteResult(payload);
+      setRouteStatus("ready");
+    } catch {
+      if (requestId !== routeRequestId.current) return;
+
+      setRouteResult(makeFallbackRoute(routeStops));
+      setRouteStatus("fallback");
+      setRouteMessage(
+        "Роутер недоступен — показываем приблизительную линию между точками.",
+      );
+    }
   }
 
   async function searchCity(event) {
@@ -316,7 +393,7 @@ export default function SceneMapApp() {
       setLiveLocations([]);
       setActiveLocation(null);
       setRouteStops([]);
-      setRouteVisible(false);
+      invalidateRoute();
       setCitySearchStatus("");
     } catch {
       setCitySearchStatus("City not found");
@@ -332,6 +409,7 @@ export default function SceneMapApp() {
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
           <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
+          <FitRoute positions={routePositions} />
           {visibleLocations.map((location) => (
             <Marker
               key={location.id}
@@ -349,7 +427,15 @@ export default function SceneMapApp() {
             </Marker>
           ))}
           {routePositions.length > 1 && (
-            <Polyline positions={routePositions} pathOptions={{ color: "#f7b733", weight: 5, opacity: 0.9 }} />
+            <Polyline
+              positions={routePositions}
+              pathOptions={{
+                color: "#f7b733",
+                dashArray: routeResult?.source === "fallback" ? "8 10" : undefined,
+                opacity: routeResult?.source === "fallback" ? 0.7 : 0.95,
+                weight: 5,
+              }}
+            />
           )}
         </MapContainer>
       </section>
@@ -431,13 +517,19 @@ export default function SceneMapApp() {
             <strong>{routeStops.length} / 5 точек</strong>
           </div>
           <button
-            className="primary-button"
-            disabled={routeStops.length < 3}
-            onClick={() => setRouteVisible(true)}
+            className={`primary-button${routeResult ? " is-complete" : ""}`}
+            disabled={routeStops.length < 3 || routeStatus !== "idle"}
+            onClick={buildRoute}
             type="button"
           >
             <Route size={18} />
-            Построить
+            {routeStatus === "loading"
+              ? "Строим..."
+              : routeStatus === "fallback"
+                ? "Маршрут примерный"
+                : routeResult
+                ? "Маршрут готов"
+                : "Построить"}
           </button>
         </div>
 
@@ -457,10 +549,35 @@ export default function SceneMapApp() {
           </ol>
         )}
 
-        {routeVisible && (
-          <p className="route-summary">
-            Пешком около {routeKm.toFixed(1)} км · {routeMinutes} мин. Сейчас линия строится локально; OSRM подключаем следующим срезом.
+        {routeStatus === "loading" && (
+          <p className="route-summary" role="status">
+            Строим маршрут по пешеходным улицам Лондона...
           </p>
+        )}
+
+        {routeResult && (
+          <div
+            className={`route-summary${routeResult.source === "fallback" ? " is-fallback" : ""}`}
+            role="status"
+          >
+            <strong>
+              Пешком {routeResult.distanceKm.toFixed(1)} км · {routeResult.durationMinutes} мин
+            </strong>
+            {routeResult.source === "fallback" ? (
+              <span>{routeMessage}</span>
+            ) : (
+              <span>
+                Маршрут построен по улицам ·{" "}
+                <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">
+                  OpenStreetMap routing
+                </a>
+                {" · "}
+                <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">
+                  исправить карту
+                </a>
+              </span>
+            )}
+          </div>
         )}
       </aside>
 
