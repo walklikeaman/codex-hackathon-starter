@@ -24,6 +24,12 @@ import { mergeLibraries, parseMediaCsv } from "../lib/media-library.mjs";
 
 const londonCenter = [51.5094, -0.1183];
 
+const kindLabels = {
+  film: "Film",
+  series: "Series",
+  book: "Book",
+};
+
 const fallbackFilms = [
   {
     id: "notting-hill",
@@ -55,7 +61,7 @@ const fallbackFilms = [
     year: 2003,
     code: "LA",
   },
-];
+].map((work) => ({ ...work, kind: "film" }));
 
 const fallbackLocations = [
   {
@@ -168,32 +174,45 @@ const fallbackLocations = [
     backdrop: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
     now: "https://images.unsplash.com/photo-1577048982768-5cb3e7ddfa23?auto=format&fit=crop&w=1200&q=80",
   },
-];
+].map((location) => ({ ...location, kind: "film" }));
+
+function kindLabel(kind) {
+  return kindLabels[kind] ?? "Work";
+}
+
+function locationDescription(kind, locationSource, title, year) {
+  const datedTitle = `${title}${year ? ` (${year})` : ""}`;
+  return locationSource === "narrative"
+    ? `Narrative location in the ${kind === "book" ? "book" : "series"} “${datedTitle}”.`
+    : `Filming location for the ${kind === "series" ? "series" : "film"} “${datedTitle}”.`;
+}
 
 function locationsFromApi(records) {
   return records
     .map((record) => ({
-      id: `${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+      id: `${record.kind}-${record.work_wikidata_id}-${record.loc_wikidata_id}`,
       filmId: record.work_wikidata_id,
       film: record.work_title,
       scene: record.work_title,
       place: record.loc_name,
-      description: `Filming location for ${record.work_title}${record.work_year ? ` (${record.work_year})` : ""}.`,
+      description: locationDescription(record.kind, record.location_source, record.work_title, record.work_year),
       position: [record.lat, record.lng],
       backdrop: record.commons_image,
       now: record.commons_image,
       year: record.work_year,
+      kind: record.kind,
     }))
     .filter((location) => Number.isFinite(location.position[0]) && Number.isFinite(location.position[1]));
 }
 
-function filmsFromLocations(sourceLocations) {
+function worksFromLocations(sourceLocations) {
   return [...new Map(sourceLocations.map((location) => [
     location.filmId,
     {
       id: location.filmId,
       title: location.film,
       year: location.year,
+      kind: location.kind,
       code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
     },
   ])).values()].slice(0, 5);
@@ -231,10 +250,10 @@ function FitRoute({ positions }) {
   return null;
 }
 
-function makeMarkerIcon(selected) {
+function makeMarkerIcon(selected, kind) {
   return L.divIcon({
     className: "",
-    html: `<span class="scene-pin${selected ? " is-selected" : ""}"><span></span></span>`,
+    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}"><span></span></span>`,
     iconSize: [34, 42],
     iconAnchor: [17, 34],
   });
@@ -496,11 +515,11 @@ export default function SceneMapApp() {
         if (!nextLocations.length) throw new Error("Locations API returned no usable points");
         if (cancelled) return;
 
-        const nextFilms = filmsFromLocations(nextLocations);
+        const nextWorks = worksFromLocations(nextLocations);
         setLiveLocations(nextLocations);
-        setSelectedFilms(nextFilms.map((film) => film.id));
+        setSelectedFilms(nextWorks.map((work) => work.id));
         setActiveLocation(nextLocations[0]);
-        setTourFilmId(nextFilms[0]?.id ?? "");
+        setTourFilmId(nextWorks[0]?.id ?? "");
         setAiTour(null);
         setAiTourStatus("idle");
         setAiTourError("");
@@ -519,7 +538,7 @@ export default function SceneMapApp() {
 
   const sourceLocations = liveLocations ?? fallbackLocations;
   const films = useMemo(
-    () => liveLocations ? filmsFromLocations(sourceLocations) : fallbackFilms,
+    () => liveLocations ? worksFromLocations(sourceLocations) : fallbackFilms,
     [liveLocations, sourceLocations],
   );
 
@@ -752,12 +771,13 @@ export default function SceneMapApp() {
             <Marker
               key={location.id}
               position={location.position}
-              icon={makeMarkerIcon(activeLocation?.id === location.id)}
+              icon={makeMarkerIcon(activeLocation?.id === location.id, location.kind)}
               eventHandlers={{
                 click: () => setActiveLocation(location),
               }}
             >
               <Popup>
+                <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
                 <strong>{location.film}</strong>
                 <br />
                 {location.place}
@@ -778,14 +798,14 @@ export default function SceneMapApp() {
         </MapContainer>
       </section>
 
-      <aside className="command-panel" aria-label="Film selection">
+      <aside className="command-panel" aria-label="Work selection">
         <div className="brand-row">
           <div className="brand-mark">
             <Clapperboard size={22} />
           </div>
           <div>
             <p className="eyebrow">SceneMap MVP</p>
-            <h1>Film map · {cityName}</h1>
+            <h1>Stories on the map · {cityName}</h1>
           </div>
           <button className="account-button" type="button" onClick={() => setAccountOpen(true)}>
             <User size={18} />
@@ -808,7 +828,7 @@ export default function SceneMapApp() {
         </form>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
-        <div className="film-grid" aria-label="Selected films">
+        <div className="film-grid" aria-label="Selected works">
           {films.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
@@ -823,7 +843,10 @@ export default function SceneMapApp() {
                 <span className="poster-tile" aria-hidden="true">{film.code}</span>
                 <span>
                   <strong>{film.title}</strong>
-                  <small>{film.year}</small>
+                  <small>
+                    <span className={`work-kind kind-${film.kind}`}>{kindLabel(film.kind)}</span>
+                    {film.year ? ` · ${film.year}` : ""}
+                  </small>
                 </span>
               </button>
             );
@@ -889,7 +912,10 @@ export default function SceneMapApp() {
             <div className="location-row" key={location.id}>
               <button type="button" onClick={() => setActiveLocation(location)}>
                 <strong>{location.place}</strong>
-                <span>{location.film}</span>
+                <span>
+                  <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
+                  {location.film}
+                </span>
               </button>
               <button
                 className="icon-button"
@@ -997,7 +1023,7 @@ export default function SceneMapApp() {
           <div className="sheet-media">
             <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
             <div>
-              <p>{activeLocation.film}</p>
+              <p><span className={`work-kind kind-${activeLocation.kind}`}>{kindLabel(activeLocation.kind)}</span>{" "}{activeLocation.film}</p>
               <h2>{activeLocation.scene}</h2>
             </div>
           </div>
