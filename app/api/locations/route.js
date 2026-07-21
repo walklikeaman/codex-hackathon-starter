@@ -55,6 +55,10 @@ function isPlaceholderLabel(value) {
   return /^Q\d+(?:\s|$)/.test(value?.trim() ?? "");
 }
 
+function secureImageUrl(value) {
+  return value?.replace(/^http:\/\//, "https://") ?? null;
+}
+
 function sparql({ lat, lng, radius, limit, statement, geoFirst = true }) {
   const around = `
     SERVICE wikibase:around {
@@ -64,12 +68,13 @@ function sparql({ lat, lng, radius, limit, statement, geoFirst = true }) {
     }`;
 
   return `
-SELECT ?work ?workLabel ?location ?locationLabel ?coord ?kind ?locationSource ?releaseDate ?inceptionDate ?image WHERE {
+SELECT ?work ?workLabel ?location ?locationLabel ?coord ?kind ?locationSource ?releaseDate ?inceptionDate ?tmdbId ?image WHERE {
   ${geoFirst ? around : ""}
   ${statement}
   ${geoFirst ? "" : around}
   OPTIONAL { ?work wdt:P577 ?releaseDate . }
   OPTIONAL { ?work wdt:P571 ?inceptionDate . }
+  OPTIONAL { ?work wdt:P4947 ?tmdbId . }
   OPTIONAL { ?location wdt:P18 ?image . }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en,ru" . }
 }
@@ -138,31 +143,32 @@ export async function GET(request) {
 
     for (const payload of payloads) {
       for (const row of payload.results.bindings) {
-      const workWikidataId = wikidataId(row.work?.value);
-      const locWikidataId = wikidataId(row.location?.value);
-      const point = coordinates(row.coord?.value);
-      if (!workWikidataId || !locWikidataId || !point) continue;
+        const workWikidataId = wikidataId(row.work?.value);
+        const locWikidataId = wikidataId(row.location?.value);
+        const point = coordinates(row.coord?.value);
+        if (!workWikidataId || !locWikidataId || !point) continue;
 
-      const kind = row.kind?.value;
-      if (!Object.hasOwn({ film: true, series: true, book: true }, kind)) continue;
+        const kind = row.kind?.value;
+        if (!Object.hasOwn({ film: true, series: true, book: true }, kind)) continue;
 
-      const workTitle = row.workLabel?.value ?? workWikidataId;
-      const locationName = row.locationLabel?.value ?? locWikidataId;
-      if (isPlaceholderLabel(workTitle) || isPlaceholderLabel(locationName)) continue;
+        const workTitle = row.workLabel?.value ?? workWikidataId;
+        const locationName = row.locationLabel?.value ?? locWikidataId;
+        if (isPlaceholderLabel(workTitle) || isPlaceholderLabel(locationName)) continue;
 
-      const key = `${kind}:${workWikidataId}:${locWikidataId}`;
-      const current = locations.get(key);
+        const key = `${kind}:${workWikidataId}:${locWikidataId}`;
+        const current = locations.get(key);
         locations.set(key, current ?? {
-        work_wikidata_id: workWikidataId,
-        work_title: workTitle,
-        work_year: releaseYear(row.releaseDate?.value ?? row.inceptionDate?.value),
-        kind,
-        location_source: row.locationSource?.value ?? null,
-        loc_wikidata_id: locWikidataId,
-        loc_name: locationName,
-        lat: point.lat,
-        lng: point.lng,
-        commons_image: row.image?.value ?? null,
+          work_wikidata_id: workWikidataId,
+          work_title: workTitle,
+          work_year: releaseYear(row.releaseDate?.value ?? row.inceptionDate?.value),
+          film_tmdb_id: kind === "film" ? row.tmdbId?.value ?? null : null,
+          kind,
+          location_source: row.locationSource?.value ?? null,
+          loc_wikidata_id: locWikidataId,
+          loc_name: locationName,
+          lat: point.lat,
+          lng: point.lng,
+          commons_image: secureImageUrl(row.image?.value),
         });
       }
     }
