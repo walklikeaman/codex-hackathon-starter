@@ -8,10 +8,6 @@
 > where knowledge lives, how to persist it, how automation and CI/CD are wired,
 > and which guardrails are non-negotiable.
 >
-> **There is a twin file** — `universal-agent-framework.claude.md` — identical
-> in spirit, bound to Claude Code instead. Keep them in sync; they differ only
-> in the _Runtime binding_ (§3) and the path tokens.
->
 > **How to use it.** Drop this file in a fresh repo and tell the agent _"Adopt
 > this framework and bootstrap the project."_ It runs every command and writes
 > every file here. When the wiki is still empty, the agent's first job is to
@@ -101,7 +97,7 @@ hides in code comments — it goes in the wiki where the next session finds it.
 
 ## 3. Runtime binding — OpenAI Codex
 
-This is the only runtime-specific section. The Claude twin swaps these values.
+This section records the Codex-specific runtime values used by the framework.
 
 | Concept            | Codex                                                                                                                                                                       |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -109,17 +105,10 @@ This is the only runtime-specific section. The Claude twin swaps these values.
 | Behavioral skill   | **No global auto-loader** — paste the Karpathy block _into `AGENTS.md`_; optional reference copy at `.agents/skills/karpathy-guidelines/SKILL.md`                           |
 | Slash commands     | `~/.codex/prompts/<name>.md`, invoked `/name` in the TUI; mirror to `.agents/skills/<name>/SKILL.md` for cloud/other agents                                                 |
 | Quality loops      | `~/.codex/prompts/loop-*.md`, invoked `/loop-<name>`                                                                                                                        |
-| Event hooks        | `.codex/hooks.json` (SessionStart, PreCompact) + `~/.codex/config.toml`. Fewer events than Claude — fold Stop/pre-commit reminders into `AGENTS.md` rules instead (see §12) |
+| Event hooks        | `.codex/hooks.json` (SessionStart, PreCompact) + `~/.codex/config.toml`; fold unsupported event reminders into `AGENTS.md` rules instead (see §12)                            |
 | Operator memory    | `~/.codex/memory/<repo>/` (`MEMORY.md` index + topic files)                                                                                                                 |
 | Commit co-author   | `Co-Authored-By: Codex <noreply@openai.com>`                                                                                                                                |
 | In-repo playbooks  | `.agents/skills/<name>/SKILL.md`, referenced from `AGENTS.md`                                                                                                               |
-
-Claude differences (for awareness): config is `CLAUDE.md`; skills auto-load from
-`~/.claude/skills/`; commands live in `.claude/commands/`; richer hook events in
-`.claude/settings.json`. **Git hooks (`.githooks/`) and everything in `wiki/`,
-`Context/`, `.obsidian/`, `graphify-out/`, `.github/` are runtime-identical.**
-
----
 
 ## 4. Layer 1 — Behavioral discipline (Karpathy)
 
@@ -187,7 +176,7 @@ Run the matching `/loop-*` at its trigger moment (see §11 table).
 ## Before any git commit
 
 Run lint on staged files; if uncommitted work remains at session end, run /ship.
-(Codex has fewer event hooks than Claude — these live here as rules, not hooks.)
+(When a desired event hook is unavailable, keep the behavior here as an explicit rule.)
 
 ## /ship
 
@@ -368,7 +357,7 @@ All three are committed so every session starts on a fresh graph. Integration:
 
 The wiki gives you the _authored_ graph (your `[[links]]`); Graphify gives you
 the _discovered_ graph (structural connections you didn't author). Use both.
-(Git hooks are runtime-identical — this layer works the same under Codex and Claude.)
+(Git hooks are runtime-independent and keep this layer portable.)
 
 ---
 
@@ -456,9 +445,8 @@ high-stakes, or multi-trade-off forks (architecture choices, irreversible
 data/release calls, close "which approach" calls), run a multi-persona
 deliberation that surfaces disagreement instead of false consensus: spawn a few
 independent expert-lens sub-agents (e.g. correctness, risk, simplicity, the
-adversary) and synthesize where they _disagree_ before committing. (The Claude
-edition packages this as a `/council` skill with a panel of thinker personas;
-under Codex, run the lenses as parallel sub-agents.) Not for routine tasks
+adversary) and synthesize where they _disagree_ before committing. Under Codex,
+run the lenses as parallel sub-agents. Not for routine tasks
 (autopilot handles those) — reach for it only when a wrong call is expensive.
 
 **Don't bolt on external task-runners.** This native loop (startup ritual →
@@ -539,12 +527,12 @@ rebase/merge/cherry-pick.
 count (`grep -c '## Guardrail:' .loops/guardrails.md`); on `PreCompact`, flush
 session knowledge.
 
-**Codex has fewer event hooks than Claude**, so behaviors Claude runs as `Stop`
-or `PreToolUse` hooks (e.g. "remind to /ship if uncommitted", "lint staged
-`.py` before commit") are encoded as **rules in `AGENTS.md`** instead (§5,
-"Before any git commit"). The principle holds: anything the operator wants to
-happen automatically is a hook _where the runtime supports one_, otherwise an
-explicit `AGENTS.md` rule — not a fragile memory.
+Behaviors without a supported event hook (for example, "remind to /ship if
+uncommitted" or "lint staged `.py` before commit") are encoded as **rules in
+`AGENTS.md`** instead (§5, "Before any git commit"). The principle holds:
+anything the operator wants to happen automatically is a hook _where the
+runtime supports one_, otherwise an explicit `AGENTS.md` rule—not a fragile
+memory.
 
 ---
 
@@ -692,4 +680,4 @@ mentions it. The graph grows from `Context/`, one ingest at a time.
 _This framework is itself an artifact of the method it describes: plain
 Markdown, version-controlled, handed to the next agent. Drop your files in
 `Context/`, adopt the framework, and session #50 stands on session #1's
-shoulders. Twin: `universal-agent-framework.claude.md`._
+shoulders._
