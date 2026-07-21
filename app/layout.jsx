@@ -3,12 +3,12 @@ import "./globals.css";
 
 export const metadata = {
   title: "SceneMap",
-  description: "Кино-прогулки по местам из любимых фильмов",
+  description: "Film walks through locations from your favourite movies",
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="ru">
+    <html lang="en">
       <body>{children}</body>
     </html>
   );
