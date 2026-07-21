@@ -3,5 +3,5 @@
   "newLinkFormat": "relative",
   "useMarkdownLinks": true,
   "alwaysUpdateLinks": true,
-  "userIgnoreFilters": ["node_modules", ".venv", ".claude", ".agents", "graphify-out"]
+  "userIgnoreFilters": ["node_modules", ".venv", ".agents", "graphify-out"]
 }

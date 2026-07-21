@@ -13,6 +13,18 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 - Clarified which collection integrations work today versus the longer-term product vision and switched the demo link to the stable production alias.
 - Verified the claims against current routes and dependencies, then ran all 89 tests, a successful production build, and a clean documentation secret scan.
 
+## [2026-07-22] update | Retire alternate-agent references
+
+- GitHub permissions and Contributors API confirmed that the retired agent is neither a collaborator nor a listed contributor.
+- Removed its current references from tracked files and retired its already-merged remote branch.
+- Historical commit trailers were left intact because rewriting shared history would require a disruptive force-push and is unnecessary for the current contributor list.
+
+## [2026-07-22] update | README architecture and Codex development story
+
+- README теперь включает воспроизводимые инструкции локального запуска и проверочный путь для оценки проекта.
+- Подробно описаны подтверждённая full-stack архитектура, границы приватности, API и внешние источники, веточный GitHub-процесс и staging/production Actions.
+- Раздел о Codex и GPT-5.6 отделяет процесс совместной разработки от использования модели внутри функций GloryMap; требования про создание видео намеренно не добавлялись.
+
 ## [2026-07-22] update | Product-only public README
 
 - README сфокусирован на пользовательской боли, ценности GloryMap и пути от личной коллекции к реальному маршруту.
