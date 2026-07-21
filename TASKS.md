@@ -29,7 +29,7 @@ Codex читает этот файл в начале сессии — здесь
 
 ## In progress
 
-- [ ] …
+- [ ] Restore cited web research for sparse location results — @Codex — `feature/location-discovery-hotfix` / PR #33
 
 ## Done
 
