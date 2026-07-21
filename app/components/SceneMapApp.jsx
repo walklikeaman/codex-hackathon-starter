@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import { CheckCircle2, Clapperboard, Film, Link2, MapPin, Plus, Route, Search, Star, Trash2, User, X } from "lucide-react";
+import { CheckCircle2, Clapperboard, ExternalLink, Film, Link2, MapPin, Plus, Route, Search, Star, Trash2, User, X } from "lucide-react";
 import { mergeLibraries, parseMediaCsv } from "../lib/media-library.mjs";
 
 const londonCenter = [51.5094, -0.1183];
@@ -251,6 +251,18 @@ function makeFallbackRoute(routeStops) {
     durationMinutes: Math.max(8, Math.round((distanceKm / 4.6) * 60)),
     source: "fallback",
   };
+}
+
+function makeImageSearchUrl(location) {
+  const scene = location.scene?.trim();
+  const query = [
+    `"${location.film}"`,
+    `"${location.place}"`,
+    scene && scene.toLowerCase() !== location.film.toLowerCase() ? `"${scene}"` : null,
+    "movie scene filming location",
+  ].filter(Boolean).join(" ");
+
+  return `https://www.bing.com/images/search?${new URLSearchParams({ q: query })}`;
 }
 
 export default function SceneMapApp() {
@@ -668,6 +680,11 @@ export default function SceneMapApp() {
                 <figcaption>the place today</figcaption>
               </figure>
             </div>
+            <a className="ghost-button image-search-link" href={makeImageSearchUrl(activeLocation)} target="_blank" rel="noopener noreferrer">
+              <Search size={18} />
+              Find scene images
+              <ExternalLink size={15} />
+            </a>
             <button className="wide-button" type="button" onClick={() => addRouteStop(activeLocation)}>
               <Route size={18} />
               Add to route

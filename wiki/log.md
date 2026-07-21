@@ -7,6 +7,11 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | English location image search integrated
+
+- Integrated PR #13 on top of the personal-library branch while preserving the English-only UI contract.
+- Location cards now open a focused Bing Images query built from the film, place and scene without API keys.
+
 ## [2026-07-21] update | Letterboxd and IMDb personal movie library
 
 - Replaced title-only connector matching with schema-aware Letterboxd and IMDb CSV parsing for titles, years, personal ratings, dates, URLs and IMDb IDs.
