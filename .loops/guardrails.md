@@ -23,6 +23,11 @@ For a newly linked project, use `vercel deploy --target=preview`; the first plai
 Before starting a new feature, confirm the one locked demo flow still works.
 A green demo that does one thing beats a broken one that tries five.
 
+## Guardrail: Inspect teammate changes before editing
+Before every slice, fetch origin and inspect the dirty worktree, recent commits,
+relevant branch diffs, and shared contracts. Never revert unknown changes; rebase,
+integrate, or isolate the work so every teammate's contribution is preserved.
+
 ## Guardrail: One Next.js writer per checkout
 Never run `next build` while `next dev` or another build uses the same checkout.
 They share `.next` and concurrent writers can corrupt the dev/runtime manifest.

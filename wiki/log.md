@@ -7,15 +7,35 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
-## [2026-07-21] update | English-only UI review fix
+## [2026-07-21] update | Books and series in the live map
 
-- Translated all user-facing copy, accessibility labels, loading text, metadata, and API error messages under `app/` to English in response to PR #13 review feedback.
-- Verified zero Cyrillic strings remain under `app/`, all four unit tests pass, the production build succeeds, and the live-data card plus image-search link work in an isolated browser session.
+- Expanded the Wikidata endpoint to return films and television series by filming location (`P915`), plus books by narrative location (`P840`), all restricted to the selected map area.
+- The map balances returned work types and labels every result, map pin, list entry, and detail card as Film, Series, or Book.
 
-## [2026-07-21] update | Location image search
+## [2026-07-21] update | Local recreate-the-shot demo
 
-- Added a "Find scenes filmed here" action to every location card; it builds a focused image-search query from the film, place, and scene and opens Bing Images in a new tab.
-- Kept the demo independent from API keys and embedded third-party results; verified the production build, unit tests, two location-specific queries, and the external search flow in a real browser.
+- Added the issue #21 mobile flow from each location card: local photo upload, adjustable overlay, then/now comparison, reset, and repeat upload.
+- User images remain browser-only object URLs; the flow has no upload request or persistent storage.
+- Verified the complete flow at 390 px in Chromium, including a long live-location title, keyboard opacity control, reset/re-upload, zero mutating network requests, all unit tests, and a production build.
+
+## [2026-07-21] update | AI-guided film tour
+
+- Added server-only `POST /api/tour`: OpenAI Responses API with `gpt-5.6-terra` returns an English tour through Structured Outputs.
+- The model receives only the selected film and up to five current verified SceneMap locations, whether live Wikidata or fallback; schema and post-validation reject unknown, missing, or duplicated stops.
+- The English-only UI shows the AI story and builds a real walking route in the suggested order while preserving city search, location image search, and the manual 3–5 stop route.
+- Verified with 9 unit tests, a production build, a real API call, and browser AI/manual paths with a clean console.
+
+## [2026-07-21] update | English location image search integrated
+
+- Integrated PR #13 on top of the personal-library branch while preserving the English-only UI contract.
+- Location cards now open a focused Bing Images query built from the film, place and scene without API keys.
+
+## [2026-07-21] update | Letterboxd and IMDb personal movie library
+
+- Replaced title-only connector matching with schema-aware Letterboxd and IMDb CSV parsing for titles, years, personal ratings, dates, URLs and IMDb IDs.
+- Imports from both services merge into one searchable library, deduplicate matching movies and persist locally without account passwords or server uploads.
+- Synced current `origin/main`, restored English-only app copy, passed 7 tests and `next build`, and verified an IMDb import with two persisted movies in a real browser.
+- The live Wikidata request took 25–43 seconds during browser smoke; the deterministic fallback map remained interactive while it loaded.
 
 ## [2026-07-21] update | City search for the live film map
 
