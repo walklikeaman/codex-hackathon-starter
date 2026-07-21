@@ -206,8 +206,9 @@ function locationsFromApi(records) {
       place: record.loc_name,
       description: locationDescription(record.kind, record.location_source, record.work_title, record.work_year),
       position: [record.lat, record.lng],
-      backdrop: record.commons_image,
+      backdrop: null,
       now: record.commons_image,
+      filmTmdbId: record.film_tmdb_id,
       year: record.work_year,
       kind: record.kind,
     }))
@@ -517,8 +518,15 @@ export default function SceneMapApp() {
   const [cityName, setCityName] = useState("London");
   const [citySearchStatus, setCitySearchStatus] = useState("");
   const routeRequestId = useRef(0);
+  const filmImageCache = useRef(new Map());
   const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
   const [activeLocation, setActiveLocation] = useState(fallbackLocations[0]);
+  const [filmImageState, setFilmImageState] = useState({
+    locationId: fallbackLocations[0].id,
+    url: fallbackLocations[0].backdrop,
+    sourceUrl: null,
+    status: "ready",
+  });
   const [routeStops, setRouteStops] = useState([]);
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
@@ -584,6 +592,83 @@ export default function SceneMapApp() {
     return () => { cancelled = true; };
   }, [mapCenter]);
 
+  useEffect(() => {
+    if (!activeLocation) return undefined;
+
+    if (activeLocation.backdrop) {
+      setFilmImageState({
+        locationId: activeLocation.id,
+        url: activeLocation.backdrop,
+        sourceUrl: null,
+        status: "ready",
+      });
+      return undefined;
+    }
+
+    if (!activeLocation.filmTmdbId) {
+      setFilmImageState({
+        locationId: activeLocation.id,
+        url: null,
+        sourceUrl: null,
+        status: "unavailable",
+      });
+      return undefined;
+    }
+
+    const cacheKey = String(activeLocation.filmTmdbId);
+    if (filmImageCache.current.has(cacheKey)) {
+      const cached = filmImageCache.current.get(cacheKey);
+      setFilmImageState({
+        locationId: activeLocation.id,
+        url: cached?.url ?? null,
+        sourceUrl: cached?.sourceUrl ?? null,
+        status: cached?.url ? "ready" : "unavailable",
+      });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setFilmImageState({
+      locationId: activeLocation.id,
+      url: null,
+      sourceUrl: null,
+      status: "loading",
+    });
+
+    async function loadFilmImage() {
+      try {
+        const response = await fetch(
+          `/api/film-image?tmdbId=${encodeURIComponent(activeLocation.filmTmdbId)}`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) throw new Error("Film image API failed");
+
+        const payload = await response.json();
+        const cached = {
+          url: payload.image_url ?? null,
+          sourceUrl: payload.source_url ?? null,
+        };
+        filmImageCache.current.set(cacheKey, cached);
+        setFilmImageState({
+          locationId: activeLocation.id,
+          ...cached,
+          status: cached.url ? "ready" : "unavailable",
+        });
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        setFilmImageState({
+          locationId: activeLocation.id,
+          url: null,
+          sourceUrl: null,
+          status: "unavailable",
+        });
+      }
+    }
+
+    loadFilmImage();
+    return () => controller.abort();
+  }, [activeLocation]);
+
   const sourceLocations = liveLocations ?? fallbackLocations;
   const films = useMemo(
     () => liveLocations ? worksFromLocations(sourceLocations) : fallbackFilms,
@@ -610,6 +695,16 @@ export default function SceneMapApp() {
   }, [library, libraryQuery]);
 
   const routePositions = routeResult?.positions ?? [];
+  const activeFilmImage = activeLocation?.backdrop
+    ?? (filmImageState.locationId === activeLocation?.id ? filmImageState.url : null);
+  const activeFilmImageStatus = activeLocation?.backdrop
+    ? "ready"
+    : filmImageState.locationId === activeLocation?.id
+      ? filmImageState.status
+      : activeLocation?.filmTmdbId ? "loading" : "unavailable";
+  const activeFilmImageSource = filmImageState.locationId === activeLocation?.id
+    ? filmImageState.sourceUrl
+    : null;
 
   const nearby = useMemo(
     () => (userPosition ? findNearby(userPosition, visibleLocations, nearbyRadius) : null),
@@ -1196,7 +1291,13 @@ export default function SceneMapApp() {
       {activeLocation && (
         <section className="location-sheet" aria-label="Location details">
           <div className="sheet-media">
-            <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
+            {(activeFilmImage ?? activeLocation.now) && (
+              <img
+                src={activeFilmImage ?? activeLocation.now}
+                alt=""
+                onError={(event) => event.currentTarget.remove()}
+              />
+            )}
             <div>
               <p><span className={`work-kind kind-${activeLocation.kind}`}>{kindLabel(activeLocation.kind)}</span>{" "}{activeLocation.film}</p>
               <h2>{activeLocation.scene}</h2>
@@ -1214,18 +1315,45 @@ export default function SceneMapApp() {
             <p>{activeLocation.description}</p>
             <div className="comparison-grid">
               <figure>
-                <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
-                <figcaption>scene reference</figcaption>
+                {activeFilmImage ? (
+                  <img
+                    src={activeFilmImage}
+                    alt={`Film image for ${activeLocation.film}`}
+                    onError={() => setFilmImageState({
+                      locationId: activeLocation.id,
+                      url: null,
+                      sourceUrl: null,
+                      status: "unavailable",
+                    })}
+                  />
+                ) : (
+                  <div className="image-placeholder" role="status">
+                    {activeFilmImageStatus === "loading" ? "Loading film image…" : "Reference image unavailable"}
+                  </div>
+                )}
+                <figcaption>
+                  {activeFilmImage && activeFilmImageSource ? (
+                    <a href={activeFilmImageSource} target="_blank" rel="noopener noreferrer">
+                      film image · TMDB
+                    </a>
+                  ) : "scene reference"}
+                </figcaption>
               </figure>
               <figure>
-                <img src={activeLocation.now} alt="" onError={(event) => event.currentTarget.remove()} />
+                {activeLocation.now ? (
+                  <img src={activeLocation.now} alt={`${activeLocation.place} today`} />
+                ) : (
+                  <div className="image-placeholder">Place photo unavailable</div>
+                )}
                 <figcaption>the place today</figcaption>
               </figure>
             </div>
             <button
               aria-haspopup="dialog"
               className="wide-button recreate-launch"
-              onClick={() => setRecreateLocation(activeLocation)}
+              disabled={!activeFilmImage}
+              onClick={() => setRecreateLocation({ ...activeLocation, backdrop: activeFilmImage })}
+              title={activeFilmImage ? undefined : "A reference image is required to recreate this shot"}
               type="button"
             >
               <Clapperboard size={18} />
