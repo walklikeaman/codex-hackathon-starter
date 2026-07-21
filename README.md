@@ -101,7 +101,7 @@ Coverage is intentionally honest: a title appears only when GloryMap has a meani
 
 ## 🔐 Personal by design
 
-Your collections shape the experience, but they remain yours. GloryMap keeps personal library information and saved places on the device, does not ask for streaming or reading passwords, and does not upload photos used to recreate a scene.
+Your collections shape the experience, but they remain yours. GloryMap never uploads the original ZIP or CSV and never asks for streaming or reading passwords. Guests keep the normalized library on the device; signed-in users can privately sync that normalized list to their Supabase account and use it on another device. Photos used to recreate a scene remain local.
 
 ## 🧱 Architecture
 
@@ -206,6 +206,15 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000). Replace placeholder values in `.env.local` with your own credentials; never commit that file. The repository documents every supported variable in `.env.example`, including optional model overrides.
+
+### Enable personal accounts and library sync
+
+1. Apply `supabase/migrations/20260722000000_user_media_libraries.sql` in the Supabase SQL Editor or through your normal migration workflow.
+2. In **Supabase Dashboard → Authentication → Providers**, enable Google, Facebook, or both and add the OAuth client credentials supplied by those platforms.
+3. In **Authentication → URL Configuration**, set the production Site URL and allow both the production URL and `http://localhost:3000` as redirect URLs.
+4. Keep `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local` and in the corresponding Vercel environment.
+
+The browser processes the source archive locally. After login, GloryMap merges the guest, device, and cloud libraries, saves one normalized list under the authenticated Supabase user ID, and protects it with row-level security.
 
 ### Validate a change
 
