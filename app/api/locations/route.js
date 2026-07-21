@@ -22,19 +22,9 @@ function releaseYear(value) {
   return Number(value?.match(/^([+-]?\d{1,6})-/)?.[1]) || null;
 }
 
-function imdbIdsParam(value) {
-  return [...new Set(
-    (value ?? "").split(",").map((id) => id.trim()).filter((id) => /^tt\d{5,10}$/.test(id)),
-  )].slice(0, 100);
-}
-
-function sparql({ lat, lng, radius, limit, imdbIds }) {
-  const imdbFilter = imdbIds.length
-    ? `VALUES ?imdbId { ${imdbIds.map((id) => `"${id}"`).join(" ")} }\n  ?work wdt:P345 ?imdbId .`
-    : "OPTIONAL { ?work wdt:P345 ?imdbId . }";
-
+function sparql({ lat, lng, radius, limit }) {
   return `
-SELECT ?work ?workLabel ?imdbId ?location ?locationLabel ?coord ?releaseDate ?image WHERE {
+SELECT ?work ?workLabel ?location ?locationLabel ?coord ?releaseDate ?image WHERE {
   SERVICE wikibase:around {
     ?location wdt:P625 ?coord .
     bd:serviceParam wikibase:center "Point(${lng} ${lat})"^^geo:wktLiteral .
@@ -42,7 +32,6 @@ SELECT ?work ?workLabel ?imdbId ?location ?locationLabel ?coord ?releaseDate ?im
   }
   ?work wdt:P31 wd:Q11424 ;
         wdt:P915 ?location .
-  ${imdbFilter}
   OPTIONAL { ?work wdt:P577 ?releaseDate . }
   OPTIONAL { ?location wdt:P18 ?image . }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en,ru" . }
@@ -56,7 +45,6 @@ export async function GET(request) {
   const lng = numberParam(searchParams.get("lng"), DEFAULTS.lng, { min: -180, max: 180 });
   const radius = numberParam(searchParams.get("radius"), DEFAULTS.radius, { min: 0.1, max: 50 });
   const limit = numberParam(searchParams.get("limit"), DEFAULTS.limit, { min: 1, max: 200 });
-  const imdbIds = imdbIdsParam(searchParams.get("imdb_ids"));
 
   if ([lat, lng, radius, limit].some((value) => value === null)) {
     return NextResponse.json(
@@ -66,7 +54,7 @@ export async function GET(request) {
   }
 
   const endpoint = new URL(WIKIDATA_ENDPOINT);
-  endpoint.searchParams.set("query", sparql({ lat, lng, radius, limit, imdbIds }));
+  endpoint.searchParams.set("query", sparql({ lat, lng, radius, limit }));
   endpoint.searchParams.set("format", "json");
 
   try {
@@ -95,7 +83,6 @@ export async function GET(request) {
       const current = locations.get(key);
       locations.set(key, current ?? {
         work_wikidata_id: workWikidataId,
-        work_imdb_id: row.imdbId?.value ?? null,
         work_title: row.workLabel?.value ?? workWikidataId,
         work_year: releaseYear(row.releaseDate?.value),
         kind: "film",
@@ -111,7 +98,6 @@ export async function GET(request) {
       {
         center: { lat, lng },
         radius_km: radius,
-        imdb_ids_requested: imdbIds.length,
         locations: [...locations.values()].slice(0, limit),
       },
       { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" } },

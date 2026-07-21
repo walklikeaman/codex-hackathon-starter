@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import { Clapperboard, MapPin, Plus, Route, Search, Upload, X } from "lucide-react";
+import { Clapperboard, MapPin, Plus, Route, Search, X } from "lucide-react";
 
 const londonCenter = [51.5094, -0.1183];
 
@@ -182,52 +182,12 @@ function filmsFromLocations(sourceLocations) {
   ])).values()].slice(0, 5);
 }
 
-function csvRows(text) {
-  const rows = [];
-  let row = [];
-  let value = "";
-  let quoted = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-    if (character === '"') {
-      if (quoted && text[index + 1] === '"') {
-        value += '"';
-        index += 1;
-      } else {
-        quoted = !quoted;
-      }
-    } else if (character === "," && !quoted) {
-      row.push(value);
-      value = "";
-    } else if ((character === "\n" || character === "\r") && !quoted) {
-      if (character === "\r" && text[index + 1] === "\n") index += 1;
-      row.push(value);
-      if (row.some(Boolean)) rows.push(row);
-      row = [];
-      value = "";
-    } else {
-      value += character;
-    }
-  }
-
-  row.push(value);
-  if (row.some(Boolean)) rows.push(row);
-  return rows;
-}
-
-function checkinIdsFromCsv(text) {
-  const [headers, ...rows] = csvRows(text);
-  const imdbIdColumn = headers?.findIndex((header) => /^(const|imdb id)$/i.test(header.trim()));
-  if (imdbIdColumn === undefined || imdbIdColumn < 0) return [];
-
-  return [...new Set(
-    rows.map((row) => row[imdbIdColumn]?.trim()).filter((id) => /^tt\d{5,10}$/.test(id)),
-  )];
-}
-
-function RecenterOnSelection({ position }) {
+function RecenterOnSelection({ center, position }) {
   const map = useMap();
+
+  useEffect(() => {
+    map.flyTo(center, 12, { duration: 0.8 });
+  }, [center, map]);
 
   useEffect(() => {
     if (position) {
@@ -266,10 +226,11 @@ function kmBetween(routeStops) {
 }
 
 export default function SceneMapApp() {
-  const checkinInputRef = useRef(null);
   const [liveLocations, setLiveLocations] = useState(null);
-  const [checkinIds, setCheckinIds] = useState(null);
-  const [checkinImportStatus, setCheckinImportStatus] = useState("");
+  const [mapCenter, setMapCenter] = useState(londonCenter);
+  const [cityQuery, setCityQuery] = useState("London");
+  const [cityName, setCityName] = useState("London");
+  const [citySearchStatus, setCitySearchStatus] = useState("");
   const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
   const [activeLocation, setActiveLocation] = useState(fallbackLocations[0]);
   const [routeStops, setRouteStops] = useState([]);
@@ -280,10 +241,7 @@ export default function SceneMapApp() {
 
     async function loadLocations() {
       try {
-        const importedIds = checkinIds?.length
-          ? `&imdb_ids=${encodeURIComponent(checkinIds.join(","))}`
-          : "";
-        const response = await fetch(`/api/locations?lat=51.5094&lng=-0.1183&radius=5&limit=30${importedIds}`);
+        const response = await fetch(`/api/locations?lat=${mapCenter[0]}&lng=${mapCenter[1]}&radius=5&limit=30`);
         if (!response.ok) throw new Error("Locations API failed");
         const payload = await response.json();
         const nextLocations = locationsFromApi(payload.locations ?? []);
@@ -302,7 +260,7 @@ export default function SceneMapApp() {
 
     loadLocations();
     return () => { cancelled = true; };
-  }, [checkinIds]);
+  }, [mapCenter]);
 
   const sourceLocations = liveLocations ?? fallbackLocations;
   const films = useMemo(
@@ -342,32 +300,38 @@ export default function SceneMapApp() {
     setRouteVisible(false);
   }
 
-  async function importCheckins(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  async function searchCity(event) {
+    event.preventDefault();
+    const query = cityQuery.trim();
+    if (!query) return;
 
+    setCitySearchStatus("Searching city…");
     try {
-      const ids = checkinIdsFromCsv(await file.text());
-      if (!ids.length) throw new Error("No IMDb title IDs found");
-      const supportedIds = ids.slice(0, 100);
-      setCheckinIds(supportedIds);
-      setCheckinImportStatus(`IMDb Check-ins: ${supportedIds.length}${ids.length > supportedIds.length ? " of first 100" : ""}`);
+      const response = await fetch(`/api/cities?q=${encodeURIComponent(query)}`);
+      const city = await response.json();
+      if (!response.ok) throw new Error(city.error);
+
+      setMapCenter([city.lat, city.lng]);
+      setCityName(city.name);
+      setLiveLocations([]);
+      setActiveLocation(null);
+      setRouteStops([]);
+      setRouteVisible(false);
+      setCitySearchStatus("");
     } catch {
-      setCheckinImportStatus("Could not read IMDb Check-ins CSV");
-    } finally {
-      event.target.value = "";
+      setCitySearchStatus("City not found");
     }
   }
 
   return (
     <main className="scene-shell">
       <section className="map-stage" aria-label="Карта локаций SceneMap">
-        <MapContainer center={londonCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
+        <MapContainer center={mapCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
-          <RecenterOnSelection position={activeLocation?.position} />
+          <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           {visibleLocations.map((location) => (
             <Marker
               key={location.id}
@@ -397,28 +361,24 @@ export default function SceneMapApp() {
           </div>
           <div>
             <p className="eyebrow">SceneMap MVP</p>
-            <h1>Кино-прогулка по Лондону</h1>
+            <h1>Кино-карта · {cityName}</h1>
           </div>
         </div>
 
-        <div className="action-row">
-          <button className="ghost-button" type="button">
-            <Search size={17} />
-            Галерея
-          </button>
+        <form className="city-search" onSubmit={searchCity}>
+          <Search size={17} aria-hidden="true" />
           <input
-            ref={checkinInputRef}
-            accept=".csv,text/csv"
-            onChange={importCheckins}
-            style={{ display: "none" }}
-            type="file"
+            aria-label="City"
+            onChange={(event) => setCityQuery(event.target.value)}
+            placeholder="City"
+            type="search"
+            value={cityQuery}
           />
-          <button className="ghost-button" onClick={() => checkinInputRef.current?.click()} type="button">
-            <Upload size={17} />
-            IMDb Check-ins
+          <button aria-label="Search city" className="ghost-button" type="submit">
+            <Search size={17} />
           </button>
-        </div>
-        {checkinImportStatus && <p className="eyebrow">{checkinImportStatus}</p>}
+        </form>
+        {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
         <div className="film-grid" aria-label="Выбранные фильмы">
           {films.map((film) => {
@@ -445,7 +405,7 @@ export default function SceneMapApp() {
         <div className="location-list" aria-label="Точки на карте">
           <div className="section-row">
             <p className="eyebrow">Точки</p>
-            <span>{visibleLocations.length} в Лондоне</span>
+            <span>{visibleLocations.length} в {cityName}</span>
           </div>
           {visibleLocations.map((location) => (
             <div className="location-row" key={location.id}>
