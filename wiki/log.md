@@ -7,6 +7,12 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-22] update | Devpost-ready GloryMap README
+
+- Preserved the product-focused GloryMap README from current `main` and supplemented it for the Devpost judging requirements.
+- Documented the concrete roles of Codex and GPT-5.6 in grounded discovery and validated tour generation, clarified current versus long-term integrations, and switched the demo link to the stable production alias.
+- Verified the documentation against current routes and dependencies, then ran all 89 tests and a successful production build.
+
 ## [2026-07-22] update | Emotional story-first elevator pitch
 
 - README pitch теперь начинается с эмоциональной связи с фильмами, сериалами и книгами, которые сопровождают человека годами.
