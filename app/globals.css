@@ -1437,6 +1437,27 @@ figcaption a {
   background: rgba(255, 255, 255, 0.055);
 }
 
+.library-summary button {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.library-summary button.is-selected {
+  border-color: rgba(114, 212, 156, 0.45);
+  color: var(--green);
+  background: rgba(114, 212, 156, 0.1);
+}
+
+.library-summary button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .movie-library {
   display: grid;
   gap: 7px;
