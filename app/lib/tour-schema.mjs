@@ -8,6 +8,7 @@ export const tourRequestSchema = z
         id: z.string().min(1).max(160),
         title: z.string().trim().min(1).max(240),
         year: z.number().int().nullable().optional(),
+        kind: z.enum(["film", "series", "book"]).optional(),
       })
       .optional(),
     durationMinutes: z.union([z.literal(30), z.literal(60), z.literal(120)]).optional(),

@@ -197,30 +197,34 @@ function kindLabel(kind) {
   return kindLabels[kind] ?? "Work";
 }
 
-function locationDescription(kind, locationSource, title, year) {
-  const datedTitle = `${title}${year ? ` (${year})` : ""}`;
-  return locationSource === "narrative"
-    ? `Narrative location in the ${kind === "book" ? "book" : "series"} “${datedTitle}”.`
-    : `Filming location for the ${kind === "series" ? "series" : "film"} “${datedTitle}”.`;
-}
-
 function locationsFromApi(records) {
   return records
-    .map((record) => ({
-      id: `${record.kind}-${record.work_wikidata_id}-${record.loc_wikidata_id}`,
-      filmId: record.work_wikidata_id,
-      film: record.work_title,
-      scene: record.work_title,
-      place: record.loc_name,
-      description: locationDescription(record.kind, record.location_source, record.work_title, record.work_year),
-      position: [record.lat, record.lng],
-      locationId: record.loc_wikidata_id,
-      backdrop: null,
-      now: record.commons_image,
-      filmTmdbId: record.film_tmdb_id,
-      year: record.work_year,
-      kind: record.kind,
-    }))
+    .map((record) => {
+      const kind = record.kind ?? "film";
+      const relationLabel = record.relation_label
+        ?? (kind === "book" ? "Story setting" : "Filming location");
+
+      return {
+        id: `${kind}-${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+        filmId: record.work_wikidata_id,
+        film: record.work_title,
+        scene: record.scene_title ?? relationLabel,
+        place: record.loc_name,
+        description: record.relation_description
+          ?? `${record.loc_name} is connected with ${record.work_title}.`,
+        position: [record.lat, record.lng],
+        locationId: record.loc_wikidata_id,
+        backdrop: record.backdrop ?? null,
+        now: record.commons_image,
+        filmTmdbId: record.film_tmdb_id,
+        year: record.work_year,
+        kind,
+        relationKind: record.relation_kind,
+        sourceUrl: record.source_url,
+        sourceTitle: record.source_title,
+        evidenceSource: record.evidence_source ?? "wikidata",
+      };
+    })
     .filter((location) => Number.isFinite(location.position[0]) && Number.isFinite(location.position[1]));
 }
 
@@ -231,7 +235,7 @@ function worksFromLocations(sourceLocations) {
       id: location.filmId,
       title: location.film,
       year: location.year,
-      kind: location.kind,
+      kind: location.kind ?? "film",
       code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
     },
   ])).values()].slice(0, 5);
@@ -343,11 +347,14 @@ function makeFallbackRoute(routeStops) {
 
 function makeImageSearchUrl(location) {
   const scene = location.scene?.trim();
+  const relationQuery = location.kind === "book"
+    ? "book setting real place"
+    : "scene filming location";
   const query = [
     `"${location.film}"`,
     `"${location.place}"`,
     scene && scene.toLowerCase() !== location.film.toLowerCase() ? `"${scene}"` : null,
-    "movie scene filming location",
+    relationQuery,
   ].filter(Boolean).join(" ");
 
   return `https://www.bing.com/images/search?${new URLSearchParams({ q: query })}`;
@@ -525,7 +532,13 @@ export default function SceneMapApp() {
   const [mapCenter, setMapCenter] = useState(londonCenter);
   const [cityQuery, setCityQuery] = useState("London");
   const [cityName, setCityName] = useState("London");
+  const [cityRadius, setCityRadius] = useState(15);
+  const [cityWikidataId, setCityWikidataId] = useState("Q84");
   const [citySearchStatus, setCitySearchStatus] = useState("");
+  const [workQuery, setWorkQuery] = useState("");
+  const [workKind, setWorkKind] = useState("film");
+  const [locationsStatus, setLocationsStatus] = useState("");
+  const locationRequestId = useRef(0);
   const routeRequestId = useRef(0);
   const filmImageCache = useRef(new Map());
   const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
@@ -572,41 +585,63 @@ export default function SceneMapApp() {
     localStorage.setItem("scenemap-library", JSON.stringify(library));
   }, [library]);
 
+  function applyLocationResults(nextLocations) {
+    const nextFilms = worksFromLocations(nextLocations);
+    setLiveLocations(nextLocations);
+    setSelectedFilms(nextFilms.map((film) => film.id));
+    setActiveLocation(nextLocations[0] ?? null);
+    setTourFilmId(nextFilms[0]?.id ?? "");
+    setAiTour(null);
+    setAiTourStatus("idle");
+    setAiTourError("");
+    setTimedTour(null);
+    setTimedTourStatus("idle");
+    setTimedTourMessage("");
+    setRouteStops([]);
+    setRouteResult(null);
+    setRouteStatus("idle");
+    setRouteMessage("");
+  }
+
   useEffect(() => {
     let cancelled = false;
+    const requestId = locationRequestId.current + 1;
+    locationRequestId.current = requestId;
 
     async function loadLocations() {
+      setLocationsStatus(`Finding mapped ${workKind} locations…`);
       try {
-        const response = await fetch(`/api/locations?lat=${mapCenter[0]}&lng=${mapCenter[1]}&radius=15&limit=100`);
-        if (!response.ok) throw new Error("Locations API failed");
-        const payload = await response.json();
-        const nextLocations = locationsFromApi(payload.locations ?? []);
-        if (!nextLocations.length) throw new Error("Locations API returned no usable points");
-        if (cancelled) return;
+        const params = new URLSearchParams({
+          lat: String(mapCenter[0]),
+          lng: String(mapCenter[1]),
+          radius: String(Math.min(cityRadius, 10)),
+          limit: "30",
+          kind: workKind,
+        });
+        if (cityWikidataId) params.set("exclude", cityWikidataId);
 
-        const nextWorks = worksFromLocations(nextLocations);
-        setLiveLocations(nextLocations);
-        setSelectedFilms(nextWorks.map((work) => work.id));
-        setActiveLocation(nextLocations[0]);
-        setTourFilmId(nextWorks[0]?.id ?? "");
-        setAiTour(null);
-        setAiTourStatus("idle");
-        setAiTourError("");
-        setTimedTour(null);
-        setTimedTourStatus("idle");
-        setTimedTourMessage("");
-        setRouteStops([]);
-        setRouteResult(null);
-        setRouteStatus("idle");
-        setRouteMessage("");
-      } catch {
-        // Keep the local demo locations visible if Wikidata is temporarily unavailable.
+        const response = await fetch(`/api/locations?${params}`);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Locations API failed");
+        const nextLocations = locationsFromApi(payload.locations ?? []);
+        if (cancelled || requestId !== locationRequestId.current) return;
+
+        applyLocationResults(nextLocations);
+        setLocationsStatus(nextLocations.length
+          ? `${nextLocations.length} verified places found nearby.`
+          : `No mapped ${workKind} locations found nearby. Search for a title to check the whole city.`);
+      } catch (error) {
+        if (cancelled || requestId !== locationRequestId.current) return;
+        if (liveLocations !== null) applyLocationResults([]);
+        setLocationsStatus(error instanceof Error
+          ? error.message
+          : "Live location search is unavailable. The London demo remains available.");
       }
     }
 
     loadLocations();
     return () => { cancelled = true; };
-  }, [mapCenter]);
+  }, [cityRadius, cityWikidataId, mapCenter, workKind]);
 
   useEffect(() => {
     if (!activeLocation) return undefined;
@@ -1021,7 +1056,7 @@ export default function SceneMapApp() {
 
     if (!film || filmLocations.length === 0) {
       setAiTourStatus("error");
-      setAiTourError("No verified locations are available for this film yet.");
+      setAiTourError("No verified locations are available for this story yet.");
       return;
     }
 
@@ -1039,6 +1074,7 @@ export default function SceneMapApp() {
             id: film.id,
             title: film.title,
             year: film.year ?? null,
+            kind: film.kind ?? "film",
           },
           locations: filmLocations.map(({ id, place, scene, description }) => ({
             id,
@@ -1079,9 +1115,12 @@ export default function SceneMapApp() {
     }
   }
 
-  function selectTourArea(center, name) {
+  function selectTourArea(center, name, { radiusKm = 15, wikidataId = null } = {}) {
     setMapCenter(center);
     setCityName(name);
+    setCityRadius(radiusKm);
+    setCityWikidataId(wikidataId);
+    setWorkQuery("");
     setLiveLocations([]);
     setActiveLocation(null);
     setRouteStops([]);
@@ -1091,6 +1130,7 @@ export default function SceneMapApp() {
     setTimedTour(null);
     setTimedTourStatus("idle");
     setTimedTourMessage("");
+    setLocationsStatus(`Finding mapped ${workKind} locations in ${name}…`);
     invalidateRoute();
   }
 
@@ -1116,6 +1156,101 @@ export default function SceneMapApp() {
     );
   }
 
+  async function searchWork(event) {
+    event.preventDefault();
+    const query = workQuery.trim();
+    if (!query) {
+      setLocationsStatus("Enter a film, series, or book title.");
+      return;
+    }
+
+    const requestId = locationRequestId.current + 1;
+    locationRequestId.current = requestId;
+    setLocationsStatus(`Finding every mapped place for “${query}” in ${cityName}…`);
+
+    try {
+      const params = new URLSearchParams({
+        q: query,
+        kind: workKind,
+        lat: String(mapCenter[0]),
+        lng: String(mapCenter[1]),
+        radius: String(cityRadius),
+        limit: "30",
+      });
+      if (cityWikidataId) params.set("exclude", cityWikidataId);
+      const response = await fetch(`/api/locations?${params}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Location search failed");
+      if (requestId !== locationRequestId.current) return;
+
+      const nextLocations = locationsFromApi(payload.locations ?? []);
+      const matchedWork = payload.matched_work;
+      const matchedTitle = matchedWork?.label ?? nextLocations[0]?.film ?? query;
+      applyLocationResults(nextLocations);
+      if (nextLocations.length) {
+        setLocationsStatus(
+          `${nextLocations.length} verified ${nextLocations.length === 1 ? "place" : "places"} for ${matchedTitle} in ${cityName}.`,
+        );
+      } else {
+        setLocationsStatus(`No verified ${workKind} locations for “${query}” were found inside ${cityName}.`);
+      }
+
+      if (!matchedWork || nextLocations.length >= 3) return;
+
+      setLocationsStatus(
+        `${nextLocations.length || "No"} Wikidata ${nextLocations.length === 1 ? "place" : "places"}; checking cited web sources for more…`,
+      );
+      const discoveryResponse = await fetch("/api/locations/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          city: {
+            name: cityName,
+            lat: mapCenter[0],
+            lng: mapCenter[1],
+            radiusKm: cityRadius,
+          },
+          work: {
+            id: matchedWork.id,
+            title: matchedTitle,
+            kind: workKind,
+          },
+          existingLocations: nextLocations.map((location) => ({
+            place: location.place,
+            lat: location.position[0],
+            lng: location.position[1],
+          })),
+        }),
+      });
+      const discovery = await discoveryResponse.json().catch(() => ({}));
+      if (requestId !== locationRequestId.current) return;
+      if (!discoveryResponse.ok) {
+        setLocationsStatus(nextLocations.length
+          ? `${nextLocations.length} verified ${nextLocations.length === 1 ? "place" : "places"} for ${matchedTitle}. More research is unavailable right now.`
+          : `No verified places for ${matchedTitle} in ${cityName}; more research is unavailable right now.`);
+        return;
+      }
+
+      const researchedLocations = locationsFromApi(discovery.locations ?? []);
+      const merged = [...nextLocations];
+      for (const location of researchedLocations) {
+        const duplicate = merged.some((known) =>
+          known.place.toLowerCase() === location.place.toLowerCase()
+          || (Math.abs(known.position[0] - location.position[0]) < 0.0005
+            && Math.abs(known.position[1] - location.position[1]) < 0.0005),
+        );
+        if (!duplicate) merged.push(location);
+      }
+      applyLocationResults(merged);
+      setLocationsStatus(merged.length > nextLocations.length
+        ? `${merged.length} sourced places for ${matchedTitle}: Wikidata plus cited web research.`
+        : `${nextLocations.length || "No"} verified places for ${matchedTitle}; no additional sourced places were found.`);
+    } catch (error) {
+      if (requestId !== locationRequestId.current) return;
+      setLocationsStatus(error instanceof Error ? error.message : "Location search failed");
+    }
+  }
+
   async function searchCity(event) {
     event.preventDefault();
     const query = cityQuery.trim();
@@ -1127,7 +1262,10 @@ export default function SceneMapApp() {
       const city = await response.json();
       if (!response.ok) throw new Error(city.error);
 
-      selectTourArea([city.lat, city.lng], city.name);
+      selectTourArea([city.lat, city.lng], city.name, {
+        radiusKm: city.radius_km ?? 15,
+        wikidataId: city.wikidata_id ?? null,
+      });
       setCitySearchStatus("");
     } catch {
       setCitySearchStatus("City not found");
@@ -1192,7 +1330,7 @@ export default function SceneMapApp() {
         </MapContainer>
       </section>
 
-      <aside className="command-panel" aria-label="Work selection">
+      <aside className="command-panel" aria-label="Story selection">
         <div className="brand-row">
           <div className="brand-mark">
             <Clapperboard size={22} />
@@ -1227,6 +1365,29 @@ export default function SceneMapApp() {
           </button>
         </div>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
+
+        <form className="work-search" onSubmit={searchWork}>
+          <select
+            aria-label="Work type"
+            value={workKind}
+            onChange={(event) => setWorkKind(event.target.value)}
+          >
+            <option value="film">Film</option>
+            <option value="series">Series</option>
+            <option value="book">Book</option>
+          </select>
+          <input
+            aria-label="Film, series, or book title"
+            onChange={(event) => setWorkQuery(event.target.value)}
+            placeholder="Film, series, or book"
+            type="search"
+            value={workQuery}
+          />
+          <button aria-label="Find story locations" className="ghost-button" type="submit">
+            <Search size={17} />
+          </button>
+        </form>
+        {locationsStatus && <p className="location-search-status" role="status">{locationsStatus}</p>}
 
         <div className="nearby-card" aria-label="Nearby locations">
           <div className="nearby-actions">
@@ -1301,7 +1462,7 @@ export default function SceneMapApp() {
           )}
         </div>
 
-        <div className="film-grid" aria-label="Selected works">
+        <div className="film-grid" aria-label="Selected stories">
           {films.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
@@ -1642,9 +1803,15 @@ export default function SceneMapApp() {
               <Clapperboard size={18} />
               Recreate this shot
             </button>
+            {activeLocation.sourceUrl && (
+              <a className="source-link" href={activeLocation.sourceUrl} target="_blank" rel="noopener noreferrer">
+                {activeLocation.sourceTitle ?? (activeLocation.evidenceSource === "web_search" ? "Research source" : "Wikidata source")}
+                <ExternalLink size={14} />
+              </a>
+            )}
             <a className="ghost-button image-search-link" href={makeImageSearchUrl(activeLocation)} target="_blank" rel="noopener noreferrer">
               <Search size={18} />
-              Find scene images
+              Find place images
               <ExternalLink size={15} />
             </a>
             <button className="wide-button" type="button" onClick={() => addRouteStop(activeLocation)}>
