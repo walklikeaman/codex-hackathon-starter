@@ -54,11 +54,11 @@ test("builds one canonical cache query and a bounded Wikidata pair query", () =>
   const request = parseSceneImageRequest(validParams());
   assert.equal(
     canonicalSceneImageQuery(request),
-    "tmdbId=185&workId=Q181086&locationId=Q386707",
+    "tmdbId=185&workId=Q181086&locationId=Q386707&v=2",
   );
   assert.equal(
     canonicalSceneImageQuery(request, "signed-capability"),
-    "tmdbId=185&workId=Q181086&locationId=Q386707&token=signed-capability",
+    "tmdbId=185&workId=Q181086&locationId=Q386707&token=signed-capability&v=2",
   );
 
   const query = buildWikidataSceneQuery(request);
@@ -112,6 +112,8 @@ test("builds one reference image followed by numbered candidates", () => {
       "https://image.tmdb.org/t/p/w780/two.jpg",
     ],
   );
+  assert.match(content[0].text, /already verified/);
+  assert.match(content[0].text, /interior-to-exterior/);
   assert.equal(content.some((item) => item.text === "CANDIDATE 1"), true);
 });
 
