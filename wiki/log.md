@@ -7,6 +7,11 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Show every fetched work in the map UI
+
+- Removed the five-work client cap, so the work selector and map now use every film, series, and book returned for the selected area.
+- Raised the live map request to the supported 200-location API maximum; the global Wikidata catalogue remains queried by the active map area rather than loaded as tens of thousands of points at once.
+
 ## [2026-07-21] update | Current-location map control
 
 - Added a browser-only current-location control that recenters the map, displays a blue position marker, and reloads nearby Wikidata works.

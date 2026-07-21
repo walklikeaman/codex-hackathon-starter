@@ -224,7 +224,7 @@ function worksFromLocations(sourceLocations) {
       kind: location.kind,
       code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
     },
-  ])).values()].slice(0, 5);
+  ])).values()];
 }
 
 function RecenterOnSelection({ center, position }) {
@@ -555,7 +555,7 @@ export default function SceneMapApp() {
 
     async function loadLocations() {
       try {
-        const response = await fetch(`/api/locations?lat=${mapCenter[0]}&lng=${mapCenter[1]}&radius=5&limit=30`);
+        const response = await fetch(`/api/locations?lat=${mapCenter[0]}&lng=${mapCenter[1]}&radius=5&limit=200`);
         if (!response.ok) throw new Error("Locations API failed");
         const payload = await response.json();
         const nextLocations = locationsFromApi(payload.locations ?? []);
