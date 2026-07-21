@@ -7,7 +7,7 @@ const SceneMapApp = dynamic(() => import("./components/SceneMapApp"), {
   loading: () => (
     <main className="boot-screen">
       <div className="boot-mark" />
-      <p>Загружаем карту Лондона...</p>
+      <p>Loading the London map...</p>
     </main>
   ),
 });

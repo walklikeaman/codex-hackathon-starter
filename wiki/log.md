@@ -7,6 +7,21 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Mapped-film search verified
+
+- В существующую action row добавлен поиск по названию, году и коду фильма без внешних API и новых ключей.
+- Результат синхронно фильтрует film chips, map markers, location list и активную location card; пустое состояние и очистка поиска реализованы отдельно.
+- Browser flow проверен для `harry`, `007`, пустого результата и clear: 5 фильмов/10 пинов восстанавливаются, console errors и mobile overflow отсутствуют.
+- `npm run build` зелёный; PR #8 нельзя self-approve от аккаунта автора, поэтому reviewer request отправлен `timido22`.
+
+## [2026-07-21] update | Walking-route MVP verified
+
+- Сохранён чёрно-золотой map-first дизайн текущего Vercel deployment; пользовательский интерфейс полностью переведён на английский.
+- Добавлен серверный `POST /api/route`, который валидирует 2–5 координат и получает пешую GeoJSON-геометрию у публичного OSRM `routed-foot`.
+- Клиент строит маршрут по улицам для 3–5 выбранных точек, показывает расстояние/время и откатывается к прямой линии при недоступности роутера.
+- `npm run build`, API contract и desktop/mobile browser flow зелёные; Supabase и production deployment не менялись.
+- Vercel Preview `codex-hackathon-starter-b760nc4e5-kitpos.vercel.app` имеет статус Ready и проверен через protection bypass; обычное открытие требует доступ к проекту Vercel.
+
 ## [2026-07-21] incident | First Vercel deploy targeted production
 
 - Ветка `feature/scenemap-skeleton` запушена с commit `dd17ac7`; локальный и Vercel builds зелёные.
