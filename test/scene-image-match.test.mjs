@@ -54,11 +54,11 @@ test("builds one canonical cache query and a bounded Wikidata pair query", () =>
   const request = parseSceneImageRequest(validParams());
   assert.equal(
     canonicalSceneImageQuery(request),
-    "tmdbId=185&workId=Q181086&locationId=Q386707",
+    "tmdbId=185&workId=Q181086&locationId=Q386707&v=2",
   );
   assert.equal(
     canonicalSceneImageQuery(request, "signed-capability"),
-    "tmdbId=185&workId=Q181086&locationId=Q386707&token=signed-capability",
+    "tmdbId=185&workId=Q181086&locationId=Q386707&token=signed-capability&v=2",
   );
 
   const query = buildWikidataSceneQuery(request);

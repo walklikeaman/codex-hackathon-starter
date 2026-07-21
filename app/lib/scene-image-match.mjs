@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const MAX_TMDB_CANDIDATES = 6;
+export const MAX_TMDB_CANDIDATES = 24;
+export const SCENE_IMAGE_MATCH_VERSION = "2";
 
 const sceneImageRequestSchema = z.object({
   tmdbId: z.string().regex(/^[1-9]\d*$/),
@@ -40,6 +41,7 @@ export function parseSceneImageRequest(searchParams) {
 export function canonicalSceneImageQuery({ tmdbId, workId, locationId }, token = null) {
   const params = new URLSearchParams({ tmdbId, workId, locationId });
   if (token) params.set("token", token);
+  params.set("v", SCENE_IMAGE_MATCH_VERSION);
   return params.toString();
 }
 
