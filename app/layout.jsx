@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "SceneMap",
-  description: "Film walks through locations from your favorite movies",
+  description: "Film walks through locations from your favourite movies",
 };
 
 export default function RootLayout({ children }) {
