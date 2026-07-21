@@ -32,3 +32,4 @@ graphify-out/
 
 # operator handover notes — local only, not for the public/team repo
 HANDOVER.md
+.vercel
