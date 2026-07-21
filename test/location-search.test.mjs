@@ -89,6 +89,15 @@ test("normalizes duplicate Wikidata rows into one described place", () => {
   assert.match(locations[0].relation_description, /Public square in London/);
 });
 
+test("filters unresolved QID labels from Wikidata results", () => {
+  const locations = normalizeWikidataLocations([
+    binding({ title: "Q6769811", place: "Named place" }),
+    binding({ title: "Named work", place: "Q137104896" }),
+  ], { kind: "series" });
+
+  assert.deepEqual(locations, []);
+});
+
 test("describes a book place as a story setting", () => {
   const [location] = normalizeWikidataLocations([binding()], { kind: "book" });
 
@@ -209,4 +218,22 @@ test("normalizes title locations directly from Wikidata entities", () => {
   assert.equal(location.film_tmdb_id, "123");
   assert.match(location.commons_image, /Example%20image\.jpg/);
   assert.match(location.relation_description, /Public square in London/);
+});
+
+test("filters unresolved QID labels from Wikidata entity locations", () => {
+  const work = {
+    id: "Q10",
+    labels: { en: { value: "Q6769811" } },
+    claims: { P915: [itemClaim("Q20")] },
+  };
+  const place = {
+    id: "Q20",
+    labels: { en: { value: "Named Place" } },
+    claims: { P625: [valueClaim({ latitude: 51.51, longitude: -0.12 })] },
+  };
+
+  assert.deepEqual(
+    normalizeWikidataEntityLocations(work, new Map([["Q20", place]]), { kind: "series" }),
+    [],
+  );
 });
