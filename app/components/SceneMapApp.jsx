@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { Circle, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import {
   CheckCircle2,
   Clapperboard,
+  Crosshair,
   ExternalLink,
   Film,
   Link2,
@@ -20,9 +21,23 @@ import {
   User,
   X,
 } from "lucide-react";
+
+import {
+  DEMO_LOCATION,
+  RADIUS_OPTIONS_METERS,
+  findNearby,
+  formatDistanceMeters,
+  zoomForRadius,
+} from "../lib/nearby.mjs";
 import { mergeLibraries, parseMediaCsv } from "../lib/media-library.mjs";
 
 const londonCenter = [51.5094, -0.1183];
+
+const kindLabels = {
+  film: "Film",
+  series: "Series",
+  book: "Book",
+};
 
 const fallbackFilms = [
   {
@@ -55,7 +70,7 @@ const fallbackFilms = [
     year: 2003,
     code: "LA",
   },
-];
+].map((work) => ({ ...work, kind: "film" }));
 
 const fallbackLocations = [
   {
@@ -168,33 +183,46 @@ const fallbackLocations = [
     backdrop: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
     now: "https://images.unsplash.com/photo-1577048982768-5cb3e7ddfa23?auto=format&fit=crop&w=1200&q=80",
   },
-];
+].map((location) => ({ ...location, kind: "film" }));
+
+function kindLabel(kind) {
+  return kindLabels[kind] ?? "Work";
+}
+
+function locationDescription(kind, locationSource, title, year) {
+  const datedTitle = `${title}${year ? ` (${year})` : ""}`;
+  return locationSource === "narrative"
+    ? `Narrative location in the ${kind === "book" ? "book" : "series"} “${datedTitle}”.`
+    : `Filming location for the ${kind === "series" ? "series" : "film"} “${datedTitle}”.`;
+}
 
 function locationsFromApi(records) {
   return records
     .map((record) => ({
-      id: `${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+      id: `${record.kind}-${record.work_wikidata_id}-${record.loc_wikidata_id}`,
       filmId: record.work_wikidata_id,
       film: record.work_title,
       scene: record.work_title,
       place: record.loc_name,
-      description: `Filming location for ${record.work_title}${record.work_year ? ` (${record.work_year})` : ""}.`,
+      description: locationDescription(record.kind, record.location_source, record.work_title, record.work_year),
       position: [record.lat, record.lng],
       backdrop: null,
       now: record.commons_image,
       filmTmdbId: record.film_tmdb_id,
       year: record.work_year,
+      kind: record.kind,
     }))
     .filter((location) => Number.isFinite(location.position[0]) && Number.isFinite(location.position[1]));
 }
 
-function filmsFromLocations(sourceLocations) {
+function worksFromLocations(sourceLocations) {
   return [...new Map(sourceLocations.map((location) => [
     location.filmId,
     {
       id: location.filmId,
       title: location.film,
       year: location.year,
+      kind: location.kind,
       code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
     },
   ])).values()].slice(0, 5);
@@ -232,14 +260,48 @@ function FitRoute({ positions }) {
   return null;
 }
 
-function makeMarkerIcon(selected) {
+function makeMarkerIcon(selected, nearest, kind) {
   return L.divIcon({
     className: "",
-    html: `<span class="scene-pin${selected ? " is-selected" : ""}"><span></span></span>`,
+    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}${nearest ? " is-nearest" : ""}"><span></span></span>`,
     iconSize: [34, 42],
     iconAnchor: [17, 34],
   });
 }
+
+const userIcon = L.divIcon({
+  className: "",
+  html: '<span class="user-pin"><span></span></span>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+});
+
+function FlyToUser({ position, radius }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (position) {
+      map.flyTo(position, zoomForRadius(radius), { duration: 0.8 });
+    }
+  }, [map, position, radius]);
+
+  return null;
+}
+
+const GEOLOCATION_ERRORS = {
+  1: {
+    status: "denied",
+    message: "Location access was denied. You can retry or use the demo location.",
+  },
+  2: {
+    status: "unavailable",
+    message: "Your position is unavailable right now. Try again or use the demo location.",
+  },
+  3: {
+    status: "timeout",
+    message: "Locating took too long. Try again or use the demo location.",
+  },
+};
 
 function kmBetween(routeStops) {
   if (routeStops.length < 2) return 0;
@@ -282,6 +344,172 @@ function makeImageSearchUrl(location) {
   return `https://www.bing.com/images/search?${new URLSearchParams({ q: query })}`;
 }
 
+function RecreateShot({ location, onClose }) {
+  const inputRef = useRef(null);
+  const photoUrlRef = useRef("");
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [view, setView] = useState("overlay");
+  const [opacity, setOpacity] = useState(55);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  function loadPhoto(event) {
+    const [file] = event.target.files;
+    if (!file?.type.startsWith("image/")) return;
+
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    const nextUrl = URL.createObjectURL(file);
+    photoUrlRef.current = nextUrl;
+    setPhotoUrl(nextUrl);
+    setView("overlay");
+  }
+
+  function resetPhoto() {
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    photoUrlRef.current = "";
+    setPhotoUrl("");
+    setView("overlay");
+    setOpacity(55);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  return (
+    <div className="recreate-backdrop">
+      <section
+        aria-labelledby="recreate-title"
+        aria-modal="true"
+        className="recreate-dialog"
+        role="dialog"
+      >
+        <header className="recreate-header">
+          <div>
+            <p className="eyebrow">Recreate the shot</p>
+            <h2 id="recreate-title">{location.scene}</h2>
+            <span>{location.film} · {location.place}</span>
+          </div>
+          <button
+            aria-label="Close recreate shot"
+            autoFocus
+            className="icon-button recreate-close"
+            onClick={onClose}
+            type="button"
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="recreate-stage">
+          {view === "overlay" ? (
+            <div className="recreate-canvas">
+              <img src={location.backdrop} alt={`Reference frame for ${location.film}`} />
+              {photoUrl && (
+                <img
+                  className="recreate-user-photo"
+                  src={photoUrl}
+                  alt="Your uploaded recreation"
+                  style={{ opacity: opacity / 100 }}
+                />
+              )}
+            </div>
+          ) : (
+            <div className="recreate-comparison" aria-label="Then and now comparison">
+              <figure>
+                <img src={location.backdrop} alt={`Reference frame for ${location.film}`} />
+                <figcaption>Then · reference</figcaption>
+              </figure>
+              <figure>
+                <img src={photoUrl} alt="Your uploaded recreation" />
+                <figcaption>Now · your photo</figcaption>
+              </figure>
+            </div>
+          )}
+          {!photoUrl && (
+            <div className="recreate-empty">
+              <strong>Match the framing</strong>
+              <span>Upload a photo from this device to line it up with the reference.</span>
+            </div>
+          )}
+        </div>
+
+        <div className="recreate-controls">
+          <input
+            accept="image/*"
+            className="recreate-file-input"
+            id="recreate-photo"
+            onChange={loadPhoto}
+            ref={inputRef}
+            type="file"
+          />
+          <label className="wide-button recreate-upload" htmlFor="recreate-photo">
+            {photoUrl ? "Choose another photo" : "Upload your photo"}
+          </label>
+
+          {photoUrl && (
+            <>
+              <div className="recreate-view-switch" aria-label="Comparison mode">
+                <button
+                  aria-pressed={view === "overlay"}
+                  className="ghost-button"
+                  onClick={() => setView("overlay")}
+                  type="button"
+                >
+                  Overlay
+                </button>
+                <button
+                  aria-pressed={view === "compare"}
+                  className="ghost-button"
+                  onClick={() => setView("compare")}
+                  type="button"
+                >
+                  Then / now
+                </button>
+              </div>
+
+              {view === "overlay" && (
+                <label className="recreate-opacity">
+                  <span>Your photo opacity</span>
+                  <input
+                    aria-label="Your photo opacity"
+                    max="100"
+                    min="0"
+                    onChange={(event) => setOpacity(Number(event.target.value))}
+                    type="range"
+                    value={opacity}
+                  />
+                  <output>{opacity}%</output>
+                </label>
+              )}
+
+              <button className="ghost-button recreate-reset" onClick={resetPhoto} type="button">
+                Reset photo
+              </button>
+            </>
+          )}
+
+          <p className="recreate-privacy">Your photo stays in this browser tab and is never uploaded.</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function SceneMapApp() {
   const connectorInputRef = useRef(null);
   const [liveLocations, setLiveLocations] = useState(null);
@@ -303,6 +531,11 @@ export default function SceneMapApp() {
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
   const [routeMessage, setRouteMessage] = useState("");
+  const [nearbyStatus, setNearbyStatus] = useState("idle");
+  const [nearbyMessage, setNearbyMessage] = useState("");
+  const [userPosition, setUserPosition] = useState(null);
+  const [userIsDemo, setUserIsDemo] = useState(false);
+  const [nearbyRadius, setNearbyRadius] = useState(RADIUS_OPTIONS_METERS[2]);
   const [tourFilmId, setTourFilmId] = useState(fallbackFilms[0].id);
   const [aiTour, setAiTour] = useState(null);
   const [aiTourStatus, setAiTourStatus] = useState("idle");
@@ -320,6 +553,7 @@ export default function SceneMapApp() {
   });
   const [libraryQuery, setLibraryQuery] = useState("");
   const [importMessage, setImportMessage] = useState("");
+  const [recreateLocation, setRecreateLocation] = useState(null);
 
   useEffect(() => {
     localStorage.setItem("scenemap-library", JSON.stringify(library));
@@ -337,11 +571,11 @@ export default function SceneMapApp() {
         if (!nextLocations.length) throw new Error("Locations API returned no usable points");
         if (cancelled) return;
 
-        const nextFilms = filmsFromLocations(nextLocations);
+        const nextWorks = worksFromLocations(nextLocations);
         setLiveLocations(nextLocations);
-        setSelectedFilms(nextFilms.map((film) => film.id));
+        setSelectedFilms(nextWorks.map((work) => work.id));
         setActiveLocation(nextLocations[0]);
-        setTourFilmId(nextFilms[0]?.id ?? "");
+        setTourFilmId(nextWorks[0]?.id ?? "");
         setAiTour(null);
         setAiTourStatus("idle");
         setAiTourError("");
@@ -437,7 +671,7 @@ export default function SceneMapApp() {
 
   const sourceLocations = liveLocations ?? fallbackLocations;
   const films = useMemo(
-    () => liveLocations ? filmsFromLocations(sourceLocations) : fallbackFilms,
+    () => liveLocations ? worksFromLocations(sourceLocations) : fallbackFilms,
     [liveLocations, sourceLocations],
   );
 
@@ -471,6 +705,43 @@ export default function SceneMapApp() {
   const activeFilmImageSource = filmImageState.locationId === activeLocation?.id
     ? filmImageState.sourceUrl
     : null;
+
+  const nearby = useMemo(
+    () => (userPosition ? findNearby(userPosition, visibleLocations, nearbyRadius) : null),
+    [nearbyRadius, userPosition, visibleLocations],
+  );
+
+  function locateMe() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setNearbyStatus("unavailable");
+      setNearbyMessage("This browser has no geolocation. Use the demo location instead.");
+      return;
+    }
+
+    setNearbyStatus("locating");
+    setNearbyMessage("");
+    navigator.geolocation.getCurrentPosition(
+      (result) => {
+        setUserPosition([result.coords.latitude, result.coords.longitude]);
+        setUserIsDemo(false);
+        setNearbyStatus("ready");
+        setNearbyMessage("");
+      },
+      (error) => {
+        const known = GEOLOCATION_ERRORS[error.code] ?? GEOLOCATION_ERRORS[2];
+        setNearbyStatus(known.status);
+        setNearbyMessage(known.message);
+      },
+      { enableHighAccuracy: false, maximumAge: 30000, timeout: 8000 },
+    );
+  }
+
+  function useDemoLocation() {
+    setUserPosition(DEMO_LOCATION.position);
+    setUserIsDemo(true);
+    setNearbyStatus("ready");
+    setNearbyMessage("");
+  }
 
   function invalidateRoute() {
     routeRequestId.current += 1;
@@ -676,16 +947,34 @@ export default function SceneMapApp() {
           />
           <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
+          <FlyToUser position={userPosition} radius={nearbyRadius} />
+          {userPosition && (
+            <>
+              <Circle
+                center={userPosition}
+                radius={nearbyRadius}
+                pathOptions={{ color: "#f7b733", fillOpacity: 0.06, opacity: 0.5, weight: 1.5 }}
+              />
+              <Marker icon={userIcon} position={userPosition}>
+                <Popup>{userIsDemo ? DEMO_LOCATION.label : "You are here"}</Popup>
+              </Marker>
+            </>
+          )}
           {visibleLocations.map((location) => (
             <Marker
               key={location.id}
               position={location.position}
-              icon={makeMarkerIcon(activeLocation?.id === location.id)}
+              icon={makeMarkerIcon(
+                activeLocation?.id === location.id,
+                nearby?.nearest?.location.id === location.id,
+                location.kind,
+              )}
               eventHandlers={{
                 click: () => setActiveLocation(location),
               }}
             >
               <Popup>
+                <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
                 <strong>{location.film}</strong>
                 <br />
                 {location.place}
@@ -706,14 +995,14 @@ export default function SceneMapApp() {
         </MapContainer>
       </section>
 
-      <aside className="command-panel" aria-label="Film selection">
+      <aside className="command-panel" aria-label="Work selection">
         <div className="brand-row">
           <div className="brand-mark">
             <Clapperboard size={22} />
           </div>
           <div>
             <p className="eyebrow">SceneMap MVP</p>
-            <h1>Film map · {cityName}</h1>
+            <h1>Stories on the map · {cityName}</h1>
           </div>
           <button className="account-button" type="button" onClick={() => setAccountOpen(true)}>
             <User size={18} />
@@ -736,7 +1025,80 @@ export default function SceneMapApp() {
         </form>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
-        <div className="film-grid" aria-label="Selected films">
+        <div className="nearby-card" aria-label="Nearby locations">
+          <div className="nearby-actions">
+            <button
+              className="ghost-button nearby-cta"
+              disabled={nearbyStatus === "locating"}
+              onClick={locateMe}
+              type="button"
+            >
+              <Crosshair size={17} />
+              {nearbyStatus === "locating" ? "Locating..." : "What's nearby?"}
+            </button>
+            {(nearbyStatus === "denied" ||
+              nearbyStatus === "unavailable" ||
+              nearbyStatus === "timeout") && (
+              <button className="ghost-button" onClick={useDemoLocation} type="button">
+                Use demo location
+              </button>
+            )}
+          </div>
+
+          {nearbyMessage && (
+            <p className="nearby-status" role="status">{nearbyMessage}</p>
+          )}
+
+          {userPosition && (
+            <>
+              <div className="radius-chips" role="group" aria-label="Search radius">
+                {RADIUS_OPTIONS_METERS.map((radius) => (
+                  <button
+                    aria-pressed={nearbyRadius === radius}
+                    className={`radius-chip${nearbyRadius === radius ? " is-selected" : ""}`}
+                    key={radius}
+                    onClick={() => setNearbyRadius(radius)}
+                    type="button"
+                  >
+                    {formatDistanceMeters(radius)}
+                  </button>
+                ))}
+              </div>
+
+              {nearby?.nearest ? (
+                <button
+                  className="nearby-result"
+                  onClick={() => setActiveLocation(nearby.nearest.location)}
+                  type="button"
+                >
+                  <MapPin size={17} aria-hidden="true" />
+                  <span>
+                    <strong>{nearby.nearest.location.place}</strong>
+                    <small>
+                      {nearby.nearest.location.film} ·{" "}
+                      {formatDistanceMeters(nearby.nearest.distanceMeters)} away
+                      {nearby.nearest.distanceMeters > nearbyRadius
+                        ? " · outside radius"
+                        : ""}
+                    </small>
+                  </span>
+                </button>
+              ) : (
+                <p className="nearby-status" role="status">
+                  No film locations loaded for this city yet.
+                </p>
+              )}
+
+              <p className="nearby-count">
+                {nearby?.inRadius.length ?? 0} location{(nearby?.inRadius.length ?? 0) === 1 ? "" : "s"} within{" "}
+                {formatDistanceMeters(nearbyRadius)}
+                {userIsDemo ? ` · ${DEMO_LOCATION.label}` : ""}
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="film-grid" aria-label="Selected works">
           {films.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
@@ -751,7 +1113,10 @@ export default function SceneMapApp() {
                 <span className="poster-tile" aria-hidden="true">{film.code}</span>
                 <span>
                   <strong>{film.title}</strong>
-                  <small>{film.year}</small>
+                  <small>
+                    <span className={`work-kind kind-${film.kind}`}>{kindLabel(film.kind)}</span>
+                    {film.year ? ` · ${film.year}` : ""}
+                  </small>
                 </span>
               </button>
             );
@@ -817,7 +1182,10 @@ export default function SceneMapApp() {
             <div className="location-row" key={location.id}>
               <button type="button" onClick={() => setActiveLocation(location)}>
                 <strong>{location.place}</strong>
-                <span>{location.film}</span>
+                <span>
+                  <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
+                  {location.film}
+                </span>
               </button>
               <button
                 className="icon-button"
@@ -931,7 +1299,7 @@ export default function SceneMapApp() {
               />
             )}
             <div>
-              <p>{activeLocation.film}</p>
+              <p><span className={`work-kind kind-${activeLocation.kind}`}>{kindLabel(activeLocation.kind)}</span>{" "}{activeLocation.film}</p>
               <h2>{activeLocation.scene}</h2>
             </div>
           </div>
@@ -960,7 +1328,7 @@ export default function SceneMapApp() {
                   />
                 ) : (
                   <div className="image-placeholder" role="status">
-                    {activeFilmImageStatus === "loading" ? "Loading film image…" : "Film image unavailable"}
+                    {activeFilmImageStatus === "loading" ? "Loading film image…" : "Reference image unavailable"}
                   </div>
                 )}
                 <figcaption>
@@ -980,6 +1348,17 @@ export default function SceneMapApp() {
                 <figcaption>the place today</figcaption>
               </figure>
             </div>
+            <button
+              aria-haspopup="dialog"
+              className="wide-button recreate-launch"
+              disabled={!activeFilmImage}
+              onClick={() => setRecreateLocation({ ...activeLocation, backdrop: activeFilmImage })}
+              title={activeFilmImage ? undefined : "A reference image is required to recreate this shot"}
+              type="button"
+            >
+              <Clapperboard size={18} />
+              Recreate this shot
+            </button>
             <a className="ghost-button image-search-link" href={makeImageSearchUrl(activeLocation)} target="_blank" rel="noopener noreferrer">
               <Search size={18} />
               Find scene images
@@ -1060,6 +1439,10 @@ export default function SceneMapApp() {
             <div className="account-privacy"><CheckCircle2 size={17} /><span>CSV files are processed locally. SceneMap never asks for your Letterboxd or IMDb password.</span></div>
           </section>
         </div>
+      )}
+
+      {recreateLocation && (
+        <RecreateShot location={recreateLocation} onClose={() => setRecreateLocation(null)} />
       )}
     </main>
   );
