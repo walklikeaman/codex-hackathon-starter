@@ -7,6 +7,11 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Current-location map control
+
+- Added a browser-only current-location control that recenters the map, displays a blue position marker, and reloads nearby Wikidata works.
+- Location access is requested only after the user presses the control; coordinates are never stored or sent anywhere except the existing nearby-locations request.
+
 ## [2026-07-21] update | Books and series in the live map
 
 - Expanded the Wikidata endpoint to return films and television series by filming location (`P915`), plus books by narrative location (`P840`), all restricted to the selected map area.

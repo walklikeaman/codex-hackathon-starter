@@ -149,6 +149,24 @@ img {
   box-shadow: 0 0 0 8px rgba(247, 183, 51, 0.18);
 }
 
+.current-location-pin {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.96);
+  border-radius: 50%;
+  background: #2d8cff;
+  box-shadow: 0 0 0 7px rgba(45, 140, 255, 0.24), 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+
+.current-location-pin span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e8f4ff;
+}
+
 .scene-pin.kind-series::before {
   background: linear-gradient(135deg, #55b5f7, #516dd8);
 }
@@ -256,7 +274,7 @@ h2 {
 
 .city-search {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 9px;
   min-height: 42px;
