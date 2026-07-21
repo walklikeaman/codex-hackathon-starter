@@ -3,7 +3,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import { CheckCircle2, Clapperboard, ExternalLink, Film, Link2, MapPin, Plus, Route, Search, Star, Trash2, User, X } from "lucide-react";
+import {
+  CheckCircle2,
+  Clapperboard,
+  ExternalLink,
+  Film,
+  Link2,
+  LoaderCircle,
+  MapPin,
+  Plus,
+  Route,
+  Search,
+  Sparkles,
+  Star,
+  Trash2,
+  User,
+  X,
+} from "lucide-react";
 import { mergeLibraries, parseMediaCsv } from "../lib/media-library.mjs";
 
 const londonCenter = [51.5094, -0.1183];
@@ -279,6 +295,10 @@ export default function SceneMapApp() {
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
   const [routeMessage, setRouteMessage] = useState("");
+  const [tourFilmId, setTourFilmId] = useState(fallbackFilms[0].id);
+  const [aiTour, setAiTour] = useState(null);
+  const [aiTourStatus, setAiTourStatus] = useState("idle");
+  const [aiTourError, setAiTourError] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
   const [pendingConnector, setPendingConnector] = useState(null);
   const [library, setLibrary] = useState(() => {
@@ -313,6 +333,10 @@ export default function SceneMapApp() {
         setLiveLocations(nextLocations);
         setSelectedFilms(nextFilms.map((film) => film.id));
         setActiveLocation(nextLocations[0]);
+        setTourFilmId(nextFilms[0]?.id ?? "");
+        setAiTour(null);
+        setAiTourStatus("idle");
+        setAiTourError("");
         setRouteStops([]);
         setRouteResult(null);
         setRouteStatus("idle");
@@ -331,6 +355,12 @@ export default function SceneMapApp() {
     () => liveLocations ? filmsFromLocations(sourceLocations) : fallbackFilms,
     [liveLocations, sourceLocations],
   );
+
+  useEffect(() => {
+    if (!films.some((film) => film.id === tourFilmId)) {
+      setTourFilmId(films[0]?.id ?? "");
+    }
+  }, [films, tourFilmId]);
 
   const visibleLocations = useMemo(
     () => sourceLocations.filter((location) => selectedFilms.includes(location.filmId)),
@@ -355,6 +385,8 @@ export default function SceneMapApp() {
   }
 
   function toggleFilm(filmId) {
+    setAiTour(null);
+    setAiTourError("");
     setSelectedFilms((current) => {
       const next = current.includes(filmId)
         ? current.filter((id) => id !== filmId)
@@ -367,11 +399,15 @@ export default function SceneMapApp() {
   function addRouteStop(location) {
     if (routeStops.some((stop) => stop.id === location.id) || routeStops.length >= 5) return;
 
+    setAiTour(null);
+    setAiTourError("");
     setRouteStops([...routeStops, location]);
     invalidateRoute();
   }
 
   function removeRouteStop(locationId) {
+    setAiTour(null);
+    setAiTourError("");
     setRouteStops(routeStops.filter((stop) => stop.id !== locationId));
     invalidateRoute();
   }
@@ -403,7 +439,7 @@ export default function SceneMapApp() {
     setImportMessage("Your local movie list was cleared.");
   }
 
-  async function buildRoute() {
+  async function buildRoute(stops = routeStops) {
     const requestId = routeRequestId.current + 1;
     routeRequestId.current = requestId;
     setRouteResult(null);
@@ -414,7 +450,7 @@ export default function SceneMapApp() {
       const response = await fetch("/api/route", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stops: routeStops.map((stop) => stop.position) }),
+        body: JSON.stringify({ stops: stops.map((stop) => stop.position) }),
       });
       const payload = await response.json();
 
@@ -435,11 +471,77 @@ export default function SceneMapApp() {
     } catch {
       if (requestId !== routeRequestId.current) return;
 
-      setRouteResult(makeFallbackRoute(routeStops));
+      setRouteResult(makeFallbackRoute(stops));
       setRouteStatus("fallback");
       setRouteMessage(
         "Walking directions are unavailable, so the stops are connected directly.",
       );
+    }
+  }
+
+  async function buildAiTour() {
+    const film = films.find((item) => item.id === tourFilmId);
+    const filmLocations = sourceLocations
+      .filter((location) => location.filmId === tourFilmId)
+      .slice(0, 5);
+
+    if (!film || filmLocations.length === 0) {
+      setAiTourStatus("error");
+      setAiTourError("No verified locations are available for this film yet.");
+      return;
+    }
+
+    setAiTour(null);
+    setAiTourStatus("loading");
+    setAiTourError("");
+
+    try {
+      const response = await fetch("/api/tour", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          city: cityName,
+          film: {
+            id: film.id,
+            title: film.title,
+            year: film.year ?? null,
+          },
+          locations: filmLocations.map(({ id, place, scene, description }) => ({
+            id,
+            place,
+            scene,
+            description,
+          })),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Could not build the AI tour.");
+      }
+
+      const locationsById = new Map(filmLocations.map((location) => [location.id, location]));
+      const orderedStops = payload.stops.map((stop) => locationsById.get(stop.locationId));
+
+      if (orderedStops.some((stop) => !stop)) {
+        throw new Error("The AI returned an unknown route stop.");
+      }
+
+      setSelectedFilms([tourFilmId]);
+      setRouteStops(orderedStops);
+      setActiveLocation(orderedStops[0]);
+      setAiTour(payload);
+      setAiTourStatus("success");
+
+      if (orderedStops.length > 1) {
+        await buildRoute(orderedStops);
+      } else {
+        invalidateRoute();
+      }
+    } catch (error) {
+      setAiTour(null);
+      setAiTourStatus("error");
+      setAiTourError(error instanceof Error ? error.message : "Could not build the AI tour.");
     }
   }
 
@@ -459,6 +561,9 @@ export default function SceneMapApp() {
       setLiveLocations([]);
       setActiveLocation(null);
       setRouteStops([]);
+      setAiTour(null);
+      setAiTourStatus("idle");
+      setAiTourError("");
       invalidateRoute();
       setCitySearchStatus("");
     } catch {
@@ -558,6 +663,56 @@ export default function SceneMapApp() {
           })}
         </div>
 
+        <div className="ai-tour-card">
+          <div className="ai-tour-heading">
+            <span className="ai-tour-icon" aria-hidden="true">
+              <Sparkles size={17} />
+            </span>
+            <div>
+              <p className="eyebrow">AI guide</p>
+              <strong>Tour by film</strong>
+            </div>
+          </div>
+          <div className="ai-tour-controls">
+            <label>
+              <span className="sr-only">Film for the AI tour</span>
+              <select
+                value={tourFilmId}
+                onChange={(event) => {
+                  setTourFilmId(event.target.value);
+                  setAiTour(null);
+                  setAiTourError("");
+                }}
+                disabled={aiTourStatus === "loading" || films.length === 0}
+              >
+                {films.map((film) => (
+                  <option key={film.id} value={film.id}>{film.title}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="ai-tour-button"
+              type="button"
+              onClick={buildAiTour}
+              disabled={aiTourStatus === "loading" || !tourFilmId}
+            >
+              {aiTourStatus === "loading" ? (
+                <LoaderCircle className="loading-icon" size={17} />
+              ) : (
+                <Sparkles size={17} />
+              )}
+              {aiTourStatus === "loading" ? "Building..." : "Create tour"}
+            </button>
+          </div>
+          {aiTourError && <p className="ai-tour-error" role="alert">{aiTourError}</p>}
+          {aiTour && (
+            <div className="ai-tour-ready" aria-live="polite">
+              <strong>{aiTour.title}</strong>
+              <span>{aiTour.intro}</span>
+            </div>
+          )}
+        </div>
+
         <div className="location-list" aria-label="Map locations">
           <div className="section-row">
             <p className="eyebrow">Locations</p>
@@ -589,7 +744,7 @@ export default function SceneMapApp() {
           <button
             className={`primary-button${routeResult ? " is-complete" : ""}`}
             disabled={routeStops.length < 3 || routeStatus !== "idle"}
-            onClick={buildRoute}
+            onClick={() => buildRoute()}
             type="button"
           >
             <Route size={18} />
@@ -602,6 +757,24 @@ export default function SceneMapApp() {
                 : "Build route"}
           </button>
         </div>
+
+        {aiTour && (
+          <section className="ai-tour-result" aria-live="polite">
+            <p className="eyebrow">Stories at each stop</p>
+            <ol>
+              {aiTour.stops.map((stop) => {
+                const location = sourceLocations.find((item) => item.id === stop.locationId);
+
+                return (
+                  <li key={stop.locationId}>
+                    <strong>{location?.place}</strong>
+                    <span>{stop.narration}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+        )}
 
         {routeStops.length > 0 && (
           <ol className="route-list">
@@ -621,7 +794,7 @@ export default function SceneMapApp() {
 
         {routeStatus === "loading" && (
           <p className="route-summary" role="status">
-            Building a route along walkable streets...
+            Building a walking route through {cityName}...
           </p>
         )}
 
@@ -637,7 +810,8 @@ export default function SceneMapApp() {
               <span>{routeMessage}</span>
             ) : (
               <span>
-                Route follows walkable streets ·{" "}
+                {aiTour ? "AI chose the stop order · " : ""}
+                Route follows mapped streets ·{" "}
                 <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">
                   OpenStreetMap routing
                 </a>
