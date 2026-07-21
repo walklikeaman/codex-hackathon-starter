@@ -13,6 +13,18 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 - Added Wikidata TMDB IDs and a server-only cached TMDB image endpoint, while keeping Commons images on HTTPS for the current-place side of the comparison.
 - Verified seven unit tests, the production build, the no-token fallback in a real browser, and the distinct film/place image flow with an intercepted TMDB response.
 
+## [2026-07-21] update | AI-guided film tour
+
+- Added server-only `POST /api/tour`: OpenAI Responses API with `gpt-5.6-terra` returns an English tour through Structured Outputs.
+- The model receives only the selected film and up to five current verified SceneMap locations, whether live Wikidata or fallback; schema and post-validation reject unknown, missing, or duplicated stops.
+- The English-only UI shows the AI story and builds a real walking route in the suggested order while preserving city search, location image search, and the manual 3–5 stop route.
+- Verified with 9 unit tests, a production build, a real API call, and browser AI/manual paths with a clean console.
+
+## [2026-07-21] update | English location image search integrated
+
+- Integrated PR #13 on top of the personal-library branch while preserving the English-only UI contract.
+- Location cards now open a focused Bing Images query built from the film, place and scene without API keys.
+
 ## [2026-07-21] update | English-only UI review fix
 
 - Translated all user-facing copy, accessibility labels, loading text, metadata, and API error messages under `app/` to English in response to PR #13 review feedback.
@@ -22,6 +34,13 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 - Added a "Find scenes filmed here" action to every location card; it builds a focused image-search query from the film, place, and scene and opens Bing Images in a new tab.
 - Kept the demo independent from API keys and embedded third-party results; verified the production build, unit tests, two location-specific queries, and the external search flow in a real browser.
+
+## [2026-07-21] update | Letterboxd and IMDb personal movie library
+
+- Replaced title-only connector matching with schema-aware Letterboxd and IMDb CSV parsing for titles, years, personal ratings, dates, URLs and IMDb IDs.
+- Imports from both services merge into one searchable library, deduplicate matching movies and persist locally without account passwords or server uploads.
+- Synced current `origin/main`, restored English-only app copy, passed 7 tests and `next build`, and verified an IMDb import with two persisted movies in a real browser.
+- The live Wikidata request took 25–43 seconds during browser smoke; the deterministic fallback map remained interactive while it loaded.
 
 ## [2026-07-21] update | City search for the live film map
 
