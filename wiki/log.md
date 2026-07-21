@@ -7,6 +7,11 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Location image search
+
+- Added a "Найти кадры здесь" action to every location card; it builds a focused image-search query from the film, place, and scene and opens Bing Images in a new tab.
+- Kept the demo independent from API keys and embedded third-party results; verified the production build, unit tests, two location-specific queries, and the external search flow in a real browser.
+
 ## [2026-07-21] update | Real walking routes
 
 - Added a server-side proxy to the public OpenStreetMap foot-routing service with validated coordinates, an 8-second timeout, and a clearly labeled straight-line fallback.
