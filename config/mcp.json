@@ -1,5 +1,5 @@
 {
-  "_comment": "For teammates using Claude Code or Cursor instead of Codex. Codex users don't need this — setup.sh wires MCP via 'codex mcp add'. Claude Code: copy this to '.mcp.json' at the repo root and 'AGENTS.md' to 'CLAUDE.md'. Cursor: copy to '.cursor/mcp.json'. Supabase + Vercel authenticate via in-browser OAuth on first use — no tokens to commit.",
+  "_comment": "Optional MCP catalog for Cursor users. Codex users don't need this — setup.sh wires MCP via 'codex mcp add'. For Cursor, copy this to '.cursor/mcp.json'. Supabase + Vercel authenticate via in-browser OAuth on first use — no tokens to commit.",
   "mcpServers": {
     "codegraph": {
       "type": "stdio",
