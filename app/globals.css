@@ -210,6 +210,44 @@ h2 {
   margin-bottom: 16px;
 }
 
+.city-search {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  margin-bottom: 6px;
+  padding: 0 6px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+
+.city-search input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+}
+
+.city-search input::placeholder {
+  color: var(--muted);
+}
+
+.city-search .ghost-button {
+  min-height: 30px;
+  min-width: 34px;
+  padding: 0;
+}
+
+.city-search-status {
+  min-height: 16px;
+  margin: 0 0 12px;
+}
+
 .ghost-button,
 .primary-button,
 .wide-button,
