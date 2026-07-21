@@ -7,6 +7,12 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Personal account and media discovery
+
+- Added an English-only account dialog with local Letterboxd and IMDb CSV connectors; no credentials or files are sent to a server.
+- Expanded the existing mapped-film search to cover a small deterministic book catalogue while keeping books off the film map until book-location data exists.
+- Integrated current `origin/main`, passed 4 route tests and `next build`, and verified the production server and live walking-route API on port 3101.
+
 ## [2026-07-21] update | Real walking routes from main integrated
 
 - Integrated the latest `origin/main` routing work while retaining the verified Nocturne client contract and English-only API responses.

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import { Clapperboard, MapPin, Plus, Route, Search, Upload, X } from "lucide-react";
+import { BookOpen, CheckCircle2, Clapperboard, Film, Link2, MapPin, Plus, Route, Search, Upload, User, X } from "lucide-react";
 
 const londonCenter = [51.5094, -0.1183];
 
@@ -38,6 +38,18 @@ const films = [
     year: 2003,
     code: "LA",
   },
+];
+
+const books = [
+  { id: "paddington", title: "A Bear Called Paddington", author: "Michael Bond", year: 1958 },
+  { id: "sherlock", title: "The Adventures of Sherlock Holmes", author: "Arthur Conan Doyle", year: 1892 },
+  { id: "harry-potter-book", title: "Harry Potter and the Philosopher's Stone", author: "J. K. Rowling", year: 1997 },
+  { id: "mrs-dalloway", title: "Mrs Dalloway", author: "Virginia Woolf", year: 1925 },
+];
+
+const connectorDetails = [
+  { id: "letterboxd", name: "Letterboxd", note: "Import your diary or watchlist CSV" },
+  { id: "imdb", name: "IMDb", note: "Import your ratings or check-ins CSV" },
 ];
 
 const locations = [
@@ -208,8 +220,12 @@ function kmBetween(routeStops) {
 }
 
 export default function SceneMapApp() {
+  const connectorInputRef = useRef(null);
   const [selectedFilms, setSelectedFilms] = useState(() => films.map((film) => film.id));
   const [filmQuery, setFilmQuery] = useState("");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [pendingConnector, setPendingConnector] = useState(null);
+  const [connectedServices, setConnectedServices] = useState({});
   const [activeLocation, setActiveLocation] = useState(locations[0]);
   const [routeStops, setRouteStops] = useState([]);
   const [route, setRoute] = useState(null);
@@ -222,6 +238,15 @@ export default function SceneMapApp() {
 
     return films.filter((film) =>
       `${film.title} ${film.year} ${film.code}`.toLowerCase().includes(query),
+    );
+  }, [filmQuery]);
+
+  const matchingBooks = useMemo(() => {
+    const query = filmQuery.trim().toLowerCase();
+    if (!query) return [];
+
+    return books.filter((book) =>
+      `${book.title} ${book.author} ${book.year}`.toLowerCase().includes(query),
     );
   }, [filmQuery]);
 
@@ -276,6 +301,29 @@ export default function SceneMapApp() {
   function removeRouteStop(locationId) {
     setRouteStops((current) => current.filter((stop) => stop.id !== locationId));
     clearRoute();
+  }
+
+  function chooseConnectorFile(connectorId) {
+    setPendingConnector(connectorId);
+    connectorInputRef.current?.click();
+  }
+
+  async function importConnector(event) {
+    const file = event.target.files?.[0];
+    if (file && pendingConnector) {
+      const exportText = (await file.text()).toLowerCase();
+      const matchedFilmIds = films
+        .filter((film) => exportText.includes(film.title.toLowerCase()))
+        .map((film) => film.id);
+
+      if (matchedFilmIds.length) setSelectedFilms(matchedFilmIds);
+      setConnectedServices((current) => ({
+        ...current,
+        [pendingConnector]: { fileName: file.name, matchedFilms: matchedFilmIds.length },
+      }));
+    }
+    event.target.value = "";
+    setPendingConnector(null);
   }
 
   async function buildRoute() {
@@ -350,18 +398,22 @@ export default function SceneMapApp() {
             <p className="eyebrow">SceneMap MVP</p>
             <h1>A film walk through London</h1>
           </div>
+          <button className="account-button" type="button" onClick={() => setAccountOpen(true)}>
+            <User size={18} />
+            Account
+          </button>
         </div>
 
         <div className="action-row">
           <div className="film-search">
             <Search size={17} />
-            <label className="sr-only" htmlFor="film-search">Search mapped films</label>
+            <label className="sr-only" htmlFor="film-search">Search films and books</label>
             <input
               id="film-search"
               type="search"
               value={filmQuery}
               onChange={(event) => setFilmQuery(event.target.value)}
-              placeholder="Search mapped films"
+              placeholder="Search films and books"
               autoComplete="off"
             />
             {filmQuery && (
@@ -382,7 +434,7 @@ export default function SceneMapApp() {
           </button>
         </div>
 
-        <div className="film-grid" aria-label="Mapped films" aria-live="polite">
+        <div className="film-grid" aria-label="Film search results" aria-live="polite">
           {matchingFilms.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
@@ -402,10 +454,29 @@ export default function SceneMapApp() {
               </button>
             );
           })}
-          {matchingFilms.length === 0 && (
-            <p className="film-empty">No mapped films match "{filmQuery.trim()}".</p>
+          {matchingFilms.length === 0 && matchingBooks.length === 0 && (
+            <p className="film-empty">No films or books match "{filmQuery.trim()}".</p>
           )}
         </div>
+
+        {matchingBooks.length > 0 && (
+          <div className="book-results" aria-label="Book search results">
+            <div className="section-row">
+              <p className="eyebrow">Books</p>
+              <span>{matchingBooks.length} found</span>
+            </div>
+            {matchingBooks.map((book) => (
+              <article className="book-result" key={book.id}>
+                <BookOpen size={18} />
+                <div>
+                  <strong>{book.title}</strong>
+                  <span>{book.author} · {book.year}</span>
+                </div>
+              </article>
+            ))}
+            <p className="search-note">Book locations are a preview and are not added to the film map yet.</p>
+          </div>
+        )}
 
         <div className="location-list" aria-label="Map locations">
           <div className="section-row">
@@ -506,6 +577,52 @@ export default function SceneMapApp() {
             </button>
           </div>
         </section>
+      )}
+
+      {accountOpen && (
+        <div className="account-backdrop" role="presentation" onMouseDown={() => setAccountOpen(false)}>
+          <section className="account-panel" role="dialog" aria-modal="true" aria-labelledby="account-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="account-heading">
+              <div className="account-avatar"><User size={22} /></div>
+              <div>
+                <p className="eyebrow">Your account</p>
+                <h2 id="account-title">Build your cinema library</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setAccountOpen(false)} aria-label="Close account">
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="account-copy">Connect an export to personalise film search and map results. Files stay in this browser session.</p>
+            <input ref={connectorInputRef} type="file" accept=".csv,text/csv" hidden onChange={importConnector} />
+
+            <div className="connector-list">
+              {connectorDetails.map((connector) => {
+                const connection = connectedServices[connector.id];
+                return (
+                  <article className="connector-card" key={connector.id}>
+                    <div className={`connector-logo is-${connector.id}`}>
+                      {connector.id === "letterboxd" ? <Film size={20} /> : <span>IMDb</span>}
+                    </div>
+                    <div>
+                      <strong>{connector.name}</strong>
+                      <span>{connection ? `${connection.fileName} · ${connection.matchedFilms} mapped films matched` : connector.note}</span>
+                    </div>
+                    <button className={connection ? "connected-button" : "connector-button"} type="button" onClick={() => chooseConnectorFile(connector.id)}>
+                      {connection ? <CheckCircle2 size={16} /> : <Link2 size={16} />}
+                      {connection ? "Replace" : "Connect"}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="account-privacy">
+              <CheckCircle2 size={17} />
+              <span>No passwords are requested. CSV files are processed locally and are not uploaded.</span>
+            </div>
+          </section>
+        </div>
       )}
     </main>
   );
