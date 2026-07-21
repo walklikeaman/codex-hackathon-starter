@@ -300,6 +300,172 @@ function makeImageSearchUrl(location) {
   return `https://www.bing.com/images/search?${new URLSearchParams({ q: query })}`;
 }
 
+function RecreateShot({ location, onClose }) {
+  const inputRef = useRef(null);
+  const photoUrlRef = useRef("");
+  const [photoUrl, setPhotoUrl] = useState("");
+  const [view, setView] = useState("overlay");
+  const [opacity, setOpacity] = useState(55);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  function loadPhoto(event) {
+    const [file] = event.target.files;
+    if (!file?.type.startsWith("image/")) return;
+
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    const nextUrl = URL.createObjectURL(file);
+    photoUrlRef.current = nextUrl;
+    setPhotoUrl(nextUrl);
+    setView("overlay");
+  }
+
+  function resetPhoto() {
+    if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current);
+    photoUrlRef.current = "";
+    setPhotoUrl("");
+    setView("overlay");
+    setOpacity(55);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  return (
+    <div className="recreate-backdrop">
+      <section
+        aria-labelledby="recreate-title"
+        aria-modal="true"
+        className="recreate-dialog"
+        role="dialog"
+      >
+        <header className="recreate-header">
+          <div>
+            <p className="eyebrow">Recreate the shot</p>
+            <h2 id="recreate-title">{location.scene}</h2>
+            <span>{location.film} · {location.place}</span>
+          </div>
+          <button
+            aria-label="Close recreate shot"
+            autoFocus
+            className="icon-button recreate-close"
+            onClick={onClose}
+            type="button"
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="recreate-stage">
+          {view === "overlay" ? (
+            <div className="recreate-canvas">
+              <img src={location.backdrop} alt={`Reference frame for ${location.film}`} />
+              {photoUrl && (
+                <img
+                  className="recreate-user-photo"
+                  src={photoUrl}
+                  alt="Your uploaded recreation"
+                  style={{ opacity: opacity / 100 }}
+                />
+              )}
+            </div>
+          ) : (
+            <div className="recreate-comparison" aria-label="Then and now comparison">
+              <figure>
+                <img src={location.backdrop} alt={`Reference frame for ${location.film}`} />
+                <figcaption>Then · reference</figcaption>
+              </figure>
+              <figure>
+                <img src={photoUrl} alt="Your uploaded recreation" />
+                <figcaption>Now · your photo</figcaption>
+              </figure>
+            </div>
+          )}
+          {!photoUrl && (
+            <div className="recreate-empty">
+              <strong>Match the framing</strong>
+              <span>Upload a photo from this device to line it up with the reference.</span>
+            </div>
+          )}
+        </div>
+
+        <div className="recreate-controls">
+          <input
+            accept="image/*"
+            className="recreate-file-input"
+            id="recreate-photo"
+            onChange={loadPhoto}
+            ref={inputRef}
+            type="file"
+          />
+          <label className="wide-button recreate-upload" htmlFor="recreate-photo">
+            {photoUrl ? "Choose another photo" : "Upload your photo"}
+          </label>
+
+          {photoUrl && (
+            <>
+              <div className="recreate-view-switch" aria-label="Comparison mode">
+                <button
+                  aria-pressed={view === "overlay"}
+                  className="ghost-button"
+                  onClick={() => setView("overlay")}
+                  type="button"
+                >
+                  Overlay
+                </button>
+                <button
+                  aria-pressed={view === "compare"}
+                  className="ghost-button"
+                  onClick={() => setView("compare")}
+                  type="button"
+                >
+                  Then / now
+                </button>
+              </div>
+
+              {view === "overlay" && (
+                <label className="recreate-opacity">
+                  <span>Your photo opacity</span>
+                  <input
+                    aria-label="Your photo opacity"
+                    max="100"
+                    min="0"
+                    onChange={(event) => setOpacity(Number(event.target.value))}
+                    type="range"
+                    value={opacity}
+                  />
+                  <output>{opacity}%</output>
+                </label>
+              )}
+
+              <button className="ghost-button recreate-reset" onClick={resetPhoto} type="button">
+                Reset photo
+              </button>
+            </>
+          )}
+
+          <p className="recreate-privacy">Your photo stays in this browser tab and is never uploaded.</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function SceneMapApp() {
   const connectorInputRef = useRef(null);
   const [liveLocations, setLiveLocations] = useState(null);
@@ -331,6 +497,7 @@ export default function SceneMapApp() {
   });
   const [libraryQuery, setLibraryQuery] = useState("");
   const [importMessage, setImportMessage] = useState("");
+  const [recreateLocation, setRecreateLocation] = useState(null);
 
   useEffect(() => {
     localStorage.setItem("scenemap-library", JSON.stringify(library));
@@ -880,6 +1047,15 @@ export default function SceneMapApp() {
                 <figcaption>the place today</figcaption>
               </figure>
             </div>
+            <button
+              aria-haspopup="dialog"
+              className="wide-button recreate-launch"
+              onClick={() => setRecreateLocation(activeLocation)}
+              type="button"
+            >
+              <Clapperboard size={18} />
+              Recreate this shot
+            </button>
             <a className="ghost-button image-search-link" href={makeImageSearchUrl(activeLocation)} target="_blank" rel="noopener noreferrer">
               <Search size={18} />
               Find scene images
@@ -960,6 +1136,10 @@ export default function SceneMapApp() {
             <div className="account-privacy"><CheckCircle2 size={17} /><span>CSV files are processed locally. SceneMap never asks for your Letterboxd or IMDb password.</span></div>
           </section>
         </div>
+      )}
+
+      {recreateLocation && (
+        <RecreateShot location={recreateLocation} onClose={() => setRecreateLocation(null)} />
       )}
     </main>
   );
