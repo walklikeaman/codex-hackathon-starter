@@ -33,8 +33,8 @@ Codex читает этот файл в начале сессии — здесь
 
 ## Done
 
-- [x] #18: 30/60/120-minute nearby tours from a city/geolocation with real walking-time validation and deterministic fallback — `feature/ai-film-tour`
-- [x] #20: browser voice guide with narrator profiles, spoiler-free mode and Play/Pause/Resume/Stop — `feature/ai-film-tour`
+- [x] #18: 30/60/120-minute nearby tours from a city/geolocation with real walking-time validation and deterministic fallback — `feature/timed-voice-tour`
+- [x] #20: OpenAI TTS voice guide with narrator profiles, spoiler-free mode and Play/Pause/Resume/Stop — `feature/timed-voice-tour`
 - [x] Personal movie library: Letterboxd/IMDb CSV imports, merge, search and local persistence — @walklikeaman — `feature/personal-account-connectors`
 - [x] Окружение поднято (клон репо + `./setup.sh`)
 - [x] SceneMap MVP: English UI, mapped-film search, 10 locations and street-level walking routes — @walklikeaman — `feature/scenemap-skeleton`

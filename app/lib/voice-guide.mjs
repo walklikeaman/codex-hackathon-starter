@@ -1,13 +1,13 @@
 export const NARRATOR_PROFILES = {
   neutral: {
-    label: "Neutral guide",
-    rate: 0.96,
-    pitch: 1,
+    label: "Warm guide",
+    voice: "marin",
+    instructions: "Speak as a warm, polished museum audio guide. Use natural pacing, clear pronunciation, and understated cinematic energy.",
   },
   archivist: {
     label: "Curious archivist",
-    rate: 0.88,
-    pitch: 1.08,
+    voice: "cedar",
+    instructions: "Speak as an original curious city archivist. Sound observant, inviting, and lightly cinematic without imitating any real person.",
   },
 };
 
@@ -15,21 +15,25 @@ export function narrationText({ location, story, spoilerFree }) {
   if (!location) return "";
 
   if (spoilerFree) {
-    return `${location.place} is a verified filming location for ${location.film}. Look around for the setting, architecture, and street details that helped shape the scene.`;
+    return `${location.place} is a verified screen or story location connected to ${location.film}. Look around for the setting, architecture, and street details that give this place its character.`;
   }
 
   return story?.trim() || location.description?.trim() ||
-    `${location.place} is a filming location for ${location.film}.`;
+    `${location.place} is a screen or story location connected to ${location.film}.`;
 }
 
-export function selectNarratorVoice(voices, profileId) {
-  const englishVoices = (Array.isArray(voices) ? voices : []).filter((voice) =>
-    voice.lang?.toLowerCase().startsWith("en"),
-  );
+export function createSpeechRequest({ text, profileId, model }) {
+  const profile = NARRATOR_PROFILES[profileId];
 
-  if (profileId === "archivist") {
-    return englishVoices.find((voice) => !voice.default) || englishVoices[1] || englishVoices[0] || null;
+  if (!profile || typeof text !== "string" || !text.trim() || text.length > 600) {
+    throw new Error("Invalid narration request");
   }
 
-  return englishVoices.find((voice) => voice.default) || englishVoices[0] || null;
+  return {
+    model: model || "gpt-4o-mini-tts",
+    voice: profile.voice,
+    input: text.trim(),
+    instructions: profile.instructions,
+    response_format: "mp3",
+  };
 }
