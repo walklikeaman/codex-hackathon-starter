@@ -8,6 +8,7 @@
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
+    "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.25.0",
     "next": "^15.5.20",

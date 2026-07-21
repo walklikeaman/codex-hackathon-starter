@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergeLibraries, parseMediaCsv } from "../app/lib/media-library.mjs";
+import JSZip from "jszip";
+import { parseLetterboxdArchive } from "../app/lib/letterboxd-archive.mjs";
+import { mergeLibraries, parseMediaCsv, workIsInLibrary } from "../app/lib/media-library.mjs";
 
 test("parses a Letterboxd ratings export", () => {
   const movies = parseMediaCsv(
@@ -39,4 +41,35 @@ test("merges duplicate movies and preserves both sources", () => {
   assert.equal(merged.length, 1);
   assert.deepEqual(merged[0].sources, ["letterboxd", "imdb"]);
   assert.equal(merged[0].rating, 9);
+});
+
+test("imports and merges watched and ratings files from a Letterboxd ZIP", async () => {
+  const archive = new JSZip();
+  archive.file("watched.csv", "Date,Name,Year,Letterboxd URI\n2026-07-20,Heat,1995,https://boxd.it/2bg8\n2026-07-20,Arrival,2016,https://boxd.it/a4e5");
+  archive.file("ratings.csv", "Date,Name,Year,Letterboxd URI,Rating\n2026-07-20,Heat,1995,https://boxd.it/2bg8,4.5");
+  archive.file("deleted/reviews.csv", "Name,Review\nHeat,Ignore this folder");
+
+  const movies = await parseLetterboxdArchive(await archive.generateAsync({ type: "uint8array" }));
+
+  assert.equal(movies.length, 2);
+  assert.equal(movies.find((movie) => movie.title === "Heat").rating, 4.5);
+  assert.equal(movies.find((movie) => movie.title === "Arrival").rating, null);
+});
+
+test("rejects ZIP files without Letterboxd library CSV files", async () => {
+  const archive = new JSZip();
+  archive.file("profile.csv", "Username\nwalklikeaman");
+
+  await assert.rejects(
+    parseLetterboxdArchive(await archive.generateAsync({ type: "uint8array" })),
+    /watched\.csv or ratings\.csv/,
+  );
+});
+
+test("matches mapped works to imported library titles and years", () => {
+  const library = parseMediaCsv('Name,Year,Rating\n"Paris, Texas",1984,4.5\nHeat,1995,5', "letterboxd");
+
+  assert.equal(workIsInLibrary({ title: "Heat", year: 1995 }, library), true);
+  assert.equal(workIsInLibrary({ title: "Heat", year: 2013 }, library), false);
+  assert.equal(workIsInLibrary({ title: "Unknown", year: 1995 }, library), false);
 });

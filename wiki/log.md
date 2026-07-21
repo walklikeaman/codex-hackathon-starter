@@ -7,6 +7,13 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-22] update | Letterboxd ZIP drives the personal map
+
+- Personal Library принимает полный Letterboxd ZIP и локально читает корневые `watched.csv` и `ratings.csv`; архив и список не отправляются на сервер.
+- После импорта карта автоматически показывает пересечение личной библиотеки с доступными локациями выбранного города; фильтр можно отключить в library panel.
+- Реальный export импортировал 2 422 фильма и 2 407 оценок; в текущих London data нашлось 3 фильма и 6 локаций.
+- ZIP ограничен 25 MB, извлечённые CSV — 10 MB; отдельные Letterboxd/IMDb CSV продолжают работать. `npm test` (62/62) и `npm run build` зелёные.
+
 ## [2026-07-21] decision | Staging and production deployment gates
 
 - A merged pull request to `main` creates a Vercel Preview tracked by the GitHub `staging` environment.
