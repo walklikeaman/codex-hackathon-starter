@@ -51,6 +51,10 @@ function releaseYear(value) {
   return Number(value?.match(/^([+-]?\d{1,6})-/)?.[1]) || null;
 }
 
+function isPlaceholderLabel(value) {
+  return /^Q\d+(?:\s|$)/.test(value?.trim() ?? "");
+}
+
 function sparql({ lat, lng, radius, limit, statement, geoFirst = true }) {
   const around = `
     SERVICE wikibase:around {
@@ -142,16 +146,20 @@ export async function GET(request) {
       const kind = row.kind?.value;
       if (!Object.hasOwn({ film: true, series: true, book: true }, kind)) continue;
 
+      const workTitle = row.workLabel?.value ?? workWikidataId;
+      const locationName = row.locationLabel?.value ?? locWikidataId;
+      if (isPlaceholderLabel(workTitle) || isPlaceholderLabel(locationName)) continue;
+
       const key = `${kind}:${workWikidataId}:${locWikidataId}`;
       const current = locations.get(key);
         locations.set(key, current ?? {
         work_wikidata_id: workWikidataId,
-        work_title: row.workLabel?.value ?? workWikidataId,
+        work_title: workTitle,
         work_year: releaseYear(row.releaseDate?.value ?? row.inceptionDate?.value),
         kind,
         location_source: row.locationSource?.value ?? null,
         loc_wikidata_id: locWikidataId,
-        loc_name: row.locationLabel?.value ?? locWikidataId,
+        loc_name: locationName,
         lat: point.lat,
         lng: point.lng,
         commons_image: row.image?.value ?? null,
