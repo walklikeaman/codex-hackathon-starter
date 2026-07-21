@@ -11,6 +11,8 @@ function filmImageRequest(overrides = {}, init = {}) {
     locationId: "Q386707",
     ...overrides,
   });
+  params.delete("v");
+  params.set("v", overrides.v ?? "2");
   return new Request(`http://localhost/api/film-image?${params}`, init);
 }
 
@@ -26,32 +28,32 @@ function wikidataResponse(bindings = [{
   });
 }
 
-function tmdbResponse() {
+function tmdbResponse(backdrops = [
+  { file_path: "/generic.jpg", vote_count: 20, vote_average: 8, width: 1920 },
+  { file_path: "/matching.jpg", vote_count: 10, vote_average: 7, width: 1920 },
+]) {
   return new Response(JSON.stringify({
-    backdrops: [
-      { file_path: "/generic.jpg", vote_count: 20, vote_average: 8, width: 1920 },
-      { file_path: "/matching.jpg", vote_count: 10, vote_average: 7, width: 1920 },
-    ],
+    backdrops,
   }), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
-function upstreamFetch({ bindings } = {}) {
+function upstreamFetch({ bindings, backdrops } = {}) {
   return async (url) => {
     const endpoint = new URL(url);
     if (endpoint.hostname === "query.wikidata.org") return wikidataResponse(bindings);
-    if (endpoint.hostname === "api.themoviedb.org") return tmdbResponse();
+    if (endpoint.hostname === "api.themoviedb.org") return tmdbResponse(backdrops);
     throw new Error(`Unexpected upstream ${endpoint.hostname}`);
   };
 }
 
-function handlerForMatch({ outputParsed, status = "completed", onParse } = {}) {
+function handlerForMatch({ outputParsed, status = "completed", onParse, backdrops } = {}) {
   return createFilmImageHandler({
     env: {
       TMDB_API_READ_ACCESS_TOKEN: "tmdb-test-token",
       OPENAI_API_KEY: "openai-test-key",
       OPENAI_VISION_MODEL: "test-vision-model",
     },
-    fetchImpl: upstreamFetch(),
+    fetchImpl: upstreamFetch({ backdrops }),
     allowRequest: () => true,
     verifyToken: () => true,
     logError: () => {},
@@ -73,14 +75,14 @@ test("film image API rejects incomplete canonical ids", async () => {
   assert.equal(response.status, 400);
 });
 
-test("film image API redirects non-canonical cache-busting queries", async () => {
+test("film image API redirects stale or cache-busting queries to the current matcher version", async () => {
   const handler = createFilmImageHandler({ env: {} });
-  const response = await handler(filmImageRequest({ ignored: "cache-buster" }));
+  const response = await handler(filmImageRequest({ v: "1", ignored: "cache-buster" }));
 
   assert.equal(response.status, 307);
   assert.equal(
     response.headers.get("location"),
-    "http://localhost/api/film-image?tmdbId=185&workId=Q181086&locationId=Q386707",
+    "http://localhost/api/film-image?tmdbId=185&workId=Q181086&locationId=Q386707&v=2",
   );
 });
 
@@ -163,6 +165,8 @@ test("film image API returns the location-matched candidate instead of the top b
       assert.equal(body.model, "test-vision-model");
       assert.equal(body.reasoning.effort, "low");
       assert.equal(body.max_output_tokens, 600);
+      assert.match(body.instructions, /already been verified/);
+      assert.match(body.instructions, /different viewpoint/);
       assert.equal(
         body.input[0].content.filter((item) => item.type === "input_image").length,
         3,
@@ -176,6 +180,35 @@ test("film image API returns the location-matched candidate instead of the top b
   assert.equal(response.status, 200);
   assert.equal(payload.image_url, "https://image.tmdb.org/t/p/w780/matching.jpg");
   assert.equal(payload.match_method, "openai_vision");
+  assert.equal(payload.match_confidence, "high");
+});
+
+test("film image API can match a relevant backdrop beyond the first six", async () => {
+  const backdrops = Array.from({ length: 11 }, (_, index) => ({
+    file_path: `/candidate-${index}.jpg`,
+    vote_count: 11 - index,
+    vote_average: 7,
+    width: 1920,
+  }));
+  const handler = handlerForMatch({
+    backdrops,
+    outputParsed: {
+      candidateIndex: 10,
+      confidence: "high",
+      evidence: "The same prison courtyard is visible.",
+    },
+    onParse: (body) => {
+      assert.equal(
+        body.input[0].content.filter((item) => item.type === "input_image").length,
+        12,
+      );
+    },
+  });
+  const response = await handler(filmImageRequest());
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.image_url, "https://image.tmdb.org/t/p/w780/candidate-10.jpg");
   assert.equal(payload.match_confidence, "high");
 });
 
