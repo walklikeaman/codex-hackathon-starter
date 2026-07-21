@@ -36,3 +36,4 @@ Codex читает этот файл в начале сессии — здесь
 - [x] Personal movie library: Letterboxd/IMDb CSV imports, merge, search and local persistence — @walklikeaman — `feature/personal-account-connectors`
 - [x] Окружение поднято (клон репо + `./setup.sh`)
 - [x] SceneMap MVP: English UI, mapped-film search, 10 locations and street-level walking routes — @walklikeaman — `feature/scenemap-skeleton`
+- [x] AI film guide: stories, stop ordering and walking-route integration — `feature/ai-film-tour`

@@ -7,6 +7,13 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | AI-guided film tour
+
+- Added server-only `POST /api/tour`: OpenAI Responses API with `gpt-5.6-terra` returns an English tour through Structured Outputs.
+- The model receives only the selected film and up to five current verified SceneMap locations, whether live Wikidata or fallback; schema and post-validation reject unknown, missing, or duplicated stops.
+- The English-only UI shows the AI story and builds a real walking route in the suggested order while preserving city search, location image search, and the manual 3–5 stop route.
+- Verified with 9 unit tests, a production build, a real API call, and browser AI/manual paths with a clean console.
+
 ## [2026-07-21] update | English location image search integrated
 
 - Integrated PR #13 on top of the personal-library branch while preserving the English-only UI contract.
