@@ -58,6 +58,10 @@ export function releaseYear(value) {
   return Number(value?.match(/^([+-]?\d{1,6})-/)?.[1]) || null;
 }
 
+function isPlaceholderLabel(value) {
+  return /^Q\d+(?:\s|$)/.test(value?.trim() ?? "");
+}
+
 function coreLocationPattern({ lat, lng, radius, workIds, config, excludeLocationId }) {
   const instancePattern = workIds?.length || config.label !== "film"
     ? `wdt:P31/wdt:P279* wd:${config.rootType}`
@@ -226,6 +230,7 @@ export function normalizeWikidataEntityLocations(workEntity, locationEntities, {
     ? locationEntities
     : new Map(Object.entries(locationEntities ?? {}));
   const workTitle = entityText(workEntity, "labels") ?? workEntity.id;
+  if (isPlaceholderLabel(workTitle)) return [];
   const workYear = entityReleaseYear(workEntity);
 
   return entityClaimIds(workEntity, config.locationProperty).flatMap((locationId) => {
@@ -234,6 +239,7 @@ export function normalizeWikidataEntityLocations(workEntity, locationEntities, {
     if (!point) return [];
 
     const place = entityText(locationEntity, "labels") ?? locationId;
+    if (isPlaceholderLabel(place)) return [];
     return [{
       work_wikidata_id: workEntity.id,
       work_title: workTitle,
@@ -315,6 +321,7 @@ export function normalizeWikidataLocations(bindings, { kind }) {
 
     const workTitle = row.workLabel?.value ?? workWikidataId;
     const place = row.locationLabel?.value ?? locWikidataId;
+    if (isPlaceholderLabel(workTitle) || isPlaceholderLabel(place)) continue;
     const key = `${workWikidataId}:${locWikidataId}:${config.relationKind}`;
     if (locations.has(key)) continue;
 
