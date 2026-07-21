@@ -1171,10 +1171,27 @@ figure img {
   object-fit: cover;
 }
 
+.image-placeholder {
+  height: 105px;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: var(--muted);
+  background:
+    linear-gradient(135deg, rgba(247, 183, 51, 0.12), rgba(255, 255, 255, 0.02)),
+    #101212;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
 figcaption {
   padding: 8px;
   color: var(--muted);
   font-size: 0.75rem;
+}
+
+figcaption a {
+  color: var(--muted);
 }
 
 .wide-button {
@@ -1433,6 +1450,12 @@ figcaption {
 
 .recreate-launch {
   margin-bottom: 10px;
+}
+
+.recreate-launch:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  filter: grayscale(0.6);
 }
 
 .recreate-backdrop {
@@ -1721,6 +1744,10 @@ figcaption {
   }
 
   figure img {
+    height: 92px;
+  }
+
+  .image-placeholder {
     height: 92px;
   }
 
