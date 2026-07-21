@@ -4,16 +4,23 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import {
+  CheckCircle2,
   Clapperboard,
   ExternalLink,
+  Film,
+  Link2,
   LoaderCircle,
   MapPin,
   Plus,
   Route,
   Search,
   Sparkles,
+  Star,
+  Trash2,
+  User,
   X,
 } from "lucide-react";
+import { mergeLibraries, parseMediaCsv } from "../lib/media-library.mjs";
 
 const londonCenter = [51.5094, -0.1183];
 
@@ -270,12 +277,12 @@ function makeImageSearchUrl(location) {
     scene && scene.toLowerCase() !== location.film.toLowerCase() ? `"${scene}"` : null,
     "movie scene filming location",
   ].filter(Boolean).join(" ");
-  const params = new URLSearchParams({ q: query });
 
-  return `https://www.bing.com/images/search?${params.toString()}`;
+  return `https://www.bing.com/images/search?${new URLSearchParams({ q: query })}`;
 }
 
 export default function SceneMapApp() {
+  const connectorInputRef = useRef(null);
   const [liveLocations, setLiveLocations] = useState(null);
   const [mapCenter, setMapCenter] = useState(londonCenter);
   const [cityQuery, setCityQuery] = useState("London");
@@ -292,6 +299,23 @@ export default function SceneMapApp() {
   const [aiTour, setAiTour] = useState(null);
   const [aiTourStatus, setAiTourStatus] = useState("idle");
   const [aiTourError, setAiTourError] = useState("");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [pendingConnector, setPendingConnector] = useState(null);
+  const [library, setLibrary] = useState(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const storedLibrary = JSON.parse(localStorage.getItem("scenemap-library") || "[]");
+      return Array.isArray(storedLibrary) ? storedLibrary : [];
+    } catch {
+      return [];
+    }
+  });
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [importMessage, setImportMessage] = useState("");
+
+  useEffect(() => {
+    localStorage.setItem("scenemap-library", JSON.stringify(library));
+  }, [library]);
 
   useEffect(() => {
     let cancelled = false;
@@ -343,6 +367,14 @@ export default function SceneMapApp() {
     [selectedFilms, sourceLocations],
   );
 
+  const filteredLibrary = useMemo(() => {
+    const query = libraryQuery.trim().toLowerCase();
+    if (!query) return library;
+    return library.filter((movie) =>
+      `${movie.title} ${movie.year ?? ""} ${(movie.sources ?? []).join(" ")}`.toLowerCase().includes(query),
+    );
+  }, [library, libraryQuery]);
+
   const routePositions = routeResult?.positions ?? [];
 
   function invalidateRoute() {
@@ -380,6 +412,33 @@ export default function SceneMapApp() {
     invalidateRoute();
   }
 
+  function selectConnector(connector) {
+    setPendingConnector(connector);
+    setImportMessage("");
+    connectorInputRef.current?.click();
+  }
+
+  async function importLibrary(event) {
+    const file = event.target.files?.[0];
+    if (!file || !pendingConnector) return;
+
+    try {
+      const imported = parseMediaCsv(await file.text(), pendingConnector);
+      setLibrary((current) => mergeLibraries(current, imported));
+      setImportMessage(`${imported.length} movies imported from ${pendingConnector === "imdb" ? "IMDb" : "Letterboxd"}.`);
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : "The CSV file could not be imported.");
+    } finally {
+      event.target.value = "";
+      setPendingConnector(null);
+    }
+  }
+
+  function clearLibrary() {
+    setLibrary([]);
+    setImportMessage("Your local movie list was cleared.");
+  }
+
   async function buildRoute(stops = routeStops) {
     const requestId = routeRequestId.current + 1;
     routeRequestId.current = requestId;
@@ -415,7 +474,7 @@ export default function SceneMapApp() {
       setRouteResult(makeFallbackRoute(stops));
       setRouteStatus("fallback");
       setRouteMessage(
-        "The walking router is unavailable, so the line between stops is approximate.",
+        "Walking directions are unavailable, so the stops are connected directly.",
       );
     }
   }
@@ -561,6 +620,10 @@ export default function SceneMapApp() {
             <p className="eyebrow">SceneMap MVP</p>
             <h1>Film map · {cityName}</h1>
           </div>
+          <button className="account-button" type="button" onClick={() => setAccountOpen(true)}>
+            <User size={18} />
+            My movies
+          </button>
         </div>
 
         <form className="city-search" onSubmit={searchCity}>
@@ -665,7 +728,7 @@ export default function SceneMapApp() {
                 className="icon-button"
                 type="button"
                 onClick={() => addRouteStop(location)}
-                aria-label={`Add ${location.place} to route`}
+                aria-label={`Add ${location.place} to the route`}
               >
                 <Plus size={15} />
               </button>
@@ -741,7 +804,7 @@ export default function SceneMapApp() {
             role="status"
           >
             <strong>
-              Walk {routeResult.distanceKm.toFixed(1)} km · {routeResult.durationMinutes} min
+              {routeResult.distanceKm.toFixed(1)} km on foot · {routeResult.durationMinutes} min
             </strong>
             {routeResult.source === "fallback" ? (
               <span>{routeMessage}</span>
@@ -784,21 +847,16 @@ export default function SceneMapApp() {
             <div className="comparison-grid">
               <figure>
                 <img src={activeLocation.backdrop} alt="" onError={(event) => event.currentTarget.remove()} />
-                <figcaption>film frame / scene mood</figcaption>
+                <figcaption>scene reference</figcaption>
               </figure>
               <figure>
                 <img src={activeLocation.now} alt="" onError={(event) => event.currentTarget.remove()} />
-                <figcaption>location today</figcaption>
+                <figcaption>the place today</figcaption>
               </figure>
             </div>
-            <a
-              className="ghost-button image-search-link"
-              href={makeImageSearchUrl(activeLocation)}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <a className="ghost-button image-search-link" href={makeImageSearchUrl(activeLocation)} target="_blank" rel="noopener noreferrer">
               <Search size={18} />
-              Find scenes filmed here
+              Find scene images
               <ExternalLink size={15} />
             </a>
             <button className="wide-button" type="button" onClick={() => addRouteStop(activeLocation)}>
@@ -807,6 +865,75 @@ export default function SceneMapApp() {
             </button>
           </div>
         </section>
+      )}
+
+      {accountOpen && (
+        <div className="account-backdrop" role="presentation" onMouseDown={() => setAccountOpen(false)}>
+          <section className="account-panel" role="dialog" aria-modal="true" aria-labelledby="account-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="account-heading">
+              <div className="account-avatar"><User size={22} /></div>
+              <div>
+                <p className="eyebrow">Personal library</p>
+                <h2 id="account-title">My movies</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setAccountOpen(false)} aria-label="Close movie library">
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="account-copy">Import your official account export. Your list stays on this device and can combine both services.</p>
+            <input ref={connectorInputRef} type="file" accept=".csv,text/csv" hidden onChange={importLibrary} />
+
+            <div className="connector-list">
+              <button className="connector-card" type="button" onClick={() => selectConnector("letterboxd")}>
+                <span className="connector-logo is-letterboxd"><Film size={20} /></span>
+                <span><strong>Letterboxd</strong><small>ratings.csv, watched.csv or diary.csv</small></span>
+                <Link2 size={18} />
+              </button>
+              <button className="connector-card" type="button" onClick={() => selectConnector("imdb")}>
+                <span className="connector-logo is-imdb">IMDb</span>
+                <span><strong>IMDb</strong><small>Ratings, Check-ins or list CSV</small></span>
+                <Link2 size={18} />
+              </button>
+            </div>
+
+            {importMessage && <p className="import-message" role="status"><CheckCircle2 size={16} />{importMessage}</p>}
+
+            <div className="library-toolbar">
+              <div className="film-search">
+                <Search size={16} />
+                <input aria-label="Search my movies" placeholder="Search my movies" type="search" value={libraryQuery} onChange={(event) => setLibraryQuery(event.target.value)} />
+              </div>
+              {library.length > 0 && (
+                <button className="clear-library" type="button" onClick={clearLibrary}><Trash2 size={15} />Clear</button>
+              )}
+            </div>
+
+            <div className="library-summary">
+              <span>{library.length} movies</span>
+              <span>{library.filter((movie) => movie.rating !== null).length} rated</span>
+            </div>
+
+            <div className="movie-library" aria-live="polite">
+              {filteredLibrary.map((movie) => (
+                <article className="library-movie" key={movie.id}>
+                  <span className="library-poster">{movie.title.slice(0, 2).toUpperCase()}</span>
+                  <div>
+                    <strong>{movie.title}</strong>
+                    <span>{movie.year ?? "Year unknown"} · {(movie.sources ?? []).map((source) => source === "imdb" ? "IMDb" : "Letterboxd").join(" + ")}</span>
+                  </div>
+                  {movie.rating !== null && <span className="movie-rating"><Star size={14} />{movie.rating}</span>}
+                </article>
+              ))}
+              {library.length === 0 && (
+                <div className="empty-library"><Film size={28} /><strong>Your movie list is empty</strong><span>Connect Letterboxd or IMDb to import it.</span></div>
+              )}
+              {library.length > 0 && filteredLibrary.length === 0 && <p className="empty-library">No movies match your search.</p>}
+            </div>
+
+            <div className="account-privacy"><CheckCircle2 size={17} /><span>CSV files are processed locally. SceneMap never asks for your Letterboxd or IMDb password.</span></div>
+          </section>
+        </div>
       )}
     </main>
   );
