@@ -7,6 +7,23 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | IMDb Check-ins CSV filter
+
+- Added a local CSV import for the official IMDb `Your Check-ins` export. The client reads `Const` (IMDb title IDs) in-browser and never sends the source file or account credentials anywhere.
+- `/api/locations` now accepts up to 100 `imdb_ids` and returns only matching filming locations near the map center; verified with `tt2381249`, returning four matching London locations.
+
+## [2026-07-21] update | SceneMap frontend consumes live locations API
+
+- The map now fetches `/api/locations` on load for the London viewport and replaces its demo pins, film chips, location list, card, and route inputs with Wikidata results.
+- The static London set remains a client-side fallback when the upstream request fails, so the MVP demo path stays available without persisting data.
+- Verified visually in the local app: live film locations and Commons imagery render in the map and location card.
+
+## [2026-07-21] update | Live Wikidata film-location API
+
+- Added `GET /api/locations` for SceneMap. It requests Wikidata directly using the visible map center (`lat`, `lng`), `radius` in kilometres, and `limit`; defaults target London.
+- The response normalizes film/location Wikidata IDs, labels, year, coordinates, and Commons image URL. Results are deduplicated per film-location pair and HTTP-cached for one hour.
+- No Wikidata data is persisted in Supabase; the endpoint was verified with a live London request returning HTTP 200 and three coordinate-bearing locations.
+
 ## [2026-07-21] incident | First Vercel deploy targeted production
 
 - Ветка `feature/scenemap-skeleton` запушена с commit `dd17ac7`; локальный и Vercel builds зелёные.

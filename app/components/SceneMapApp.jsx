@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { Clapperboard, MapPin, Plus, Route, Search, Upload, X } from "lucide-react";
 
 const londonCenter = [51.5094, -0.1183];
 
-const films = [
+const fallbackFilms = [
   {
     id: "notting-hill",
     title: "Notting Hill",
@@ -40,7 +40,7 @@ const films = [
   },
 ];
 
-const locations = [
+const fallbackLocations = [
   {
     id: "portobello-road",
     filmId: "notting-hill",
@@ -153,6 +153,79 @@ const locations = [
   },
 ];
 
+function locationsFromApi(records) {
+  return records
+    .map((record) => ({
+      id: `${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+      filmId: record.work_wikidata_id,
+      film: record.work_title,
+      scene: record.work_title,
+      place: record.loc_name,
+      description: `Filming location for ${record.work_title}${record.work_year ? ` (${record.work_year})` : ""}.`,
+      position: [record.lat, record.lng],
+      backdrop: record.commons_image,
+      now: record.commons_image,
+      year: record.work_year,
+    }))
+    .filter((location) => Number.isFinite(location.position[0]) && Number.isFinite(location.position[1]));
+}
+
+function filmsFromLocations(sourceLocations) {
+  return [...new Map(sourceLocations.map((location) => [
+    location.filmId,
+    {
+      id: location.filmId,
+      title: location.film,
+      year: location.year,
+      code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
+    },
+  ])).values()].slice(0, 5);
+}
+
+function csvRows(text) {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '"') {
+      if (quoted && text[index + 1] === '"') {
+        value += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (character === "," && !quoted) {
+      row.push(value);
+      value = "";
+    } else if ((character === "\n" || character === "\r") && !quoted) {
+      if (character === "\r" && text[index + 1] === "\n") index += 1;
+      row.push(value);
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      value = "";
+    } else {
+      value += character;
+    }
+  }
+
+  row.push(value);
+  if (row.some(Boolean)) rows.push(row);
+  return rows;
+}
+
+function checkinIdsFromCsv(text) {
+  const [headers, ...rows] = csvRows(text);
+  const imdbIdColumn = headers?.findIndex((header) => /^(const|imdb id)$/i.test(header.trim()));
+  if (imdbIdColumn === undefined || imdbIdColumn < 0) return [];
+
+  return [...new Set(
+    rows.map((row) => row[imdbIdColumn]?.trim()).filter((id) => /^tt\d{5,10}$/.test(id)),
+  )];
+}
+
 function RecenterOnSelection({ position }) {
   const map = useMap();
 
@@ -193,14 +266,53 @@ function kmBetween(routeStops) {
 }
 
 export default function SceneMapApp() {
-  const [selectedFilms, setSelectedFilms] = useState(() => films.map((film) => film.id));
-  const [activeLocation, setActiveLocation] = useState(locations[0]);
+  const checkinInputRef = useRef(null);
+  const [liveLocations, setLiveLocations] = useState(null);
+  const [checkinIds, setCheckinIds] = useState(null);
+  const [checkinImportStatus, setCheckinImportStatus] = useState("");
+  const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
+  const [activeLocation, setActiveLocation] = useState(fallbackLocations[0]);
   const [routeStops, setRouteStops] = useState([]);
   const [routeVisible, setRouteVisible] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLocations() {
+      try {
+        const importedIds = checkinIds?.length
+          ? `&imdb_ids=${encodeURIComponent(checkinIds.join(","))}`
+          : "";
+        const response = await fetch(`/api/locations?lat=51.5094&lng=-0.1183&radius=5&limit=30${importedIds}`);
+        if (!response.ok) throw new Error("Locations API failed");
+        const payload = await response.json();
+        const nextLocations = locationsFromApi(payload.locations ?? []);
+        if (!nextLocations.length) throw new Error("Locations API returned no usable points");
+        if (cancelled) return;
+
+        const nextFilms = filmsFromLocations(nextLocations);
+        setLiveLocations(nextLocations);
+        setSelectedFilms(nextFilms.map((film) => film.id));
+        setActiveLocation(nextLocations[0]);
+        setRouteStops([]);
+      } catch {
+        // Keep the local demo locations visible if Wikidata is temporarily unavailable.
+      }
+    }
+
+    loadLocations();
+    return () => { cancelled = true; };
+  }, [checkinIds]);
+
+  const sourceLocations = liveLocations ?? fallbackLocations;
+  const films = useMemo(
+    () => liveLocations ? filmsFromLocations(sourceLocations) : fallbackFilms,
+    [liveLocations, sourceLocations],
+  );
+
   const visibleLocations = useMemo(
-    () => locations.filter((location) => selectedFilms.includes(location.filmId)),
-    [selectedFilms],
+    () => sourceLocations.filter((location) => selectedFilms.includes(location.filmId)),
+    [selectedFilms, sourceLocations],
   );
 
   const routePositions = routeVisible ? routeStops.map((stop) => stop.position) : [];
@@ -228,6 +340,23 @@ export default function SceneMapApp() {
   function removeRouteStop(locationId) {
     setRouteStops((current) => current.filter((stop) => stop.id !== locationId));
     setRouteVisible(false);
+  }
+
+  async function importCheckins(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const ids = checkinIdsFromCsv(await file.text());
+      if (!ids.length) throw new Error("No IMDb title IDs found");
+      const supportedIds = ids.slice(0, 100);
+      setCheckinIds(supportedIds);
+      setCheckinImportStatus(`IMDb Check-ins: ${supportedIds.length}${ids.length > supportedIds.length ? " of first 100" : ""}`);
+    } catch {
+      setCheckinImportStatus("Could not read IMDb Check-ins CSV");
+    } finally {
+      event.target.value = "";
+    }
   }
 
   return (
@@ -277,11 +406,19 @@ export default function SceneMapApp() {
             <Search size={17} />
             Галерея
           </button>
-          <button className="ghost-button" type="button">
+          <input
+            ref={checkinInputRef}
+            accept=".csv,text/csv"
+            onChange={importCheckins}
+            style={{ display: "none" }}
+            type="file"
+          />
+          <button className="ghost-button" onClick={() => checkinInputRef.current?.click()} type="button">
             <Upload size={17} />
-            CSV позже
+            IMDb Check-ins
           </button>
         </div>
+        {checkinImportStatus && <p className="eyebrow">{checkinImportStatus}</p>}
 
         <div className="film-grid" aria-label="Выбранные фильмы">
           {films.map((film) => {
