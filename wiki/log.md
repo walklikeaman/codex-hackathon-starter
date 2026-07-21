@@ -7,12 +7,25 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Interactive location card verified
+
+- Карточка локации дополнена типом/связью, адресом, расстоянием, источником, фактом, spoiler reveal и явными fallback-состояниями изображений.
+- `Want to visit` сохраняется в localStorage; закрытие карточки не сбрасывает выбранную локацию.
+- `I'm here`, `Listen` и `Recreate shot` используют browser geolocation, Web Speech и camera/file input; существующий walking-route flow сохранён.
+- `npm run build` и browser flows на desktop/390 px зелёные, horizontal overflow и console errors отсутствуют.
+
 ## [2026-07-21] update | Mapped-film search verified
 
 - В существующую action row добавлен поиск по названию, году и коду фильма без внешних API и новых ключей.
 - Результат синхронно фильтрует film chips, map markers, location list и активную location card; пустое состояние и очистка поиска реализованы отдельно.
 - Browser flow проверен для `harry`, `007`, пустого результата и clear: 5 фильмов/10 пинов восстанавливаются, console errors и mobile overflow отсутствуют.
 - `npm run build` зелёный; PR #8 нельзя self-approve от аккаунта автора, поэтому reviewer request отправлен `timido22`.
+
+## [2026-07-21] decision | Staging and production deployment gates
+
+- A merged PR to `main` creates a Vercel Preview tracked by the GitHub `staging` environment.
+- Production deploys are manual, require an explicit confirmation input, and use the GitHub `production` environment as the approval boundary.
+- Both workflows deploy prebuilt artifacts and require only `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` GitHub secrets.
 
 ## [2026-07-21] update | Walking-route MVP verified
 
