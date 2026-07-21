@@ -11,7 +11,8 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 - Production checks reproduced `no_high_confidence_match` across three current London film/location pairs; the request pipeline and signed capabilities were healthy.
 - The matcher inspected only the six most popular TMDB backdrops even when a plausible location frame appeared later in the gallery, so the relevant image could never reach vision.
-- Expanded the same single low-detail vision request to a bounded 24 candidates without weakening the high-confidence gate; versioned the matcher URL to bypass stale cached no-match responses and added a regression for a verified match at index 10.
+- Expanded the same single low-detail vision request to a bounded 24 candidates without weakening the high-confidence gate; the matcher now uses the canonical Wikidata relationship while allowing a present-day exterior and filmed interior to be different views of the same place.
+- Versioned the matcher URL to bypass stale cached no-match responses and added a regression for a verified match at index 10.
 - Verified `npm test` (89/89), the production build, and `git diff --check` on current `main`.
 
 ## [2026-07-22] update | Letterboxd ZIP drives the personal map

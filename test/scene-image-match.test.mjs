@@ -112,6 +112,8 @@ test("builds one reference image followed by numbered candidates", () => {
       "https://image.tmdb.org/t/p/w780/two.jpg",
     ],
   );
+  assert.match(content[0].text, /already verified/);
+  assert.match(content[0].text, /interior-to-exterior/);
   assert.equal(content.some((item) => item.text === "CANDIDATE 1"), true);
 });
 
