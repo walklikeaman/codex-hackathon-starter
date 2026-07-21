@@ -7,6 +7,11 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | Real walking routes from main integrated
+
+- Integrated the latest `origin/main` routing work while retaining the verified Nocturne client contract and English-only API responses.
+- Preserved the shared walking-route parser and tests for regression coverage.
+
 ## [2026-07-21] update | Mapped-film search verified
 
 - В существующую action row добавлен поиск по названию, году и коду фильма без внешних API и новых ключей.
