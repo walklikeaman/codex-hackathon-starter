@@ -1,107 +1,177 @@
-# Стартовый набор для хакатона (OpenAI Codex)
+# 🎬 GloryMap
 
-Чистый проект, который сразу устроен так, как **зрелый агентный проект** — команда
-описывает, что хочет, и тут же начинает строить, а не воюет с настройкой. Клонируй,
-запусти один скрипт, собери приложение — и вперёд. Заточен под **хакатон OpenAI Build
-Week** (собираешь с Codex, нужно рабочее демо).
+**Turn the stories you love into places you can actually visit.**
 
-Ничего специфичного для предметной области внутри нет — это пустой проект с полностью
-подключённым набором агентных инструментов: дисциплина, автопилот, накапливающаяся
-память, циклы качества, ship одной кнопкой, анализ кода и связка бэкенд + деплой-пайплайн.
+GloryMap transforms your personal film library into an interactive map of real filming locations and story settings. Import a Letterboxd export, pick a city, discover which of your movies were filmed nearby, and build a walk that takes you from one scene to the next.
 
-## Что внутри
+[🌍 Open the live demo](https://codex-hackathon-starter-nakonechnyin-8566-walklikeaman1904.vercel.app)
 
-| Компонент                        | Чем экономит время                                                                                                                                                                                           |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AGENTS.md`                      | Codex читает его каждую сессию: дисциплина «сначала думай» + автопилот по умолчанию + блок фиксации скоупа, так что он строит без няньканья.                                                                 |
-| **Supabase** (MCP)               | Postgres + аутентификация + edge-функции, которые агент создаёт и запрашивает. OAuth в браузере, **с правом записи** — Codex может построить твою схему.                                                     |
-| **Vercel**                       | `vercel` для preview-деплоев за секунды; Vercel MCP для логов и ошибок.                                                                                                                                      |
-| `scaffold.sh`                    | Одна команда → готовое к запуску приложение Next.js (JS), чтобы Codex/CodeGraph/Vercel было над чем работать с первой минуты.                                                                                |
-| **CodeGraph** (MCP)              | Локальный граф знаний по коду. Codex отвечает на «что вызывает X / радиус поражения Z» из готового индекса, а не грепает — меньше токенов, меньше вызовов инструментов. Полностью локально, без авторизации. |
-| Накапливающаяся память (`wiki/`) | Агент записывает решения, подводные камни и заметки по предметной области в текстовую базу знаний, так что следующая сессия и следующий участник команды стартуют умнее, а не с нуля.                        |
-| Циклы качества                   | `/loop-demo`, `/loop-lint`, `/loop-debug`, `/loop-spec-ship`, `/loop-guardrails` и другие — самонастраивающиеся проверки, которые доводят работу до зелёного.                                                |
-| `/ship`                          | Аккуратно добавить в стейджинг → чистый commit → push → проверка → лог. Репозиторий остаётся готовым к демо; секреты не утекают.                                                                             |
-| `.loops/guardrails.md`           | Жёсткие ограничения (никакого `git add -A`, никакого прод-деплоя без спроса, защищаем путь демо), показываются в начале сессии.                                                                              |
-| **Playwright** (MCP, по желанию) | `./setup.sh --playwright` — гоняет реальный браузер, чтобы проверить путь демо.                                                                                                                              |
+## ⚡ The elevator pitch
 
-## Быстрый старт за 60 секунд
+Streaming platforms remember what we watched, but they rarely help us experience those stories beyond the screen. GloryMap connects a personal movie library to the real world: upload a Letterboxd ZIP, choose a city, and instantly see the filming locations that belong to films you already care about. From there, you can explore scene context, compare the reference with the place today, hear an AI guide, and turn several stops into a walkable movie tour.
+
+It is part travel planner, part film companion, and part excuse to look at a familiar city differently.
+
+## ✨ What you can do
+
+- 📦 **Import your Letterboxd archive** — upload the original ZIP without unpacking its folders. GloryMap reads `watched.csv` and `ratings.csv` locally in the browser.
+- 🎞️ **Bring IMDb lists too** — standalone IMDb and Letterboxd CSV exports remain supported and are merged into one personal library.
+- 🗺️ **Map your own movies** — after import, the map shows the intersection between your library and known locations in the selected city.
+- 🌍 **Explore beyond London** — search for another city and the personal-library filter recalculates against the locations available there.
+- 🔎 **Search films, series, and books** — discover filming locations and story settings from Wikidata, with cited research used for sparse results.
+- 📍 **Open rich location cards** — see the work, relation type, address, distance, source, scene context, and “then vs now” imagery.
+- 🙈 **Keep spoilers optional** — scene details stay hidden until you choose to reveal them.
+- ❤️ **Save places for later** — “Want to visit” selections persist on the device.
+- 🚶 **Build a real walking route** — choose 3–5 stops and get street-level distance and duration, with a safe fallback when routing is unavailable.
+- ⏱️ **Plan by available time** — create 30, 60, or 120-minute tours around a city or your current position.
+- 🎧 **Listen to the tour** — OpenAI narration supports spoiler-free mode and playback controls.
+- 📸 **Recreate the shot** — line up your own photo with a reference frame using an overlay or side-by-side comparison.
+
+## 🎥 The demo flow
+
+1. Open **My movies**.
+2. Choose **Letterboxd** and upload the complete export ZIP.
+3. Pick a city.
+4. GloryMap keeps the imported titles that have known locations in that city.
+5. Open a pin to explore the scene and its source.
+6. Add at least three locations.
+7. Build a walking route and start the movie tour.
+
+The current demo has been exercised with a real 2,422-film Letterboxd export. In the verified dataset, the library matched three titles and six locations in London, plus five titles and ten locations in New York. A city can correctly show zero personal matches when none of its currently available locations belong to the imported library.
+
+## 🧠 How it works
+
+```text
+Letterboxd ZIP / IMDb CSV
+          │
+          ▼
+ Local browser parsing ──► Personal library in localStorage
+          │
+          ▼
+ Normalized title + year matching
+          │
+          ├──► Wikidata locations and source evidence
+          ├──► TMDB reference imagery
+          ├──► OpenStreetMap / walking router
+          └──► OpenAI tour and voice narration
+                         │
+                         ▼
+                A walkable story map
+```
+
+The archive never needs to reach the server. ZIP processing is capped at 25 MB, extracted CSV content at 10 MB, and only the two expected root files are read. Deleted, orphaned, review, and profile folders are ignored.
+
+## 🛠️ Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| Web app | Next.js 15, React 19 |
+| Map | Leaflet, React Leaflet, OpenStreetMap tiles |
+| Location knowledge | Wikidata and cited web research |
+| Film imagery | TMDB |
+| Routes | Public pedestrian OSRM service with deterministic fallback |
+| AI guide | OpenAI structured output and text-to-speech |
+| Archive import | JSZip, local CSV parsing, `localStorage` |
+| Validation | Node test runner, production builds, Playwright browser checks |
+| Hosting | Vercel Preview deployments with gated production workflows |
+
+## 🔐 Privacy by design
+
+- Letterboxd ZIP and IMDb CSV files are parsed in the browser.
+- Imported libraries and “Want to visit” choices stay in local browser storage.
+- GloryMap never asks for a Letterboxd or IMDb password.
+- Recreated-shot photos remain in the active browser tab and are not uploaded.
+- API credentials stay in environment variables and are never committed.
+
+Clearing site data removes the locally stored library and preferences.
+
+## 🚀 Run it locally
+
+### Requirements
+
+- Node.js 20+
+- npm
+
+### Setup
 
 ```bash
-# 1. Клонируй общий репозиторий команды (владелец добавляет участников в коллабораторы, чтобы могли пушить)
-git clone https://github.com/walklikeaman/codex-hackathon-starter.git && cd codex-hackathon-starter
-
-# 2. Поставь CLI и подключи CodeGraph к Codex (идемпотентно)
-./setup.sh
-
-# 3. Поставь зависимости приложения (оно уже в репозитории) + локальный .env
-./scaffold.sh            # npm install + .env.local с общими ключами Supabase
-
-# 4. Войди и строй
-codex                    # вход при первом запуске
-npm run dev              # http://localhost:3000
+git clone https://github.com/walklikeaman/codex-hackathon-starter.git
+cd codex-hackathon-starter
+npm install
+cp .env.example .env.local
+npm run dev
 ```
 
-Дальше просто скажи Codex, что строишь. Сначала заполни блок **«Проект»** вверху
-`AGENTS.md` — идея, стек, ЕДИНСТВЕННЫЙ путь демо и что вне скоупа. Этот блок держит
-команду из 3–6 человек нацеленной на одно демо (хук в начале сессии напоминает, если
-он пустой).
+Open [http://localhost:3000](http://localhost:3000).
 
-Полный чек-лист по аккаунтам и машине: **[INSTALL.md](INSTALL.md)**.
-Одностраничка «приходи готовым» для всей команды: **[PREFLIGHT.md](PREFLIGHT.md)**.
-Как работает весь метод: **[docs/agent-framework.md](docs/agent-framework.md)**.
+The core map and local imports work without an OpenAI key. AI-generated tour copy and voice narration require the corresponding server-side environment variables.
 
-## Используешь Claude Code или Cursor вместо Codex?
+### Environment variables
 
-Те же серверы, тот же выигрыш. Claude Code: скопируй `config/mcp.json` → `.mcp.json` и
-`AGENTS.md` → `CLAUDE.md` в корень репозитория. Cursor: скопируй `config/mcp.json` →
-`.cursor/mcp.json`.
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Shared project data endpoint |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser-safe Supabase anonymous key |
+| `OPENAI_API_KEY` | Server-side AI tour and narration requests |
+| `OPENAI_MODEL` | Structured tour generation model |
+| `OPENAI_TTS_MODEL` | Text-to-speech model |
 
-## Тактика на день демо (зашита в `/loop-demo`)
+Never commit `.env.local` or a Vercel token.
 
-- **Один поток, зелёный, на сцене.** Один сквозной путь, который работает, лучше пяти
-  недоделанных. Жюри оценивает рабочее демо, а не роадмап.
-- **Сначала зафиксируй скоуп в `AGENTS.md`** — пропиши путь демо и список «вне скоупа»
-  до того, как писать код. Всё новое идёт в «вне скоупа», пока не станет зелёным.
-- **Деплой на preview-URL пораньше.** Живая ссылка убирает риск «на моей машине
-  работает» и даёт что показать, если ноутбук закапризничает.
-- **Запиши зелёный путь, как только он заработал** — скринкаст на 60–90 секунд
-  (`Cmd-Shift-5` на macOS) — твоё запасное демо, если на сцене подведёт Wi-Fi или ноутбук.
-- **Проверяй запуском, а не догадками.** `/loop-demo` проходит реальный путь.
-- **Делай `/ship` часто.** Маленькие зелёные коммиты — значит, коллега может подтянуть
-  рабочий код, а ты всегда откатишься к последнему, что показывалось в демо.
+## ✅ Development commands
 
-## Деплой staging и production
-
-GitHub Actions использует один Vercel-проект и три repository secrets:
-`VERCEL_TOKEN`, `VERCEL_ORG_ID` и `VERCEL_PROJECT_ID`. Значения ID можно взять из
-локального `.vercel/project.json` после `vercel link`; сам файл и токен коммитить нельзя.
-
-- После merge PR в `main` workflow `Deploy staging` автоматически собирает Vercel
-  Preview и публикует его URL в GitHub Environment `staging`. Его также можно
-  запустить вручную из вкладки Actions.
-- Workflow `Deploy production` запускается только вручную: укажи git ref и отметь
-  подтверждение production. Для дополнительного человеческого гейта настрой required
-  reviewers у GitHub Environment `production`.
-- Если Vercel Git Integration подключена, отключи её автоматический production deploy:
-  иначе push в `main` сможет обойти ручной production workflow. Preview-деплои из Git
-  Integration тоже будут дублировать staging Action.
-
-## Структура
-
+```bash
+npm run dev      # Start the local Next.js server
+npm test         # Run the Node test suite
+npm run build    # Create and validate a production build
+npm run start    # Serve the production build locally
 ```
-AGENTS.md          glue, который читает Codex (заполни блок «Проект» на старте)
-app/ · package.json · next.config.mjs   готовое Next.js-приложение (в корне; деплоится на Vercel)
-setup.sh           установка машины + подключение MCP  (--infra, --playwright, --check)
-scaffold.sh        ставит зависимости приложения + создаёт .env.local
-.env.example       общие ключи Supabase уже внутри (публичные; scaffold копирует в .env.local)
-INSTALL.md         чек-лист: чистая машина + аккаунты
-PREFLIGHT.md       короткая шаринг-одностраничка «поставь заранее»
-docs/agent-framework.md   весь метод: слои, ритуалы, лупы, ship
-config/mcp.json    набор MCP для пользователей Claude Code / Cursor
-prompts/           /ship + /loop-* → копируются в ~/.codex/prompts/
-wiki/              накапливающаяся база знаний (index · log · concepts · entities · sources)
-Context/           сырой неизменяемый инбокс — кидай материалы, проси агента ingest
-.loops/            guardrails + reflexion, показываются в начале сессии
-.obsidian/         открой репозиторий как Obsidian-волт, чтобы видеть граф знаний
-.codex/hooks.json  печатает число guardrail-ов + подсказку о незакрытом скоупе в начале сессии
+
+Do not run `next dev` and `next build` at the same time in one checkout: both write to `.next` and can corrupt the development manifest.
+
+## 🧭 API surface
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/cities` | Resolve a city and its map bounds |
+| `GET /api/locations` | Find verified nearby or title-specific locations |
+| `POST /api/locations/discover` | Supplement sparse results with cited research |
+| `GET /api/film-image` | Select a suitable TMDB backdrop |
+| `POST /api/route` | Build a pedestrian route for selected stops |
+| `POST /api/tour` | Create a structured tour guide |
+| `POST /api/narration` | Generate tour audio |
+
+## 🗂️ Project structure
+
+```text
+app/
+├── api/                    Route handlers for cities, locations, routes and AI
+├── components/             Main map experience and voice guide
+├── lib/                    Import, matching, routing and tour logic
+├── globals.css             Responsive GloryMap interface
+└── page.jsx                Application entry point
+test/                       Node regression tests
+wiki/                       Decisions, incidents and accumulated project knowledge
+.github/workflows/          Gated Vercel staging and production deployments
 ```
+
+## ⚠️ Honest limitations
+
+- Location coverage depends on the quality and completeness of public source data.
+- Personal-library matching currently uses normalized title and release year; alternate regional titles can still miss.
+- A movie appears only when GloryMap has a usable location for the selected city.
+- Route and research providers can rate-limit or time out, so the app uses clear fallbacks instead of pretending a result is exact.
+- Protected film frames are not uploaded or redistributed.
+
+## 🌱 What is next
+
+- Better alternate-title matching for international releases
+- More verified scene-level metadata and imagery
+- Shareable personal tours without exposing a full library
+- Broader city coverage while keeping every location traceable to a source
+
+## 🤝 Built for OpenAI Build Week
+
+GloryMap started as a focused hackathon idea: make one end-to-end experience feel real. The project is built with Codex-assisted engineering, a cumulative `wiki/`, explicit guardrails, and browser-verified demo loops so the repository remembers not only what changed, but why.
+
+If you are reviewing the project, start with the [live demo](https://codex-hackathon-starter-nakonechnyin-8566-walklikeaman1904.vercel.app), import a Letterboxd ZIP, and take your movies for a walk. 🍿

@@ -7,6 +7,12 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-22] update | Product README and elevator pitch
+
+- Корневой README заменён с описания hackathon starter kit на англоязычную продуктовую страницу GloryMap.
+- Добавлены elevator pitch, live demo, проверяемый demo flow, функции, архитектура, privacy model, API/env reference, ограничения и roadmap.
+- Текст использует подтверждённые результаты Letterboxd browser-проверок и не обещает покрытие городов, которого нет в источниках.
+
 ## [2026-07-22] update | Letterboxd ZIP drives the personal map
 
 - Personal Library принимает полный Letterboxd ZIP и локально читает корневые `watched.csv` и `ratings.csv`; архив и список не отправляются на сервер.
