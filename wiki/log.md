@@ -18,3 +18,8 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 - Зафиксирован brief в `Context/brief-scenemap-design.md` и заполнен блок «Проект» в `AGENTS.md`.
 - Собран первый срез MVP: тёмная Leaflet-карта Лондона, 10 hardcoded film-location pins, карточка локации, список точек и локальная линия маршрута после добавления 3 stops.
 - Supabase-схема и таблицы не создавались; следующий срез — контракт данных + seed/API.
+## [2026-07-21] update | Codebase mapped for GSD initialization
+
+- Created the seven reference documents in `.planning/codebase/`.
+- Verified that every document is substantive and contains no detected secret patterns.
+- Mapping commit: `734d97e` on `feature/gsd-project-setup`.
