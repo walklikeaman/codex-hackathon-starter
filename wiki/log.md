@@ -7,11 +7,17 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
-## [2026-07-22] update | Devpost-ready GloryMap README
+## [2026-07-22] update | Devpost Codex and GPT-5.6 evidence
 
-- Preserved the product-focused GloryMap README from current `main` and supplemented it for the Devpost judging requirements.
-- Documented the concrete roles of Codex and GPT-5.6 in grounded discovery and validated tour generation, clarified current versus long-term integrations, and switched the demo link to the stable production alias.
-- Verified the documentation against current routes and dependencies, then ran all 89 tests and a successful production build.
+- Supplemented the product-focused README with the Devpost-required setup, judge test path, and evidence-backed descriptions of Codex and GPT-5.6 usage.
+- Clarified which collection integrations work today versus the longer-term product vision and switched the demo link to the stable production alias.
+- Verified the claims against current routes and dependencies, then ran all 89 tests, a successful production build, and a clean documentation secret scan.
+
+## [2026-07-22] update | Product-only public README
+
+- README сфокусирован на пользовательской боли, ценности GloryMap и пути от личной коллекции к реальному маршруту.
+- Удалены внутренние элементы подготовки: elevator-pitch label, формат импорта, тестовые метрики, API/env, локальная разработка и агентный процесс.
+- Отдельно подчёркнута ключевая функция: фильмы, сериалы и книги из личных коллекций отображаются на карте при наличии значимых локаций в выбранном городе.
 
 ## [2026-07-22] update | Emotional story-first elevator pitch
 

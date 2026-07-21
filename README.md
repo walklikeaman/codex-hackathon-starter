@@ -1,178 +1,129 @@
 # 🎬 GloryMap
 
-**Turn the stories you love into places you can actually visit.**
+### Your favorite stories are already part of your life. GloryMap helps you step inside them.
 
-GloryMap transforms your personal film library into an interactive map of real filming locations and story settings. Import a Letterboxd export, pick a city, discover which of your movies were filmed nearby, and build a walk that takes you from one scene to the next.
+Every day, we watch films, follow series for years, and get lost in books that stay with us long after the final scene or page. Their streets, cafés, houses, landscapes, and hidden corners begin to feel familiar—even when we have never visited them.
 
-[🌍 Open the live demo](https://codex-hackathon-starter.vercel.app)
+GloryMap turns that connection into a real journey.
 
-## ⚡ The elevator pitch
+[🌍 Explore the GloryMap demo](https://codex-hackathon-starter.vercel.app)
 
-Every day, we spend hours inside stories. Some films stay with us for life. Some series become companions we follow for ten years. Some books describe places so vividly that they begin to feel familiar before we have ever been there.
+## 💭 The problem
 
-GloryMap turns those emotional connections into real journeys. Our long-term vision is to bring together favorites from services such as Letterboxd, Netflix, Prime Video, Goodreads, and Kindle, then place their filming locations and story settings on one personal map. Today, the working product imports Letterboxd and IMDb files and supports title search for films, series, and books.
+Our taste is scattered across streaming platforms, watchlists, reading apps, ratings, and saved collections. These services are good at recommending what to watch or read next, but they rarely help us experience the stories we already love in the real world.
 
-Choose a city and GloryMap shows you the places connected to the stories you already love. Revisit the scene, compare then and now, listen to its story, save the places you want to visit, and build a walking route through several meaningful locations.
+Traditional travel apps have the opposite problem: they show popular attractions, not the places that carry personal meaning for us.
 
-GloryMap does not give you another generic list of tourist attractions. It helps you visit places that already mean something to you.
+Someone who grew up with a ten-season series should be able to visit its most memorable locations. A reader should be able to walk through the setting of a favorite novel. A film lover should be able to turn a weekend in a new city into a route through scenes they know by heart.
 
-## ✨ What you can do
+## ✨ The GloryMap experience
 
-- 📦 **Import your Letterboxd archive** — upload the original ZIP without unpacking its folders. GloryMap reads `watched.csv` and `ratings.csv` locally in the browser.
-- 🎞️ **Bring IMDb lists too** — standalone IMDb and Letterboxd CSV exports remain supported and are merged into one personal library.
-- 🗺️ **Map your own movies** — after import, the map shows the intersection between your library and known locations in the selected city.
-- 🌍 **Explore beyond London** — search for another city and the personal-library filter recalculates against the locations available there.
-- 🔎 **Search films, series, and books** — discover filming locations and story settings from Wikidata, with cited research used for sparse results.
-- 📍 **Open rich location cards** — see the work, relation type, address, distance, source, scene context, and “then vs now” imagery.
-- 🙈 **Keep spoilers optional** — scene details stay hidden until you choose to reveal them.
-- ❤️ **Save places for later** — “Want to visit” selections persist on the device.
-- 🚶 **Build a real walking route** — choose 3–5 stops and get street-level distance and duration, with a safe fallback when routing is unavailable.
-- ⏱️ **Plan by available time** — create 30, 60, or 120-minute tours around a city or your current position.
-- 🎧 **Listen to the tour** — OpenAI narration supports spoiler-free mode and playback controls.
-- 📸 **Recreate the shot** — line up your own photo with a reference frame using an overlay or side-by-side comparison.
+GloryMap is built to bring your favorite films, series, and books together and place their real-world locations on one personal map.
 
-## 🎥 The demo flow
+Today, the working product imports Letterboxd ZIP exports and Letterboxd or IMDb CSV files, while title search discovers locations for films, series, and books. Direct connectors for streaming and reading services such as Netflix, Prime Video, Disney+, Goodreads, and Kindle are part of the longer-term vision. Choose a city or use your current location to see which available stories have meaningful places nearby.
 
-1. Open **My movies**.
-2. Choose **Letterboxd** and upload the complete export ZIP.
-3. Pick a city.
-4. GloryMap keeps the imported titles that have known locations in that city.
-5. Open a pin to explore the scene and its source.
-6. Add at least three locations.
-7. Build a walking route and start the movie tour.
+Instead of asking, “What are the top tourist attractions here?”, GloryMap asks a better question:
 
-The current demo has been exercised with a real 2,422-film Letterboxd export. In the verified dataset, the library matched three titles and six locations in London, plus five titles and ten locations in New York. A city can correctly show zero personal matches when none of its currently available locations belong to the imported library.
+> **Which places in this city already mean something to you?**
 
-## 🧠 How it works
+## 🗺️ Your collections, on the map
 
-```text
-Letterboxd ZIP / IMDb CSV
-          │
-          ▼
- Local browser parsing ──► Personal library in localStorage
-          │
-          ▼
- Normalized title + year matching
-          │
-          ├──► Wikidata locations and source evidence
-          ├──► TMDB reference imagery
-          ├──► OpenStreetMap / walking router
-          └──► OpenAI tour and voice narration
-                         │
-                         ▼
-                A walkable story map
-```
+Your personal library is at the heart of GloryMap.
 
-The archive never needs to reach the server. ZIP processing is capped at 25 MB, extracted CSV content at 10 MB, and only the two expected root files are read. Deleted, orphaned, review, and profile folders are ignored.
+- 🎞️ **Films from your collections** become filming locations, recognizable scenes, and real places you can visit.
+- 📺 **Series you followed for years** become a map of recurring homes, streets, landmarks, and moments.
+- 📚 **Books from your reading collections** become story settings and places connected to the worlds you imagined.
+- 🌍 **Every city becomes personal** because the map is filtered through your own taste rather than a generic popularity ranking.
 
-## 🛠️ Tech stack
+When you change cities, GloryMap recalculates the map and shows the titles from your collections that have known locations there. If a story has several places in the area, they appear together—ready to become a route.
 
-| Layer | Technology |
-| --- | --- |
-| Web app | Next.js 15, React 19 |
-| Map | Leaflet, React Leaflet, OpenStreetMap tiles |
-| Location knowledge | Wikidata and cited web research |
-| Film imagery | TMDB |
-| Routes | Public pedestrian OSRM service with deterministic fallback |
-| AI guide | OpenAI structured output and text-to-speech |
-| Archive import | JSZip, local CSV parsing, `localStorage` |
-| Validation | Node test runner, production builds, Playwright browser checks |
-| Hosting | Vercel Preview deployments with gated production workflows |
+## 🌟 What you can do
 
-## 🔐 Privacy by design
+### Discover meaningful places
 
-- Letterboxd ZIP and IMDb CSV files are parsed in the browser.
-- Imported libraries and “Want to visit” choices stay in local browser storage.
-- GloryMap never asks for a Letterboxd or IMDb password.
-- Recreated-shot photos remain in the active browser tab and are not uploaded.
-- API credentials stay in environment variables and are never committed.
+Explore filming locations and story settings connected to your favorite films, series, and books. Search by city, title, or your current position.
 
-Clearing site data removes the locally stored library and preferences.
+### Understand why each place matters
 
-## 🚀 Run it locally
+Open a location card to see the work, scene, relationship to the story, address, distance, imagery, and supporting source. Spoiler-sensitive details stay hidden until you choose to reveal them.
 
-### Requirements
+### Compare the story with the real world
 
-- Node.js 20+
-- npm
+See a reference from the story alongside the place today. Use **Recreate the shot** to line up your own photo with the original composition.
 
-### Setup
+### Build a personal story walk
 
-```bash
-git clone https://github.com/walklikeaman/codex-hackathon-starter.git
-cd codex-hackathon-starter
-npm install
-cp .env.example .env.local
-npm run dev
-```
+Add several places and turn them into a real pedestrian route. GloryMap calculates walking distance and duration so the experience works outside the browser, not only on the map.
 
-Open [http://localhost:3000](http://localhost:3000).
+### Plan around your day
 
-The core map and local imports work without an OpenAI key. AI-generated tour copy and voice narration require the corresponding server-side environment variables.
+Choose how much time you have—30, 60, or 120 minutes—and let GloryMap create a tour around your location and the stories you care about.
 
-### Environment variables
+### Listen as you explore
 
-| Variable | Purpose |
-| --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Shared project data endpoint |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser-safe Supabase anonymous key |
-| `OPENAI_API_KEY` | Server-side AI tour and narration requests |
-| `OPENAI_MODEL` | Structured tour generation model |
-| `OPENAI_TTS_MODEL` | Text-to-speech model |
+Use the AI voice guide to hear the context behind each stop while you walk. Spoiler-free narration is available when you want the atmosphere without revealing the plot.
 
-Never commit `.env.local` or a Vercel token.
+### Save the places that matter
 
-## ✅ Development commands
+Mark locations you want to visit and keep building a personal travel wishlist inspired by the stories you love.
 
-```bash
-npm run dev      # Start the local Next.js server
-npm test         # Run the Node test suite
-npm run build    # Create and validate a production build
-npm run start    # Serve the production build locally
-```
-
-Do not run `next dev` and `next build` at the same time in one checkout: both write to `.next` and can corrupt the development manifest.
-
-## 🧭 API surface
-
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /api/cities` | Resolve a city and its map bounds |
-| `GET /api/locations` | Find verified nearby or title-specific locations |
-| `POST /api/locations/discover` | Supplement sparse results with cited research |
-| `GET /api/film-image` | Select a suitable TMDB backdrop |
-| `POST /api/route` | Build a pedestrian route for selected stops |
-| `POST /api/tour` | Create a structured tour guide |
-| `POST /api/narration` | Generate tour audio |
-
-## 🗂️ Project structure
+## 🚶 From collection to journey
 
 ```text
-app/
-├── api/                    Route handlers for cities, locations, routes and AI
-├── components/             Main map experience and voice guide
-├── lib/                    Import, matching, routing and tour logic
-├── globals.css             Responsive GloryMap interface
-└── page.jsx                Application entry point
-test/                       Node regression tests
-wiki/                       Decisions, incidents and accumulated project knowledge
-.github/workflows/          Gated Vercel staging and production deployments
+Your films, series, and books
+              ↓
+      Your personal library
+              ↓
+    Choose a city or location
+              ↓
+ Stories with real places nearby
+              ↓
+   Explore scenes and locations
+              ↓
+ Build a walkable personal tour
 ```
 
-## ⚠️ Honest limitations
+## ❤️ Why it matters
 
-- Location coverage depends on the quality and completeness of public source data.
-- Personal-library matching currently uses normalized title and release year; alternate regional titles can still miss.
-- A movie appears only when GloryMap has a usable location for the selected city.
-- Route and research providers can rate-limit or time out, so the app uses clear fallbacks instead of pretending a result is exact.
-- Protected film frames are not uploaded or redistributed.
+Stories are emotional landmarks. They remind us of particular years, people, places, and versions of ourselves. Visiting a location from a beloved film, a long-running series, or a formative book is different from checking off another attraction—it feels like meeting something familiar in the real world.
 
-## 🌱 What is next
+GloryMap makes travel more personal by connecting three things that usually live apart:
 
-- Better alternate-title matching for international releases
-- More verified scene-level metadata and imagery
-- Shareable personal tours without exposing a full library
-- Broader city coverage while keeping every location traceable to a source
+- the stories that shaped us;
+- the places where those stories live;
+- and the time we have to explore them.
+
+## 🔍 Built around trustworthy discovery
+
+GloryMap combines public location knowledge, source-backed research, current place imagery, and walking directions. Each location explains its connection to the work and links back to supporting evidence whenever available.
+
+Coverage is intentionally honest: a title appears only when GloryMap has a meaningful location for it in the selected area. The goal is not to fill the map with vague pins—it is to help every visible place earn its place in the journey.
+
+## 🔐 Personal by design
+
+Your collections shape the experience, but they remain yours. GloryMap keeps personal library information and saved places on the device, does not ask for streaming or reading passwords, and does not upload photos used to recreate a scene.
+
+## 🎥 Try GloryMap
+
+Open the demo, connect your story collection, choose a city, and see where your favorite worlds meet the real one.
+
+### [🌍 Launch the live demo →](https://codex-hackathon-starter.vercel.app)
+
+## ✅ What judges can test today
+
+No account or credentials are required for the deployed application.
+
+1. Open the [live demo](https://codex-hackathon-starter.vercel.app).
+2. Search for a city, or keep London selected.
+3. Explore the visible pins or search for a film, series, or book.
+4. Open a location card to inspect its story context, source, and imagery.
+5. Add at least three locations and select **Build route**.
+6. Choose 30, 60, or 120 minutes and generate a nearby AI-guided tour.
+7. Optionally import a Letterboxd ZIP or Letterboxd/IMDb CSV. The file is
+   processed locally in the browser and is never uploaded.
+
+No sample data is required: public story locations load automatically. Features
+that use live external services may take several seconds.
 
 ## 🤖 How GPT-5.6 powers GloryMap
 
@@ -180,14 +131,14 @@ GPT-5.6 is part of the product workflow, not a decorative chat layer.
 
 - **Grounded location discovery:** when Wikidata coverage is sparse,
   `app/api/locations/discover/route.js` uses GPT-5.6 with OpenAI web search.
-  Every returned location must be supported by a consulted source, stay inside
-  the selected city boundary, preserve an exact source URL, pass a Zod
-  Structured Outputs schema, and survive application-level validation.
+  Every result must be supported by a consulted source, stay inside the selected
+  city boundary, preserve an exact source URL, pass a Zod Structured Outputs
+  schema, and survive application-level validation.
 - **Validated tour generation:** `app/api/tour/route.js` sends only verified
   locations to GPT-5.6. The model writes short original guide narration through
   Structured Outputs. Server-side checks reject missing, duplicated, unknown, or
-  reordered stops; timed tours preserve the order already validated against real
-  walking directions.
+  reordered stops; timed tours preserve the route order already validated
+  against real walking directions.
 - **Honest supporting AI:** OpenAI vision handles conservative place-to-scene
   matching, while OpenAI text-to-speech creates optional narration. These use
   separate model paths and are not presented as GPT-5.6 features.
@@ -222,8 +173,48 @@ The most important decisions were collaborative: prefer traceable evidence over
 plausible-looking volume, keep personal imports and photos local, validate every
 AI boundary, and protect one complete end-to-end journey before expanding scope.
 
-## 🤝 Built for OpenAI Build Week
+## 🛠️ Built with
 
-GloryMap started as a focused hackathon idea: make one end-to-end experience feel real. The project is built with Codex-assisted engineering, a cumulative `wiki/`, explicit guardrails, and browser-verified demo loops so the repository remembers not only what changed, but why.
+Next.js 15, React 19, JavaScript, OpenAI Responses API, GPT-5.6, Structured
+Outputs, OpenAI web search, OpenAI vision and text-to-speech, Leaflet, React
+Leaflet, OpenStreetMap, Nominatim, Wikidata, Wikimedia Commons, TMDB, Zod, JSZip,
+and Vercel.
 
-If you are reviewing the project, start with the [live demo](https://codex-hackathon-starter.vercel.app), import a Letterboxd ZIP, and take your movies for a walk. 🍿
+## 🚀 Run locally
+
+### Requirements
+
+- Node.js 20+
+- npm
+- An OpenAI API key for AI discovery, guide, scene matching, and narration
+- A TMDB API read access token for scene-image candidates
+
+### Setup
+
+```bash
+git clone https://github.com/walklikeaman/codex-hackathon-starter.git
+cd codex-hackathon-starter
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). Replace placeholder values in
+`.env.local`; never commit real credentials.
+
+Important server-side variables are `OPENAI_API_KEY`,
+`TMDB_API_READ_ACCESS_TOKEN`, and optional model overrides such as
+`OPENAI_MODEL`, `OPENAI_SEARCH_MODEL`, `OPENAI_VISION_MODEL`, and
+`OPENAI_TTS_MODEL`.
+
+### Verify
+
+```bash
+npm test
+npm run build
+```
+
+The current suite contains 89 tests covering imports, source validation,
+location discovery, walking routes, tours, narration, and scene matching.
+
+**GloryMap — visit the places that already feel like home.** 🍿📚🗺️
