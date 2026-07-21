@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import { BookOpen, CheckCircle2, Clapperboard, Film, Link2, MapPin, Plus, Route, Search, Upload, User, X } from "lucide-react";
+import { CheckCircle2, Clapperboard, Film, Link2, MapPin, Plus, Route, Search, Star, Trash2, User, X } from "lucide-react";
+import { mergeLibraries, parseMediaCsv } from "../lib/media-library.mjs";
 
 const londonCenter = [51.5094, -0.1183];
 
-const films = [
+const fallbackFilms = [
   {
     id: "notting-hill",
     title: "Notting Hill",
@@ -40,19 +41,7 @@ const films = [
   },
 ];
 
-const books = [
-  { id: "paddington", title: "A Bear Called Paddington", author: "Michael Bond", year: 1958 },
-  { id: "sherlock", title: "The Adventures of Sherlock Holmes", author: "Arthur Conan Doyle", year: 1892 },
-  { id: "harry-potter-book", title: "Harry Potter and the Philosopher's Stone", author: "J. K. Rowling", year: 1997 },
-  { id: "mrs-dalloway", title: "Mrs Dalloway", author: "Virginia Woolf", year: 1925 },
-];
-
-const connectorDetails = [
-  { id: "letterboxd", name: "Letterboxd", note: "Import your diary or watchlist CSV" },
-  { id: "imdb", name: "IMDb", note: "Import your ratings or check-ins CSV" },
-];
-
-const locations = [
+const fallbackLocations = [
   {
     id: "portobello-road",
     filmId: "notting-hill",
@@ -165,8 +154,41 @@ const locations = [
   },
 ];
 
-function RecenterOnSelection({ position }) {
+function locationsFromApi(records) {
+  return records
+    .map((record) => ({
+      id: `${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+      filmId: record.work_wikidata_id,
+      film: record.work_title,
+      scene: record.work_title,
+      place: record.loc_name,
+      description: `Filming location for ${record.work_title}${record.work_year ? ` (${record.work_year})` : ""}.`,
+      position: [record.lat, record.lng],
+      backdrop: record.commons_image,
+      now: record.commons_image,
+      year: record.work_year,
+    }))
+    .filter((location) => Number.isFinite(location.position[0]) && Number.isFinite(location.position[1]));
+}
+
+function filmsFromLocations(sourceLocations) {
+  return [...new Map(sourceLocations.map((location) => [
+    location.filmId,
+    {
+      id: location.filmId,
+      title: location.film,
+      year: location.year,
+      code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
+    },
+  ])).values()].slice(0, 5);
+}
+
+function RecenterOnSelection({ center, position }) {
   const map = useMap();
+
+  useEffect(() => {
+    map.flyTo(center, 12, { duration: 0.8 });
+  }, [center, map]);
 
   useEffect(() => {
     if (position) {
@@ -183,8 +205,9 @@ function FitRoute({ positions }) {
   useEffect(() => {
     if (positions.length > 1) {
       map.fitBounds(L.latLngBounds(positions), {
-        padding: [64, 64],
+        animate: true,
         maxZoom: 14,
+        padding: [48, 48],
       });
     }
   }, [map, positions]);
@@ -219,65 +242,104 @@ function kmBetween(routeStops) {
   }, 0);
 }
 
+function makeFallbackRoute(routeStops) {
+  const distanceKm = kmBetween(routeStops);
+
+  return {
+    positions: routeStops.map((stop) => stop.position),
+    distanceKm: Math.round(distanceKm * 10) / 10,
+    durationMinutes: Math.max(8, Math.round((distanceKm / 4.6) * 60)),
+    source: "fallback",
+  };
+}
+
 export default function SceneMapApp() {
   const connectorInputRef = useRef(null);
-  const [selectedFilms, setSelectedFilms] = useState(() => films.map((film) => film.id));
-  const [filmQuery, setFilmQuery] = useState("");
+  const [liveLocations, setLiveLocations] = useState(null);
+  const [mapCenter, setMapCenter] = useState(londonCenter);
+  const [cityQuery, setCityQuery] = useState("London");
+  const [cityName, setCityName] = useState("London");
+  const [citySearchStatus, setCitySearchStatus] = useState("");
+  const routeRequestId = useRef(0);
+  const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
+  const [activeLocation, setActiveLocation] = useState(fallbackLocations[0]);
+  const [routeStops, setRouteStops] = useState([]);
+  const [routeStatus, setRouteStatus] = useState("idle");
+  const [routeResult, setRouteResult] = useState(null);
+  const [routeMessage, setRouteMessage] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
   const [pendingConnector, setPendingConnector] = useState(null);
-  const [connectedServices, setConnectedServices] = useState({});
-  const [activeLocation, setActiveLocation] = useState(locations[0]);
-  const [routeStops, setRouteStops] = useState([]);
-  const [route, setRoute] = useState(null);
-  const [routeStatus, setRouteStatus] = useState("idle");
-
-  const matchingFilms = useMemo(() => {
-    const query = filmQuery.trim().toLowerCase();
-
-    if (!query) return films;
-
-    return films.filter((film) =>
-      `${film.title} ${film.year} ${film.code}`.toLowerCase().includes(query),
-    );
-  }, [filmQuery]);
-
-  const matchingBooks = useMemo(() => {
-    const query = filmQuery.trim().toLowerCase();
-    if (!query) return [];
-
-    return books.filter((book) =>
-      `${book.title} ${book.author} ${book.year}`.toLowerCase().includes(query),
-    );
-  }, [filmQuery]);
-
-  const visibleLocations = useMemo(() => {
-    const matchingFilmIds = new Set(matchingFilms.map((film) => film.id));
-
-    return locations.filter(
-      (location) => selectedFilms.includes(location.filmId) && matchingFilmIds.has(location.filmId),
-    );
-  }, [matchingFilms, selectedFilms]);
+  const [library, setLibrary] = useState(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const storedLibrary = JSON.parse(localStorage.getItem("scenemap-library") || "[]");
+      return Array.isArray(storedLibrary) ? storedLibrary : [];
+    } catch {
+      return [];
+    }
+  });
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [importMessage, setImportMessage] = useState("");
 
   useEffect(() => {
-    if (!visibleLocations.length) {
-      if (activeLocation) setActiveLocation(null);
-      return;
+    localStorage.setItem("scenemap-library", JSON.stringify(library));
+  }, [library]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLocations() {
+      try {
+        const response = await fetch(`/api/locations?lat=${mapCenter[0]}&lng=${mapCenter[1]}&radius=5&limit=30`);
+        if (!response.ok) throw new Error("Locations API failed");
+        const payload = await response.json();
+        const nextLocations = locationsFromApi(payload.locations ?? []);
+        if (!nextLocations.length) throw new Error("Locations API returned no usable points");
+        if (cancelled) return;
+
+        const nextFilms = filmsFromLocations(nextLocations);
+        setLiveLocations(nextLocations);
+        setSelectedFilms(nextFilms.map((film) => film.id));
+        setActiveLocation(nextLocations[0]);
+        setRouteStops([]);
+        setRouteResult(null);
+        setRouteStatus("idle");
+        setRouteMessage("");
+      } catch {
+        // Keep the local demo locations visible if Wikidata is temporarily unavailable.
+      }
     }
 
-    if (!activeLocation || !visibleLocations.some((location) => location.id === activeLocation.id)) {
-      setActiveLocation(visibleLocations[0]);
-    }
-  }, [activeLocation, visibleLocations]);
+    loadLocations();
+    return () => { cancelled = true; };
+  }, [mapCenter]);
 
-  const routePositions = route?.positions ?? [];
-  const routeKm = route ? route.distanceMeters / 1000 : kmBetween(routeStops);
-  const routeMinutes = route
-    ? Math.max(1, Math.round(route.durationSeconds / 60))
-    : Math.max(8, Math.round((routeKm / 4.6) * 60));
+  const sourceLocations = liveLocations ?? fallbackLocations;
+  const films = useMemo(
+    () => liveLocations ? filmsFromLocations(sourceLocations) : fallbackFilms,
+    [liveLocations, sourceLocations],
+  );
 
-  function clearRoute() {
-    setRoute(null);
+  const visibleLocations = useMemo(
+    () => sourceLocations.filter((location) => selectedFilms.includes(location.filmId)),
+    [selectedFilms, sourceLocations],
+  );
+
+  const filteredLibrary = useMemo(() => {
+    const query = libraryQuery.trim().toLowerCase();
+    if (!query) return library;
+    return library.filter((movie) =>
+      `${movie.title} ${movie.year ?? ""} ${(movie.sources ?? []).join(" ")}`.toLowerCase().includes(query),
+    );
+  }, [library, libraryQuery]);
+
+  const routePositions = routeResult?.positions ?? [];
+
+  function invalidateRoute() {
+    routeRequestId.current += 1;
+    setRouteResult(null);
     setRouteStatus("idle");
+    setRouteMessage("");
   }
 
   function toggleFilm(filmId) {
@@ -291,81 +353,116 @@ export default function SceneMapApp() {
   }
 
   function addRouteStop(location) {
-    setRouteStops((current) => {
-      if (current.some((stop) => stop.id === location.id)) return current;
-      return [...current, location].slice(0, 5);
-    });
-    clearRoute();
+    if (routeStops.some((stop) => stop.id === location.id) || routeStops.length >= 5) return;
+
+    setRouteStops([...routeStops, location]);
+    invalidateRoute();
   }
 
   function removeRouteStop(locationId) {
-    setRouteStops((current) => current.filter((stop) => stop.id !== locationId));
-    clearRoute();
+    setRouteStops(routeStops.filter((stop) => stop.id !== locationId));
+    invalidateRoute();
   }
 
-  function chooseConnectorFile(connectorId) {
-    setPendingConnector(connectorId);
+  function selectConnector(connector) {
+    setPendingConnector(connector);
+    setImportMessage("");
     connectorInputRef.current?.click();
   }
 
-  async function importConnector(event) {
+  async function importLibrary(event) {
     const file = event.target.files?.[0];
-    if (file && pendingConnector) {
-      const exportText = (await file.text()).toLowerCase();
-      const matchedFilmIds = films
-        .filter((film) => exportText.includes(film.title.toLowerCase()))
-        .map((film) => film.id);
+    if (!file || !pendingConnector) return;
 
-      if (matchedFilmIds.length) setSelectedFilms(matchedFilmIds);
-      setConnectedServices((current) => ({
-        ...current,
-        [pendingConnector]: { fileName: file.name, matchedFilms: matchedFilmIds.length },
-      }));
+    try {
+      const imported = parseMediaCsv(await file.text(), pendingConnector);
+      setLibrary((current) => mergeLibraries(current, imported));
+      setImportMessage(`${imported.length} movies imported from ${pendingConnector === "imdb" ? "IMDb" : "Letterboxd"}.`);
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : "The CSV file could not be imported.");
+    } finally {
+      event.target.value = "";
+      setPendingConnector(null);
     }
-    event.target.value = "";
-    setPendingConnector(null);
+  }
+
+  function clearLibrary() {
+    setLibrary([]);
+    setImportMessage("Your local movie list was cleared.");
   }
 
   async function buildRoute() {
-    const fallbackKm = kmBetween(routeStops);
-    const fallback = {
-      positions: routeStops.map((stop) => stop.position),
-      distanceMeters: fallbackKm * 1000,
-      durationSeconds: Math.max(8, Math.round((fallbackKm / 4.6) * 60)) * 60,
-    };
-
-    setRoute(null);
+    const requestId = routeRequestId.current + 1;
+    routeRequestId.current = requestId;
+    setRouteResult(null);
     setRouteStatus("loading");
+    setRouteMessage("");
 
     try {
       const response = await fetch("/api/route", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ coordinates: routeStops.map((stop) => stop.position) }),
+        body: JSON.stringify({ stops: routeStops.map((stop) => stop.position) }),
       });
-      const data = await response.json();
+      const payload = await response.json();
 
-      if (!response.ok || !Array.isArray(data.positions) || data.positions.length < 2) {
-        throw new Error(data.error || "Route unavailable");
+      if (
+        !response.ok ||
+        !Array.isArray(payload?.positions) ||
+        payload.positions.length < 2 ||
+        !Number.isFinite(payload?.distanceKm) ||
+        !Number.isFinite(payload?.durationMinutes)
+      ) {
+        throw new Error(payload?.error || "Walking route response is invalid");
       }
 
-      setRoute(data);
+      if (requestId !== routeRequestId.current) return;
+
+      setRouteResult(payload);
       setRouteStatus("ready");
     } catch {
-      setRoute(fallback);
+      if (requestId !== routeRequestId.current) return;
+
+      setRouteResult(makeFallbackRoute(routeStops));
       setRouteStatus("fallback");
+      setRouteMessage(
+        "Walking directions are unavailable, so the stops are connected directly.",
+      );
+    }
+  }
+
+  async function searchCity(event) {
+    event.preventDefault();
+    const query = cityQuery.trim();
+    if (!query) return;
+
+    setCitySearchStatus("Searching city…");
+    try {
+      const response = await fetch(`/api/cities?q=${encodeURIComponent(query)}`);
+      const city = await response.json();
+      if (!response.ok) throw new Error(city.error);
+
+      setMapCenter([city.lat, city.lng]);
+      setCityName(city.name);
+      setLiveLocations([]);
+      setActiveLocation(null);
+      setRouteStops([]);
+      invalidateRoute();
+      setCitySearchStatus("");
+    } catch {
+      setCitySearchStatus("City not found");
     }
   }
 
   return (
     <main className="scene-shell">
       <section className="map-stage" aria-label="SceneMap locations map">
-        <MapContainer center={londonCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
+        <MapContainer center={mapCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
-          <RecenterOnSelection position={activeLocation?.position} />
+          <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
           {visibleLocations.map((location) => (
             <Marker
@@ -384,7 +481,15 @@ export default function SceneMapApp() {
             </Marker>
           ))}
           {routePositions.length > 1 && (
-            <Polyline positions={routePositions} pathOptions={{ color: "#f7b733", weight: 5, opacity: 0.9 }} />
+            <Polyline
+              positions={routePositions}
+              pathOptions={{
+                color: "#f7b733",
+                dashArray: routeResult?.source === "fallback" ? "8 10" : undefined,
+                opacity: routeResult?.source === "fallback" ? 0.7 : 0.95,
+                weight: 5,
+              }}
+            />
           )}
         </MapContainer>
       </section>
@@ -396,46 +501,31 @@ export default function SceneMapApp() {
           </div>
           <div>
             <p className="eyebrow">SceneMap MVP</p>
-            <h1>A film walk through London</h1>
+            <h1>Film map · {cityName}</h1>
           </div>
           <button className="account-button" type="button" onClick={() => setAccountOpen(true)}>
             <User size={18} />
-            Account
+            My movies
           </button>
         </div>
 
-        <div className="action-row">
-          <div className="film-search">
+        <form className="city-search" onSubmit={searchCity}>
+          <Search size={17} aria-hidden="true" />
+          <input
+            aria-label="City"
+            onChange={(event) => setCityQuery(event.target.value)}
+            placeholder="City"
+            type="search"
+            value={cityQuery}
+          />
+          <button aria-label="Search city" className="ghost-button" type="submit">
             <Search size={17} />
-            <label className="sr-only" htmlFor="film-search">Search films and books</label>
-            <input
-              id="film-search"
-              type="search"
-              value={filmQuery}
-              onChange={(event) => setFilmQuery(event.target.value)}
-              placeholder="Search films and books"
-              autoComplete="off"
-            />
-            {filmQuery && (
-              <button
-                className="clear-search"
-                type="button"
-                onClick={() => setFilmQuery("")}
-                aria-label="Clear film search"
-                title="Clear search"
-              >
-                <X size={15} />
-              </button>
-            )}
-          </div>
-          <button className="ghost-button" type="button">
-            <Upload size={17} />
-            CSV later
           </button>
-        </div>
+        </form>
+        {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
-        <div className="film-grid" aria-label="Film search results" aria-live="polite">
-          {matchingFilms.map((film) => {
+        <div className="film-grid" aria-label="Selected films">
+          {films.map((film) => {
             const selected = selectedFilms.includes(film.id);
 
             return (
@@ -454,34 +544,12 @@ export default function SceneMapApp() {
               </button>
             );
           })}
-          {matchingFilms.length === 0 && matchingBooks.length === 0 && (
-            <p className="film-empty">No films or books match "{filmQuery.trim()}".</p>
-          )}
         </div>
-
-        {matchingBooks.length > 0 && (
-          <div className="book-results" aria-label="Book search results">
-            <div className="section-row">
-              <p className="eyebrow">Books</p>
-              <span>{matchingBooks.length} found</span>
-            </div>
-            {matchingBooks.map((book) => (
-              <article className="book-result" key={book.id}>
-                <BookOpen size={18} />
-                <div>
-                  <strong>{book.title}</strong>
-                  <span>{book.author} · {book.year}</span>
-                </div>
-              </article>
-            ))}
-            <p className="search-note">Book locations are a preview and are not added to the film map yet.</p>
-          </div>
-        )}
 
         <div className="location-list" aria-label="Map locations">
           <div className="section-row">
             <p className="eyebrow">Locations</p>
-            <span>{visibleLocations.length} in London</span>
+            <span>{visibleLocations.length} in {cityName}</span>
           </div>
           {visibleLocations.map((location) => (
             <div className="location-row" key={location.id}>
@@ -507,13 +575,19 @@ export default function SceneMapApp() {
             <strong>{routeStops.length} / 5 stops</strong>
           </div>
           <button
-            className="primary-button"
-            disabled={routeStops.length < 3 || routeStatus === "loading"}
+            className={`primary-button${routeResult ? " is-complete" : ""}`}
+            disabled={routeStops.length < 3 || routeStatus !== "idle"}
             onClick={buildRoute}
             type="button"
           >
             <Route size={18} />
-            {routeStatus === "loading" ? "Building..." : "Build route"}
+            {routeStatus === "loading"
+              ? "Building..."
+              : routeStatus === "fallback"
+                ? "Approximate route"
+                : routeResult
+                ? "Route ready"
+                : "Build route"}
           </button>
         </div>
 
@@ -533,12 +607,35 @@ export default function SceneMapApp() {
           </ol>
         )}
 
-        {(routeStatus === "ready" || routeStatus === "fallback") && (
+        {routeStatus === "loading" && (
           <p className="route-summary" role="status">
-            About {routeKm.toFixed(1)} km on foot · {routeMinutes} min. {routeStatus === "ready"
-              ? "Route follows walkable streets."
-              : "Routing is unavailable, so the stops are connected directly."}
+            Building a route along walkable streets...
           </p>
+        )}
+
+        {routeResult && (
+          <div
+            className={`route-summary${routeResult.source === "fallback" ? " is-fallback" : ""}`}
+            role="status"
+          >
+            <strong>
+              {routeResult.distanceKm.toFixed(1)} km on foot · {routeResult.durationMinutes} min
+            </strong>
+            {routeResult.source === "fallback" ? (
+              <span>{routeMessage}</span>
+            ) : (
+              <span>
+                Route follows walkable streets ·{" "}
+                <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">
+                  OpenStreetMap routing
+                </a>
+                {" · "}
+                <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">
+                  fix the map
+                </a>
+              </span>
+            )}
+          </div>
         )}
       </aside>
 
@@ -585,42 +682,65 @@ export default function SceneMapApp() {
             <div className="account-heading">
               <div className="account-avatar"><User size={22} /></div>
               <div>
-                <p className="eyebrow">Your account</p>
-                <h2 id="account-title">Build your cinema library</h2>
+                <p className="eyebrow">Personal library</p>
+                <h2 id="account-title">My movies</h2>
               </div>
-              <button className="icon-button" type="button" onClick={() => setAccountOpen(false)} aria-label="Close account">
+              <button className="icon-button" type="button" onClick={() => setAccountOpen(false)} aria-label="Close movie library">
                 <X size={18} />
               </button>
             </div>
 
-            <p className="account-copy">Connect an export to personalise film search and map results. Files stay in this browser session.</p>
-            <input ref={connectorInputRef} type="file" accept=".csv,text/csv" hidden onChange={importConnector} />
+            <p className="account-copy">Import your official account export. Your list stays on this device and can combine both services.</p>
+            <input ref={connectorInputRef} type="file" accept=".csv,text/csv" hidden onChange={importLibrary} />
 
             <div className="connector-list">
-              {connectorDetails.map((connector) => {
-                const connection = connectedServices[connector.id];
-                return (
-                  <article className="connector-card" key={connector.id}>
-                    <div className={`connector-logo is-${connector.id}`}>
-                      {connector.id === "letterboxd" ? <Film size={20} /> : <span>IMDb</span>}
-                    </div>
-                    <div>
-                      <strong>{connector.name}</strong>
-                      <span>{connection ? `${connection.fileName} · ${connection.matchedFilms} mapped films matched` : connector.note}</span>
-                    </div>
-                    <button className={connection ? "connected-button" : "connector-button"} type="button" onClick={() => chooseConnectorFile(connector.id)}>
-                      {connection ? <CheckCircle2 size={16} /> : <Link2 size={16} />}
-                      {connection ? "Replace" : "Connect"}
-                    </button>
-                  </article>
-                );
-              })}
+              <button className="connector-card" type="button" onClick={() => selectConnector("letterboxd")}>
+                <span className="connector-logo is-letterboxd"><Film size={20} /></span>
+                <span><strong>Letterboxd</strong><small>ratings.csv, watched.csv or diary.csv</small></span>
+                <Link2 size={18} />
+              </button>
+              <button className="connector-card" type="button" onClick={() => selectConnector("imdb")}>
+                <span className="connector-logo is-imdb">IMDb</span>
+                <span><strong>IMDb</strong><small>Ratings, Check-ins or list CSV</small></span>
+                <Link2 size={18} />
+              </button>
             </div>
 
-            <div className="account-privacy">
-              <CheckCircle2 size={17} />
-              <span>No passwords are requested. CSV files are processed locally and are not uploaded.</span>
+            {importMessage && <p className="import-message" role="status"><CheckCircle2 size={16} />{importMessage}</p>}
+
+            <div className="library-toolbar">
+              <div className="film-search">
+                <Search size={16} />
+                <input aria-label="Search my movies" placeholder="Search my movies" type="search" value={libraryQuery} onChange={(event) => setLibraryQuery(event.target.value)} />
+              </div>
+              {library.length > 0 && (
+                <button className="clear-library" type="button" onClick={clearLibrary}><Trash2 size={15} />Clear</button>
+              )}
             </div>
+
+            <div className="library-summary">
+              <span>{library.length} movies</span>
+              <span>{library.filter((movie) => movie.rating !== null).length} rated</span>
+            </div>
+
+            <div className="movie-library" aria-live="polite">
+              {filteredLibrary.map((movie) => (
+                <article className="library-movie" key={movie.id}>
+                  <span className="library-poster">{movie.title.slice(0, 2).toUpperCase()}</span>
+                  <div>
+                    <strong>{movie.title}</strong>
+                    <span>{movie.year ?? "Year unknown"} · {(movie.sources ?? []).map((source) => source === "imdb" ? "IMDb" : "Letterboxd").join(" + ")}</span>
+                  </div>
+                  {movie.rating !== null && <span className="movie-rating"><Star size={14} />{movie.rating}</span>}
+                </article>
+              ))}
+              {library.length === 0 && (
+                <div className="empty-library"><Film size={28} /><strong>Your movie list is empty</strong><span>Connect Letterboxd or IMDb to import it.</span></div>
+              )}
+              {library.length > 0 && filteredLibrary.length === 0 && <p className="empty-library">No movies match your search.</p>}
+            </div>
+
+            <div className="account-privacy"><CheckCircle2 size={17} /><span>CSV files are processed locally. SceneMap never asks for your Letterboxd or IMDb password.</span></div>
           </section>
         </div>
       )}
