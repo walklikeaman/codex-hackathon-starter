@@ -7,9 +7,14 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-21] update | English-only UI review fix
+
+- Translated all user-facing copy, accessibility labels, loading text, metadata, and API error messages under `app/` to English in response to PR #13 review feedback.
+- Verified zero Cyrillic strings remain under `app/`, all four unit tests pass, the production build succeeds, and the live-data card plus image-search link work in an isolated browser session.
+
 ## [2026-07-21] update | Location image search
 
-- Added a "Найти кадры здесь" action to every location card; it builds a focused image-search query from the film, place, and scene and opens Bing Images in a new tab.
+- Added a "Find scenes filmed here" action to every location card; it builds a focused image-search query from the film, place, and scene and opens Bing Images in a new tab.
 - Kept the demo independent from API keys and embedded third-party results; verified the production build, unit tests, two location-specific queries, and the external search flow in a real browser.
 
 ## [2026-07-21] update | City search for the live film map
