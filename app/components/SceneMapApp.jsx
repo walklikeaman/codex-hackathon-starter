@@ -751,6 +751,7 @@ export default function SceneMapApp() {
           workId: String(activeLocation.filmId),
           locationId: String(locationCacheId),
           token: activeLocation.sceneMatchToken,
+          v: "2",
         });
         const response = await fetch(`/api/film-image?${query}`, { signal: controller.signal });
         const payload = await response.json();
