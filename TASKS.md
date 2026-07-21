@@ -35,3 +35,4 @@ Codex читает этот файл в начале сессии — здесь
 
 - [x] Окружение поднято (клон репо + `./setup.sh`)
 - [x] SceneMap MVP: English UI, mapped-film search, 10 locations and street-level walking routes — @walklikeaman — `feature/scenemap-skeleton`
+- [x] Интерактивная карточка локации (#23) и gated Vercel deploy workflows — @walklikeaman — `codex/interactive`
