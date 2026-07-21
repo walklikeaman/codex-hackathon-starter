@@ -11,6 +11,12 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 - Excluded work and location records whose displayed label is an unresolved Wikidata identifier beginning with `Q`, including television-series (`Q6769811`) results without a human-readable name.
 
+## [2026-07-21] update | Correct image PR synced with current main
+
+- Resolved PR #24 conflicts with the books/series, nearby-location, and recreate-the-shot changes from current `main` without rewriting branch history.
+- Preserved TMDB IDs only for films, HTTPS Commons place images, and the balanced Film/Series/Book API response.
+- Recreate-the-shot now opens only with a real reference image; verified 23 unit tests, the production build, no-token fallback, and the TMDB-backed dialog in Chromium.
+
 ## [2026-07-21] update | Show every fetched work in the map UI
 
 - Removed the five-work client cap, so the work selector and map now use every film, series, and book returned for the selected area.
@@ -32,6 +38,12 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 - User images remain browser-only object URLs; the flow has no upload request or persistent storage.
 - Verified the complete flow at 390 px in Chromium, including a long live-location title, keyboard opacity control, reset/re-upload, zero mutating network requests, all unit tests, and a production build.
 
+## [2026-07-21] update | Correct film and place image sources
+
+- Stopped reusing the Wikimedia place photo as the film image in live location cards; missing film media now renders an explicit placeholder instead of a misleading duplicate.
+- Added Wikidata TMDB IDs and a server-only cached TMDB image endpoint, while keeping Commons images on HTTPS for the current-place side of the comparison.
+- Verified seven unit tests, the production build, the no-token fallback in a real browser, and the distinct film/place image flow with an intercepted TMDB response.
+
 ## [2026-07-21] update | AI-guided film tour
 
 - Added server-only `POST /api/tour`: OpenAI Responses API with `gpt-5.6-terra` returns an English tour through Structured Outputs.
@@ -43,6 +55,16 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 - Integrated PR #13 on top of the personal-library branch while preserving the English-only UI contract.
 - Location cards now open a focused Bing Images query built from the film, place and scene without API keys.
+
+## [2026-07-21] update | English-only UI review fix
+
+- Translated all user-facing copy, accessibility labels, loading text, metadata, and API error messages under `app/` to English in response to PR #13 review feedback.
+- Verified zero Cyrillic strings remain under `app/`, all four unit tests pass, the production build succeeds, and the live-data card plus image-search link work in an isolated browser session.
+
+## [2026-07-21] update | Location image search
+
+- Added a "Find scenes filmed here" action to every location card; it builds a focused image-search query from the film, place, and scene and opens Bing Images in a new tab.
+- Kept the demo independent from API keys and embedded third-party results; verified the production build, unit tests, two location-specific queries, and the external search flow in a real browser.
 
 ## [2026-07-21] update | Letterboxd and IMDb personal movie library
 
