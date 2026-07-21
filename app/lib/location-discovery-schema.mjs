@@ -27,7 +27,9 @@ export const discoveredLocationsSchema = z.object({
     description: z.string().trim().min(1).max(800),
     lat: z.number().min(-90).max(90),
     lng: z.number().min(-180).max(180),
-    sourceUrl: z.string().url(),
+    // OpenAI Structured Outputs does not support JSON Schema's `uri` format.
+    // The URL is still restricted to a consulted web-search source below.
+    sourceUrl: z.string().min(1).max(2048),
   })).max(5),
 });
 
