@@ -70,6 +70,22 @@ npm run dev              # http://localhost:3000
 - **Делай `/ship` часто.** Маленькие зелёные коммиты — значит, коллега может подтянуть
   рабочий код, а ты всегда откатишься к последнему, что показывалось в демо.
 
+## Деплой staging и production
+
+GitHub Actions использует один Vercel-проект и три repository secrets:
+`VERCEL_TOKEN`, `VERCEL_ORG_ID` и `VERCEL_PROJECT_ID`. Значения ID можно взять из
+локального `.vercel/project.json` после `vercel link`; сам файл и токен коммитить нельзя.
+
+- После merge PR в `main` workflow `Deploy staging` автоматически собирает Vercel
+  Preview и публикует его URL в GitHub Environment `staging`. Его также можно
+  запустить вручную из вкладки Actions.
+- Workflow `Deploy production` запускается только вручную: укажи git ref и отметь
+  подтверждение production. Для дополнительного человеческого гейта настрой required
+  reviewers у GitHub Environment `production`.
+- Если Vercel Git Integration подключена, отключи её автоматический production deploy:
+  иначе push в `main` сможет обойти ручной production workflow. Preview-деплои из Git
+  Integration тоже будут дублировать staging Action.
+
 ## Структура
 
 ```
