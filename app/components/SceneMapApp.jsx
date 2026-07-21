@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { Circle, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import {
   CheckCircle2,
   Clapperboard,
+  Crosshair,
   ExternalLink,
   Film,
   Link2,
@@ -20,6 +21,14 @@ import {
   User,
   X,
 } from "lucide-react";
+
+import {
+  DEMO_LOCATION,
+  RADIUS_OPTIONS_METERS,
+  findNearby,
+  formatDistanceMeters,
+  zoomForRadius,
+} from "../lib/nearby.mjs";
 import { mergeLibraries, parseMediaCsv } from "../lib/media-library.mjs";
 
 const londonCenter = [51.5094, -0.1183];
@@ -250,14 +259,48 @@ function FitRoute({ positions }) {
   return null;
 }
 
-function makeMarkerIcon(selected, kind) {
+function makeMarkerIcon(selected, nearest, kind) {
   return L.divIcon({
     className: "",
-    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}"><span></span></span>`,
+    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}${nearest ? " is-nearest" : ""}"><span></span></span>`,
     iconSize: [34, 42],
     iconAnchor: [17, 34],
   });
 }
+
+const userIcon = L.divIcon({
+  className: "",
+  html: '<span class="user-pin"><span></span></span>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+});
+
+function FlyToUser({ position, radius }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (position) {
+      map.flyTo(position, zoomForRadius(radius), { duration: 0.8 });
+    }
+  }, [map, position, radius]);
+
+  return null;
+}
+
+const GEOLOCATION_ERRORS = {
+  1: {
+    status: "denied",
+    message: "Location access was denied. You can retry or use the demo location.",
+  },
+  2: {
+    status: "unavailable",
+    message: "Your position is unavailable right now. Try again or use the demo location.",
+  },
+  3: {
+    status: "timeout",
+    message: "Locating took too long. Try again or use the demo location.",
+  },
+};
 
 function kmBetween(routeStops) {
   if (routeStops.length < 2) return 0;
@@ -480,6 +523,11 @@ export default function SceneMapApp() {
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
   const [routeMessage, setRouteMessage] = useState("");
+  const [nearbyStatus, setNearbyStatus] = useState("idle");
+  const [nearbyMessage, setNearbyMessage] = useState("");
+  const [userPosition, setUserPosition] = useState(null);
+  const [userIsDemo, setUserIsDemo] = useState(false);
+  const [nearbyRadius, setNearbyRadius] = useState(RADIUS_OPTIONS_METERS[2]);
   const [tourFilmId, setTourFilmId] = useState(fallbackFilms[0].id);
   const [aiTour, setAiTour] = useState(null);
   const [aiTourStatus, setAiTourStatus] = useState("idle");
@@ -562,6 +610,43 @@ export default function SceneMapApp() {
   }, [library, libraryQuery]);
 
   const routePositions = routeResult?.positions ?? [];
+
+  const nearby = useMemo(
+    () => (userPosition ? findNearby(userPosition, visibleLocations, nearbyRadius) : null),
+    [nearbyRadius, userPosition, visibleLocations],
+  );
+
+  function locateMe() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setNearbyStatus("unavailable");
+      setNearbyMessage("This browser has no geolocation. Use the demo location instead.");
+      return;
+    }
+
+    setNearbyStatus("locating");
+    setNearbyMessage("");
+    navigator.geolocation.getCurrentPosition(
+      (result) => {
+        setUserPosition([result.coords.latitude, result.coords.longitude]);
+        setUserIsDemo(false);
+        setNearbyStatus("ready");
+        setNearbyMessage("");
+      },
+      (error) => {
+        const known = GEOLOCATION_ERRORS[error.code] ?? GEOLOCATION_ERRORS[2];
+        setNearbyStatus(known.status);
+        setNearbyMessage(known.message);
+      },
+      { enableHighAccuracy: false, maximumAge: 30000, timeout: 8000 },
+    );
+  }
+
+  function useDemoLocation() {
+    setUserPosition(DEMO_LOCATION.position);
+    setUserIsDemo(true);
+    setNearbyStatus("ready");
+    setNearbyMessage("");
+  }
 
   function invalidateRoute() {
     routeRequestId.current += 1;
@@ -767,11 +852,28 @@ export default function SceneMapApp() {
           />
           <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
+          <FlyToUser position={userPosition} radius={nearbyRadius} />
+          {userPosition && (
+            <>
+              <Circle
+                center={userPosition}
+                radius={nearbyRadius}
+                pathOptions={{ color: "#f7b733", fillOpacity: 0.06, opacity: 0.5, weight: 1.5 }}
+              />
+              <Marker icon={userIcon} position={userPosition}>
+                <Popup>{userIsDemo ? DEMO_LOCATION.label : "You are here"}</Popup>
+              </Marker>
+            </>
+          )}
           {visibleLocations.map((location) => (
             <Marker
               key={location.id}
               position={location.position}
-              icon={makeMarkerIcon(activeLocation?.id === location.id, location.kind)}
+              icon={makeMarkerIcon(
+                activeLocation?.id === location.id,
+                nearby?.nearest?.location.id === location.id,
+                location.kind,
+              )}
               eventHandlers={{
                 click: () => setActiveLocation(location),
               }}
@@ -827,6 +929,79 @@ export default function SceneMapApp() {
           </button>
         </form>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
+
+        <div className="nearby-card" aria-label="Nearby locations">
+          <div className="nearby-actions">
+            <button
+              className="ghost-button nearby-cta"
+              disabled={nearbyStatus === "locating"}
+              onClick={locateMe}
+              type="button"
+            >
+              <Crosshair size={17} />
+              {nearbyStatus === "locating" ? "Locating..." : "What's nearby?"}
+            </button>
+            {(nearbyStatus === "denied" ||
+              nearbyStatus === "unavailable" ||
+              nearbyStatus === "timeout") && (
+              <button className="ghost-button" onClick={useDemoLocation} type="button">
+                Use demo location
+              </button>
+            )}
+          </div>
+
+          {nearbyMessage && (
+            <p className="nearby-status" role="status">{nearbyMessage}</p>
+          )}
+
+          {userPosition && (
+            <>
+              <div className="radius-chips" role="group" aria-label="Search radius">
+                {RADIUS_OPTIONS_METERS.map((radius) => (
+                  <button
+                    aria-pressed={nearbyRadius === radius}
+                    className={`radius-chip${nearbyRadius === radius ? " is-selected" : ""}`}
+                    key={radius}
+                    onClick={() => setNearbyRadius(radius)}
+                    type="button"
+                  >
+                    {formatDistanceMeters(radius)}
+                  </button>
+                ))}
+              </div>
+
+              {nearby?.nearest ? (
+                <button
+                  className="nearby-result"
+                  onClick={() => setActiveLocation(nearby.nearest.location)}
+                  type="button"
+                >
+                  <MapPin size={17} aria-hidden="true" />
+                  <span>
+                    <strong>{nearby.nearest.location.place}</strong>
+                    <small>
+                      {nearby.nearest.location.film} ·{" "}
+                      {formatDistanceMeters(nearby.nearest.distanceMeters)} away
+                      {nearby.nearest.distanceMeters > nearbyRadius
+                        ? " · outside radius"
+                        : ""}
+                    </small>
+                  </span>
+                </button>
+              ) : (
+                <p className="nearby-status" role="status">
+                  No film locations loaded for this city yet.
+                </p>
+              )}
+
+              <p className="nearby-count">
+                {nearby?.inRadius.length ?? 0} location{(nearby?.inRadius.length ?? 0) === 1 ? "" : "s"} within{" "}
+                {formatDistanceMeters(nearbyRadius)}
+                {userIsDemo ? ` · ${DEMO_LOCATION.label}` : ""}
+              </p>
+            </>
+          )}
+        </div>
 
         <div className="film-grid" aria-label="Selected works">
           {films.map((film) => {
