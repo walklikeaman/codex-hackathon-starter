@@ -213,7 +213,7 @@ test("film image API returns the location-matched candidate instead of the top b
       assert.match(body.instructions, /final verifier/);
       assert.equal(
         body.input[0].content.filter((item) => item.type === "input_image").length,
-        2,
+        1,
       );
     },
   });
