@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+export const SCENE_MATCH_TOKEN_CACHE_CONTROL = "private, no-store";
 
 function sceneMatchPayload({ tmdbId, workId, locationId }) {
   if (!/^[1-9]\d*$/.test(String(tmdbId))) return null;

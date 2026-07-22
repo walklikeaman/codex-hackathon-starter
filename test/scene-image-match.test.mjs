@@ -3,17 +3,23 @@ import test from "node:test";
 
 import {
   acceptedSceneImageMatch,
+  acceptedSceneImageMatches,
   buildSceneImageContent,
   buildWikidataSceneQuery,
   canonicalSceneImageQuery,
   createSceneMatchRateLimiter,
   isAllowedLocationImageUrl,
+  isStudioLocation,
   parseSceneImageRequest,
   parseWikidataSceneContext,
   sceneMatchClientId,
 } from "../app/lib/scene-image-match.mjs";
 
 const locationImageUrl = "https://commons.wikimedia.org/wiki/Special:FilePath/Test.jpg";
+const photographicFrame = {
+  isPhotographicFrame: true,
+  hasProminentTitleOrLogo: false,
+};
 
 function validParams() {
   return new URLSearchParams({
@@ -54,11 +60,11 @@ test("builds one canonical cache query and a bounded Wikidata pair query", () =>
   const request = parseSceneImageRequest(validParams());
   assert.equal(
     canonicalSceneImageQuery(request),
-    "tmdbId=185&workId=Q181086&locationId=Q386707&v=2",
+    "tmdbId=185&workId=Q181086&locationId=Q386707&v=4",
   );
   assert.equal(
     canonicalSceneImageQuery(request, "signed-capability"),
-    "tmdbId=185&workId=Q181086&locationId=Q386707&token=signed-capability&v=2",
+    "tmdbId=185&workId=Q181086&locationId=Q386707&token=signed-capability&v=4",
   );
 
   const query = buildWikidataSceneQuery(request);
@@ -118,10 +124,48 @@ test("builds one reference image followed by numbered candidates", () => {
 });
 
 test("accepts only an in-range high-confidence match", () => {
-  assert.equal(acceptedSceneImageMatch({ candidateIndex: 1, confidence: "high" }, 2), 1);
-  assert.equal(acceptedSceneImageMatch({ candidateIndex: 1, confidence: "medium" }, 2), null);
-  assert.equal(acceptedSceneImageMatch({ candidateIndex: 2, confidence: "high" }, 2), null);
-  assert.equal(acceptedSceneImageMatch({ candidateIndex: -1, confidence: "none" }, 2), null);
+  assert.equal(acceptedSceneImageMatch({ ...photographicFrame, candidateIndex: 1, confidence: "high" }, 2), 1);
+  assert.equal(acceptedSceneImageMatch({ ...photographicFrame, candidateIndex: 1, confidence: "medium" }, 2), null);
+  assert.equal(acceptedSceneImageMatch({ ...photographicFrame, candidateIndex: 2, confidence: "high" }, 2), null);
+  assert.equal(acceptedSceneImageMatch({ ...photographicFrame, candidateIndex: -1, confidence: "none" }, 2), null);
+  assert.equal(acceptedSceneImageMatch({
+    ...photographicFrame,
+    candidateIndex: 0,
+    confidence: "high",
+    isPhotographicFrame: false,
+    hasProminentTitleOrLogo: true,
+  }, 2), null);
+});
+
+test("keeps up to three distinct high-confidence frame matches", () => {
+  const matches = acceptedSceneImageMatches({
+    matches: [
+      { ...photographicFrame, candidateIndex: 1, confidence: "high" },
+      { ...photographicFrame, candidateIndex: 1, confidence: "high" },
+      { ...photographicFrame, candidateIndex: 2, confidence: "medium" },
+      { ...photographicFrame, candidateIndex: 3, confidence: "high" },
+      { ...photographicFrame, candidateIndex: 4, confidence: "high" },
+      { ...photographicFrame, candidateIndex: 5, confidence: "high" },
+    ],
+  }, 6);
+
+  assert.deepEqual(matches.map((match) => match.candidateIndex), [1, 3, 4]);
+});
+
+test("recognizes explicit studio locations without guessing generic interiors", () => {
+  assert.equal(isStudioLocation("Warner Bros. Studios, Leavesden"), true);
+  assert.equal(isStudioLocation("Stage 4 sound-stage"), true);
+  assert.equal(isStudioLocation("The interior of a London pub"), false);
+
+  const content = buildSceneImageContent({
+    filmTitle: "Test Film",
+    place: "Pinewood Studios",
+    locationImageUrl: null,
+    candidateImageUrls: ["https://image.tmdb.org/t/p/w780/one.jpg"],
+  });
+
+  assert.equal(content.filter((item) => item.type === "input_image").length, 1);
+  assert.match(content[0].text, /exact soundstage is not visually verifiable/);
 });
 
 test("limits origin scene matching requests per client window", () => {

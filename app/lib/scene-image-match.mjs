@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 export const MAX_TMDB_CANDIDATES = 24;
-export const SCENE_IMAGE_MATCH_VERSION = "2";
+export const MAX_SCENE_FRAMES = 3;
+export const SCENE_IMAGE_MATCH_VERSION = "4";
 
 const sceneImageRequestSchema = z.object({
   tmdbId: z.string().regex(/^[1-9]\d*$/),
@@ -9,11 +10,30 @@ const sceneImageRequestSchema = z.object({
   locationId: z.string().regex(/^Q[1-9]\d*$/),
 });
 
-export const sceneImageMatchSchema = z.object({
+const sceneFrameMatchSchema = z.object({
   candidateIndex: z.number().int().min(-1).max(MAX_TMDB_CANDIDATES - 1),
   confidence: z.enum(["high", "medium", "low", "none"]),
-  evidence: z.string().trim().max(240),
+  isPhotographicFrame: z.boolean(),
+  hasProminentTitleOrLogo: z.boolean(),
+  locationType: z.enum([
+    "street",
+    "bar_or_restaurant",
+    "building",
+    "studio",
+    "landscape",
+    "other",
+  ]),
+  description: z.string().trim().min(1).max(240),
 });
+
+export const sceneImageMatchSchema = z.object({
+  matches: z.array(sceneFrameMatchSchema).max(MAX_SCENE_FRAMES),
+});
+
+export function isStudioLocation(place) {
+  return typeof place === "string"
+    && /\b(studio|studios|sound[ -]?stage)\b/i.test(place);
+}
 
 export function isAllowedLocationImageUrl(value) {
   try {
@@ -111,22 +131,37 @@ export function buildSceneImageContent({
   locationImageUrl,
   candidateImageUrls,
 }) {
-  const context = JSON.stringify({ filmTitle, place });
+  const studioLocation = isStudioLocation(place);
+  const context = JSON.stringify({ filmTitle, place, studioLocation });
   const content = [
     {
       type: "input_text",
       text: [
         `Context data: ${context}`,
-        "The first image is a present-day contextual photo of the named place and may show a different side from the filmed scene.",
-        "The remaining numbered images are candidate backdrops from the film.",
-        "The canonical film-location relationship is already verified; identify which candidate visually fits that location, including an interior-to-exterior or changed-era match.",
-        "Require visible support such as architecture, institutional setting, layout, landscape, or signage. Names alone are not enough.",
-        "If no candidate visibly fits the location or the choice is uncertain, return candidateIndex -1 and confidence none.",
+        locationImageUrl
+          ? "The reference image is a present-day contextual photo of the named place and may show a different side from the filmed scene."
+          : "No present-day reference image is available.",
+        "The numbered images are candidate backdrops from the film.",
+        "First inspect the candidate itself. A title card, poster, logo, illustration, graphic, or text-dominant image is not a photographic film frame and must never be returned as a match.",
+        studioLocation
+          ? "The canonical location is explicitly a studio. Select up to three representative frames, classify them as studio, describe only what is visible, and say that the exact soundstage is not visually verifiable."
+          : "The canonical film-location relationship is already verified. Select up to three distinct candidates that visibly fit the named location, including a changed-era or interior-to-exterior match only when concrete details support it.",
+        studioLocation
+          ? "Do not claim a specific room, set, or soundstage."
+          : "Require visible support such as architecture, layout, landscape, or signage. Names alone are not enough.",
+        "Return high confidence only for frames suitable to show as location matches. Return an empty matches array when none qualify.",
+        "For every returned frame, set isPhotographicFrame true only for a real photographic scene, set hasProminentTitleOrLogo accurately, write one short factual description of visible evidence, and classify the verified place type.",
+        "Never describe architecture, scenery, or objects that are not visibly present in that exact candidate image.",
       ].join(" "),
     },
-    { type: "input_text", text: "REFERENCE LOCATION IMAGE" },
-    { type: "input_image", image_url: locationImageUrl, detail: "low" },
   ];
+
+  if (locationImageUrl) {
+    content.push(
+      { type: "input_text", text: "REFERENCE LOCATION IMAGE" },
+      { type: "input_image", image_url: locationImageUrl, detail: "low" },
+    );
+  }
 
   candidateImageUrls.forEach((imageUrl, index) => {
     content.push(
@@ -140,7 +175,20 @@ export function buildSceneImageContent({
 
 export function acceptedSceneImageMatch(match, candidateCount) {
   if (!match || match.confidence !== "high") return null;
+  if (match.isPhotographicFrame !== true || match.hasProminentTitleOrLogo !== false) return null;
   if (!Number.isInteger(match.candidateIndex)) return null;
   if (match.candidateIndex < 0 || match.candidateIndex >= candidateCount) return null;
   return match.candidateIndex;
+}
+
+export function acceptedSceneImageMatches(result, candidateCount) {
+  if (!Array.isArray(result?.matches)) return [];
+
+  const seen = new Set();
+  return result.matches.filter((match) => {
+    const candidateIndex = acceptedSceneImageMatch(match, candidateCount);
+    if (candidateIndex === null || seen.has(candidateIndex)) return false;
+    seen.add(candidateIndex);
+    return true;
+  }).slice(0, MAX_SCENE_FRAMES);
 }

@@ -3,10 +3,15 @@ import test from "node:test";
 
 import {
   addSceneMatchTokens,
+  SCENE_MATCH_TOKEN_CACHE_CONTROL,
   sceneMatchSigningSecret,
   signSceneMatchRequest,
   verifySceneMatchToken,
 } from "../app/lib/scene-match-token.mjs";
+
+test("signed scene capabilities require private no-store responses", () => {
+  assert.equal(SCENE_MATCH_TOKEN_CACHE_CONTROL, "private, no-store");
+});
 
 const request = {
   tmdbId: "185",
