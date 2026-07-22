@@ -38,6 +38,8 @@ after PR #41). Open the repository as an Obsidian vault — the `[[links]]` form
 - [personal-collections-matrix](sources/personal-collections-matrix.md) —
   where to read personal collections from (research 22.07, verified live) + ideas
   (film stills, "paste your Letterboxd handle")
+- [feature-research](sources/feature-research.md) — competitors, APIs and legal
+  notes behind `ROADMAP.md` and backlog issues #44–#77
 - `Context/brief-scenemap-design.md` — the original product brief
 - `.planning/codebase/` — 7 reference documents (ARCHITECTURE, CONCERNS…)
 - `wiki/log.md` — the chronicle of decisions (append-only, newest on top)

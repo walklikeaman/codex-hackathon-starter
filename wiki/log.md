@@ -7,6 +7,21 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-22] decision | Roadmap + backlog for post-hackathon development
+
+- Ran a 5-area competitor/approach study (imagery, AI tours, recreate-the-shot,
+  exact locations, plot routes) → `wiki/sources/feature-research.md`.
+- Published `ROADMAP.md`: 5 themed phases (Precision & Trust, Recreate 2.0,
+  Living Imagery, AI Guide on the Move, Story Trails) + a parallel Product Polish
+  track, mapped to GitHub Milestones 1–6.
+- Created 34 backlog issues (#44–#77) with theme/priority/size labels, each
+  attached to its phase milestone; the 4 existing MVP issues joined Phase 0.
+- Closed stale kickoff/role issues #1–5. Added labels: P1/P2/P3, size-S/M/L,
+  7 theme labels, roadmap.
+- Legal load-bearing notes captured: Street View can't be cached (live-embed
+  only), Mapillary CC BY-SA, film stills hotlink-not-archive, EXIF strip on
+  upload, web geofencing is foreground-only (Wake Lock now, Capacitor later).
+
 ## [2026-07-22] update | Make Google Login visible on the main screen
 
 - Signed-out visitors now see a prominent `Login with Google` control in the main GloryMap header; it launches Supabase OAuth directly instead of hiding authentication inside `My movies`.
