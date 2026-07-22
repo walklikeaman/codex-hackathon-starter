@@ -1,6 +1,6 @@
 export const TOUR_BUDGETS = [30, 60, 120];
-export const TOUR_MIN_STOPS = 3;
-export const TOUR_MAX_STOPS = 5;
+const TOUR_MIN_STOPS = 3;
+const TOUR_MAX_STOPS = 5;
 export const TOUR_BUDGET_TOLERANCE = 1.15;
 
 const WALKING_SPEED_KMH = 4.6;
@@ -32,7 +32,7 @@ export function distanceKm(from, to) {
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export function estimateTourMinutes(stops) {
+function estimateTourMinutes(stops) {
   if (!Array.isArray(stops) || stops.length < 2) return 0;
 
   const directDistanceKm = stops.slice(1).reduce(

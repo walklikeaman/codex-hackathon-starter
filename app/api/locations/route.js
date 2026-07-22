@@ -21,6 +21,9 @@ import {
   SCENE_MATCH_TOKEN_CACHE_CONTROL,
 } from "../../lib/scene-match-token.mjs";
 
+// node:crypto (via scene-match-token) requires the Node runtime, not edge.
+export const runtime = "nodejs";
+
 const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
 const DEFAULTS = { lat: 51.5072, lng: -0.1276, radius: 15, limit: 30, kind: "film" };
 const USER_AGENT = "GloryMap/1.1 (https://codex-hackathon-starter.vercel.app/)";

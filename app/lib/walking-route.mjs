@@ -1,4 +1,4 @@
-export const DEFAULT_FOOT_ROUTER_URL =
+const DEFAULT_FOOT_ROUTER_URL =
   "https://routing.openstreetmap.de/routed-foot/route/v1/driving";
 
 export function validateRouteStops(value) {

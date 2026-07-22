@@ -54,7 +54,7 @@ export function coordinates(wkt) {
   return match ? { lng: Number(match[1]), lat: Number(match[2]) } : null;
 }
 
-export function releaseYear(value) {
+function releaseYear(value) {
   return Number(value?.match(/^([+-]?\d{1,6})-/)?.[1]) || null;
 }
 
@@ -165,7 +165,7 @@ export function buildWikidataEntitiesUrl(ids) {
   return endpoint;
 }
 
-export function entityClaimValues(entity, property) {
+function entityClaimValues(entity, property) {
   return (entity?.claims?.[property] ?? [])
     .filter((claim) => claim.rank !== "deprecated")
     .map((claim) => claim.mainsnak?.datavalue?.value)
