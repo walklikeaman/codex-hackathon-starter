@@ -1256,6 +1256,68 @@ figcaption a {
   color: var(--muted);
 }
 
+.scene-frame-meta,
+.scene-frame-gallery-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.scene-frame-meta {
+  flex-wrap: wrap;
+}
+
+.scene-frame-type {
+  padding: 2px 5px;
+  border: 1px solid rgba(247, 183, 51, 0.38);
+  border-radius: 4px;
+  color: var(--gold-strong);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.scene-frame-description {
+  display: block;
+  margin-top: 6px;
+  color: #d9dedb;
+  line-height: 1.35;
+}
+
+.scene-frame-gallery {
+  margin: 0 0 14px;
+}
+
+.scene-frame-gallery-heading {
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.scene-frame-gallery-heading span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.scene-frame-list {
+  display: grid;
+  grid-auto-columns: minmax(180px, 1fr);
+  grid-auto-flow: column;
+  gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.scene-frame-list figure {
+  min-width: 0;
+}
+
+.scene-frame-list figure img {
+  height: 96px;
+}
+
 .wide-button {
   width: 100%;
 }

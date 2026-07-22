@@ -18,6 +18,7 @@ import {
 } from "../../lib/location-search.mjs";
 import {
   addSceneMatchTokens,
+  SCENE_MATCH_TOKEN_CACHE_CONTROL,
 } from "../../lib/scene-match-token.mjs";
 
 const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
@@ -222,7 +223,7 @@ export async function GET(request) {
           matched_work: result.matchedWork,
           locations: addSceneMatchTokens(result.locations),
         },
-        { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" } },
+        { headers: { "Cache-Control": SCENE_MATCH_TOKEN_CACHE_CONTROL } },
       );
     }
 
@@ -250,7 +251,7 @@ export async function GET(request) {
         matched_work: null,
         locations: addSceneMatchTokens(locations),
       },
-      { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" } },
+      { headers: { "Cache-Control": SCENE_MATCH_TOKEN_CACHE_CONTROL } },
     );
   } catch (error) {
     const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
