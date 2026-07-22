@@ -14,10 +14,11 @@ kills both the demo and the account.
 `.env` is gitignored. No tokens in source, no tokens in commits, no tokens in
 the Supabase MCP args that get committed.
 
-## Guardrail: Preview deploys only — no production domain without asking
-`vercel` (preview) is free to run. A real domain / `--prod` is a human call.
-For a newly linked project, use `vercel deploy --target=preview`; the first plain
-`vercel deploy` can create a production deployment even without `--prod`.
+## Guardrail: `ship` authorizes the complete production release
+An explicit `ship` from the owner means: stage the agreed scope, commit, push,
+mark the PR ready, wait for required checks, merge into `main`, deploy production,
+and verify the public site. Do not stop after a preview or ask for a second
+production confirmation. Without an explicit `ship`, use preview deployments.
 
 ## Guardrail: Protect the demo path
 Before starting a new feature, confirm the one locked demo flow still works.
