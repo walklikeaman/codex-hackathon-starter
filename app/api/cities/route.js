@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { cityRadiusKm, isWikidataId } from "../../lib/location-search.mjs";
 
+export const runtime = "nodejs";
+
 const NOMINATIM_ENDPOINT = "https://nominatim.openstreetmap.org/search";
 
 export async function GET(request) {

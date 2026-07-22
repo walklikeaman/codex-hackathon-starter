@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 export const MAX_TMDB_CANDIDATES = 24;
-export const MAX_SCENE_FRAMES = 3;
-export const SCENE_IMAGE_MATCH_VERSION = "4";
+const MAX_SCENE_FRAMES = 3;
+const SCENE_IMAGE_MATCH_VERSION = "4";
 
 const sceneImageRequestSchema = z.object({
   tmdbId: z.string().regex(/^[1-9]\d*$/),
