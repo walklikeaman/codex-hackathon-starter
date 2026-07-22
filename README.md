@@ -6,7 +6,7 @@ Every day, we watch films, follow series for years, and get lost in books that s
 
 GloryMap turns that connection into a real journey.
 
-[🌍 Explore the GloryMap demo](https://codex-hackathon-starter-nakonechnyin-8566-walklikeaman1904.vercel.app)
+[🌍 Explore the GloryMap demo](https://codex-hackathon-starter.vercel.app)
 
 ## 💭 The problem
 
@@ -18,9 +18,9 @@ Someone who grew up with a ten-season series should be able to visit its most me
 
 ## ✨ The GloryMap experience
 
-GloryMap brings your favorite films, series, and books together and places their real-world locations on one personal map.
+GloryMap is built to bring your favorite films, series, and books together and place their real-world locations on one personal map.
 
-Connect the services where your collections already live—such as Letterboxd, Netflix, Prime Video, Disney+, Goodreads, or Kindle—and GloryMap builds a personal story library around your taste. Choose a city or use your current location to see which stories from that library have meaningful places nearby.
+Today, the working product imports Letterboxd ZIP exports and Letterboxd or IMDb CSV files, while title search discovers locations for films, series, and books. Direct connectors for streaming and reading services such as Netflix, Prime Video, Disney+, Goodreads, and Kindle are part of the longer-term vision. Choose a city or use your current location to see which available stories have meaningful places nearby.
 
 Instead of asking, “What are the top tourist attractions here?”, GloryMap asks a better question:
 
@@ -236,6 +236,22 @@ npm run build
 
 Open the demo, connect your story collection, choose a city, and see where your favorite worlds meet the real one.
 
-### [🌍 Launch the live demo →](https://codex-hackathon-starter-nakonechnyin-8566-walklikeaman1904.vercel.app)
+### [🌍 Launch the live demo →](https://codex-hackathon-starter.vercel.app)
+
+## ✅ What judges can test today
+
+No account or credentials are required for the deployed application.
+
+1. Open the [live demo](https://codex-hackathon-starter.vercel.app).
+2. Search for a city, or keep London selected.
+3. Explore the visible pins or search for a film, series, or book.
+4. Open a location card to inspect its story context, source, and imagery.
+5. Add at least three locations and select **Build route**.
+6. Choose 30, 60, or 120 minutes and generate a nearby AI-guided tour.
+7. Optionally import a Letterboxd ZIP or Letterboxd/IMDb CSV. The file is
+   processed locally in the browser and is never uploaded.
+
+No sample data is required: public story locations load automatically. Features
+that use live external services may take several seconds.
 
 **GloryMap — visit the places that already feel like home.** 🍿📚🗺️

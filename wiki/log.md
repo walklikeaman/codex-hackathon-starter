@@ -20,6 +20,12 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 - Guest imports remain local; after login they merge with the user's device and cloud libraries and sync as a normalized JSON list protected by user-scoped RLS.
 - Added the database migration, client-side sync boundary, provider setup documentation, and regression tests for cloud payload validation and user-scoped reads/writes.
 
+## [2026-07-22] update | Devpost Codex and GPT-5.6 evidence
+
+- Supplemented the product-focused README with the Devpost-required setup, judge test path, and evidence-backed descriptions of Codex and GPT-5.6 usage.
+- Clarified which collection integrations work today versus the longer-term product vision and switched the demo link to the stable production alias.
+- Verified the claims against current routes and dependencies, then ran all 89 tests, a successful production build, and a clean documentation secret scan.
+
 ## [2026-07-22] update | Retire alternate-agent references
 
 - GitHub permissions and Contributors API confirmed that the retired agent is neither a collaborator nor a listed contributor.
