@@ -1,139 +1,137 @@
-# Схема проекта (читать в начале каждой сессии)
+# Project map (read at the start of every session)
 
-Codex сам подгружает этот файл из корня репозитория (вложенные `AGENTS.md`
-мёржатся вверх по дереву). Он объясняет агенту, как устроен проект, чтобы время
-уходило на разработку, а не на повторные объяснения. Полное описание метода —
+Codex loads this file from the repository root on its own (nested `AGENTS.md`
+files merge upward through the tree). It explains to the agent how the project is
+built, so time goes into development instead of repeated explanations. Full
+description of the method —
 [`docs/agent-framework.md`](docs/agent-framework.md).
-Как только идея зафиксирована, сразу заполни блок **Проект**.
+As soon as the idea is locked in, fill out the **Project** block right away.
 
 ---
 
-## Проект (заполнить на старте — 2 минуты)
+## Project (fill in at the start — 2 minutes)
 
-- **Что делаем:** GloryMap — карта мест из твоих любимых фильмов: выбираешь фильмы → пины локаций съёмок → карточка «кадр тогда / место сейчас» → пеший маршрут «кино-прогулка».
-- **Категория:** apps-for-life
-- **Стек:** Next.js + Supabase + Vercel, Leaflet/OSM, Wikidata (локации), TMDB (постеры/кадры), OpenAI (описания сцен).
-- **Единственный демо-путь, который обязан работать:** выбрать 3–5 фильмов из галереи → карта Лондона с пинами → открыть карточку локации со сценой и фото «сейчас» → добавить 3 точки → построить пеший маршрут.
-- **Пока вне scope:** auth, аудио-отрывки, живые API Letterboxd/Amazon, скрейпинг, книги (вторая очередь), Тель-Авив как демо-город.
+- **What we're building:** GloryMap — a map of places from your favorite films: pick films → pins for filming locations → a "frame back then / place now" card → a walking "cinema-stroll" route.
+- **Category:** apps-for-life
+- **Stack:** Next.js + Supabase + Vercel, Leaflet/OSM, Wikidata (locations), TMDB (posters/frames), OpenAI (scene descriptions).
+- **The single demo path that must work:** pick 3–5 films from the gallery → a map of London with pins → open a location card with its scene and a "now" photo → add 3 points → build a walking route.
+- **Out of scope for now:** auth, audio clips, live Letterboxd/Amazon APIs, scraping, books (second wave), Tel Aviv as the demo city.
 
-Схема Supabase создана владельцем 21.07 (миграция `scenemap_initial_schema`):
-таблицы `locations` и `scenes`, контракт — раздел 5 брифа
-`Context/brief-scenemap-design.md`. RLS пермиссивный: anon-ключ из `.env.local`
-читает и пишет обе таблицы — service_role никому не нужен. Уникальность в
-`locations` — пара (work_wikidata_id, loc_wikidata_id), сид — батч-upsert по ней.
+The Supabase schema was created by the owner on 07/21 (migration `scenemap_initial_schema`):
+tables `locations` and `scenes`, the contract is section 5 of the brief
+`Context/brief-scenemap-design.md`. RLS is permissive: the anon key from `.env.local`
+reads and writes both tables — nobody needs service_role. Uniqueness in
+`locations` is the pair (work_wikidata_id, loc_wikidata_id), the seed is a batch-upsert on it.
 
-Важнее всего две последние строки. Один сценарий, который работает от начала до
-конца, лучше пяти наполовину рабочих. Держи scope жёстко: новые идеи уходят в
-список «вне scope», пока демо-путь не станет зелёным.
+The last two lines matter most. One scenario that works from start to
+finish beats five half-working ones. Keep scope tight: new ideas go into the
+"out of scope" list until the demo path turns green.
 
-## Правила поведения (применять к любой нетривиальной задаче)
+## Rules of behavior (apply to any non-trivial task)
 
-У Codex нет глобального автозагрузчика скиллов, поэтому правила живут прямо здесь:
+Codex has no global skill autoloader, so the rules live right here:
 
-1. **Сначала думай, потом кодь** — проговори допущения; если запрос читается двояко —
-   спроси; выбирай путь попроще; если непонятно — остановись и назови, что именно.
-2. **Простота прежде всего** — минимум кода под задачу. Никаких абстракций про запас
-   и обработки случаев, которые не могут произойти.
-3. **Точечные правки** — трогай только то, что нужно текущему шагу; держись
-   существующего стиля; удаляй только то, что стало ненужным из-за твоей правки.
-4. **От цели** — заранее задай проверяемый критерий успеха и крути цикл, пока он
-   честно не выполнится (обычно: «демо-путь работает, когда я реально его запускаю»).
+1. **Think first, code second** — state your assumptions; if the request reads two ways —
+   ask; pick the simpler path; if it's unclear — stop and name exactly what.
+2. **Simplicity above all** — the minimum code for the task. No just-in-case abstractions
+   and no handling of cases that can't happen.
+3. **Surgical edits** — touch only what the current step needs; stick to the
+   existing style; delete only what your edit made unnecessary.
+4. **Goal-driven** — set a verifiable success criterion up front and spin the loop until it
+   honestly passes (usually: "the demo path works when I actually run it").
 
-## Автопилот — это дефолт
+## Autopilot is the default
 
-Доводи хорошо описанный шаг до проверенно-зелёного сам: план → сборка → запуск →
-**проверка через реальное открытие результата** (curl по эндпоинту, загрузить страницу,
-прочитать консоль, перечитать файл) → уборка → лог → отчёт. Не жди отмашки между шагами.
+Drive a well-described step to verified-green yourself: plan → build → run →
+**verification by actually opening the result** (curl the endpoint, load the page,
+read the console, re-read the file) → cleanup → log → report. Don't wait for a go-ahead between steps.
 
-ОСТАНОВИСЬ и спроси заранее ТОЛЬКО в БЛОКИРУЮЩИХ случаях:
+STOP and ask ahead of time ONLY in BLOCKING cases:
 
-- действия наружу или трудно обратимые (деплой на _production_-домен, любая отправка,
-  публичные посты, трата денег);
-- разрушительные операции (дроп таблицы с реальными данными, force-push, удаление файлов);
-- всё, что касается креденшелов или данных чужого аккаунта.
+- outward-facing or hard-to-reverse actions (deploy to a _production_ domain, any send,
+  public posts, spending money);
+- destructive operations (dropping a table with real data, force-push, deleting files);
+- anything touching credentials or another account's data.
 
-Preview-деплои, одноразовые ветки, локальные запуски, тестовые данные — просто делай.
-Если развилка в подходе серьёзная, разложи варианты и выбери один с обоснованием, а не наугад.
+Preview deploys, throwaway branches, local runs, test data — just do them.
+If a fork in the approach is serious, lay out the options and pick one with a rationale, not at random.
 
-Явная команда для этого — **`/autopilot`**: веди одну задачу до зелёного гейта сама
-(спека → сборка → запуск → проверка → `/ship` в свою ветку) и остановись на человеческом гейте.
+## Session-start ritual (read before doing anything)
 
-## Ритуал старта сессии (прочитать до любых действий)
+1. This file — especially the **Project** block and scope.
+2. `git log --oneline -10 && git status --short` — what the previous session left behind.
+3. `cat .loops/guardrails.md` — the hard constraints accumulated up to this point.
+4. `grep "^## \[" wiki/log.md | head -20` — fresh decisions and knowledge.
+5. `wiki/index.md`, if the task touches something already studied — **reference it, don't re-derive**.
+6. If code already exists, ask CodeGraph about the structure instead of grepping blindly
+   (`codegraph_context` / `codegraph_explore`). The index is built once via
+   `codegraph init`; after switching branches, rebuild via `codegraph index --force`.
+7. `TASKS.md` — who owns what and what's next; work off this board and update it
+   after `/ship`. The teamwork rules are in `TEAMWORK.md`.
 
-1. Этот файл — особенно блок **Проект** и scope.
-2. `git log --oneline -10 && git status --short` — что оставила прошлая сессия.
-3. `cat .loops/guardrails.md` — жёсткие ограничения, накопленные к этому моменту.
-4. `grep "^## \[" wiki/log.md | head -20` — свежие решения и знания.
-5. `wiki/index.md`, если задача задевает что-то уже изученное — **ссылайся, не выводи заново**.
-6. Если код уже есть, спрашивай структуру у CodeGraph, а не грепай вслепую
-   (`codegraph_context` / `codegraph_explore`). Индекс собирается один раз через
-   `codegraph init`; после смены ветки пересобирай через `codegraph index --force`.
-7. `TASKS.md` — кто за что отвечает и что дальше; работай по этой доске и обновляй её
-   после `/ship`. Правила командной работы — в `TEAMWORK.md`.
+## Tools already wired up for you (see README)
 
-## Инструменты, уже подключённые за тебя (см. README)
+- **CodeGraph** — a local knowledge graph of the code via MCP. "What calls X", "where's Y",
+  "what breaks if I change Z" — answers from a ready-made index, saving tokens.
+- **Supabase** (MCP) — create tables, run SQL, deploy edge functions, read logs.
+- **Vercel** — `vercel` for preview deploys; Vercel MCP for logs and errors.
+- **Playwright** (MCP, optional) — drives a real browser to check the demo path.
 
-- **CodeGraph** — локальный граф знаний о коде через MCP. «Что вызывает X», «где Y»,
-  «что сломается, если поменять Z» — ответы из готового индекса, экономят токены.
-- **Supabase** (MCP) — создавать таблицы, выполнять SQL, деплоить edge-функции, читать логи.
-- **Vercel** — `vercel` для preview-деплоев; Vercel MCP для логов и ошибок.
-- **Playwright** (MCP, по желанию) — гоняет настоящий браузер, чтобы проверить демо-путь.
+One shared infrastructure for the whole team: one Supabase database and one Vercel project.
+Most people work with the shared DB via `app/.env.local`; the Supabase/Vercel MCP for
+management is connected only for whoever runs `./setup.sh --infra`. Don't commit
+tokens — `.env` is in gitignore, the expected keys are listed in `.env.example`.
 
-Одна общая инфраструктура на всю команду: одна база Supabase и один проект Vercel.
-Большинство работает с общей БД через `app/.env.local`; MCP для Supabase/Vercel к
-управлению подключает только тот, кто запускает `./setup.sh --infra`. Токены не
-коммить — `.env` в gitignore, ожидаемые ключи перечислены в `.env.example`.
+## Knowledge that accumulates — the `wiki/` layer
 
-## Знание, которое накапливается — слой `wiki/`
+This is exactly what makes the project _mature_ instead of goldfish-forgetful: every session reads
+what the previous one wrote, and knowledge builds up instead of evaporating.
 
-Именно это делает проект _зрелым_, а не забывчивым как рыбка: каждая сессия читает
-то, что записала предыдущая, и знание копится, а не испаряется.
+- `Context/` — the raw, **immutable** inbox. Drop briefs, exports, screenshots, notes here.
+- `wiki/` — where the agent itself writes and cross-links (`[[links]]`): `index.md` (read first),
+  `log.md` (append-only, newest on top), `overview.md` and `sources/ entities/ concepts/`.
+- **Ingest**: on the command "ingest `Context/`" read each source → create a page
+  in `wiki/sources/` → update entities/concepts → cross-link → add an entry to the top of `wiki/log.md`.
+- **Auto-log**: after any significant operation, add an entry to the top of `wiki/log.md`. If
+  in doubt — default to YES. Never hide a decision in a code comment — its place is the wiki.
 
-- `Context/` — сырой, **неизменяемый** инбокс. Кидай сюда брифы, экспорты, скриншоты, заметки.
-- `wiki/` — здесь пишет и перелинковывает сам агент (`[[links]]`): `index.md` (читать первым),
-  `log.md` (только дозапись, новое сверху), `overview.md` и `sources/ entities/ concepts/`.
-- **Ingest**: по команде «ingest `Context/`» прочитай каждый источник → заведи страницу
-  в `wiki/sources/` → обнови entities/concepts → перелинкуй → добавь запись в начало `wiki/log.md`.
-- **Авто-лог**: после любой значимой операции добавляй запись в начало `wiki/log.md`. Если
-  сомневаешься — по умолчанию ДА. Никогда не прячь решение в комментарий к коду — ему место в wiki.
+For a quick build you can leave the wiki alone, but the moment a decision or a gotcha
+is worth surviving to the next session or a colleague — write it down here.
 
-Для быстрой сборки wiki можно и не трогать, но как только решение или подводный камень
-стоит того, чтобы дожить до следующей сессии или коллеги, — записывай его сюда.
+## Loops (run at the right moment — `~/.codex/prompts/loop-*.md`)
 
-## Лупы (запускай в нужный момент — `~/.codex/prompts/loop-*.md`)
+- `/loop-demo` — drive the single demo path to green, from start to finish.
+- `/loop-lint` — before committing, chase lint/typecheck/build to clean.
+- `/loop-debug` — a failing bug; writes attempts to `.loops/reflexion.md` so they aren't repeated.
+- `/loop-spec-ship` — drive a small spec to verified-green and ship it.
+- `/loop-guardrails` — lock a recurring mistake into `.loops/guardrails.md`.
+- `/loop-docs-sync`, `/loop-de-sloppify`, `/loop-migrate`, `/loop-pr-review` — as needed.
 
-- `/loop-demo` — довести единственный демо-путь до зелёного, от начала до конца.
-- `/loop-lint` — перед коммитом догнать lint/typecheck/build до чистого.
-- `/loop-debug` — упавший баг; пишет попытки в `.loops/reflexion.md`, чтобы не повторять их.
-- `/loop-spec-ship` — довести маленькую спеку до проверенно-зелёного и зашипить.
-- `/loop-guardrails` — зафиксировать повторяющуюся ошибку в `.loops/guardrails.md`.
-- `/loop-docs-sync`, `/loop-de-sloppify`, `/loop-migrate`, `/loop-pr-review` — по необходимости.
+Hackathon commands (also in `~/.codex/prompts/`): `/autopilot` — drive a task to the gate ·
+`/schema` — a minimal Supabase database (after the idea is locked) · `/ui-polish` — polish the demo ·
+`/pitch` — a 90-second pitch for the judges.
 
-Команды под хакатон (тоже в `~/.codex/prompts/`): `/autopilot` — веди задачу до гейта ·
-`/schema` — минимальная база Supabase (после фиксации идеи) · `/ui-polish` — полировка демо ·
-`/pitch` — 90-секундный питч для судей.
+## /ship — save without breaking flow
 
-## /ship — сохранить, не выбиваясь из потока
+When a piece works, type `/ship`: it stages surgically (never `git add -A`), writes
+a clean commit, pushes, checks the remote and logs to the wiki. The repository stays
+demo-ready, and the next colleague pulls working code.
 
-Когда кусок работает, набери `/ship`: он точечно стейджит (никогда `git add -A`), пишет
-аккуратный commit, пушит, проверяет remote и логирует в wiki. Репозиторий остаётся
-готовым к демо, а следующий коллега подтягивает рабочий код.
+## House rules (what NOT to do)
 
-## Домашние правила (чего НЕ делать)
+- Never `git add -A` / `git add .` — only explicit paths (a stray `.env` leaks a key,
+  and that kills both the demo _and_ the account).
+- Never hardcode secrets — only env variables.
+- Don't deploy to a real/production domain without asking — only preview URLs.
+- Don't build beyond the locked scope. A new idea → into the "out of scope" list, drive the demo path first.
+- Don't hide decisions in code comments — a line in `.loops/guardrails.md` or `wiki/`.
+- Work in your own branch (`feature/<name>`), never push to `main` — open a PR and let the
+  integrator merge it. Pull changes before starting; agree on the data contract
+  before splitting up work; don't edit a file another agent is editing. Full rules: `TEAMWORK.md`.
+- Don't create tables or invent a DB schema until the project idea is locked — the schema
+  is decided in the first 15 minutes of the kickoff, and one person (backend) owns it, everyone else goes through them.
 
-- Никогда `git add -A` / `git add .` — только явные пути (случайный `.env` утечёт ключ,
-  а это убьёт и демо, _и_ аккаунт).
-- Никогда не хардкодь секреты — только env-переменные.
-- Не деплой на реальный/production-домен без спроса — только preview-URL.
-- Не строй сверх зафиксированного scope. Новая идея → в список «вне scope», сначала доведи демо-путь.
-- Не прячь решения в комментарии к коду — строчку в `.loops/guardrails.md` или `wiki/`.
-- Работай в своей ветке (`feature/<name>`), никогда не пушь в `main` — открой PR и дай
-  интегратору смёржить. Подтягивай изменения перед стартом; договорись о контракте данных,
-  прежде чем делить работу; не редактируй файл, который правит другой агент. Полные правила: `TEAMWORK.md`.
-- Не создавай таблицы и не придумывай схему БД, пока идея проекта не зафиксирована — схему
-  решаем в первые 15 минут кикоффа, и ведёт её один человек (бэкенд), остальные через него.
+## Commit co-author
 
-## Соавтор коммита
-
-Заканчивай сообщения коммитов строкой:
+End commit messages with the line:
 `Co-Authored-By: Codex <noreply@openai.com>`

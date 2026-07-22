@@ -1,40 +1,40 @@
-# Туры и голос — маршрут, таймированный тур, AI-тур, аудиогид
+# Tours and voice — route, timed tour, AI tour, audio guide
 
-Четыре связанных фичи в [[frontend]]; серверная часть — `/api/route`,
+Four related features in [[frontend]]; the server side is `/api/route`,
 `/api/tour`, `/api/narration` ([[api-layer]]).
 
-## Ручной маршрут
+## Manual route
 
-3–5 стопов → POST `/api/route` (OSRM foot) → линия на карте + км/минуты.
-Фолбэк: пунктирные прямые (haversine, 4.6 км/ч, минимум 8 мин).
+3–5 stops → POST `/api/route` (OSRM foot) → a line on the map + km/minutes.
+Fallback: dashed straight lines (haversine, 4.6 km/h, minimum 8 min).
 
-## Таймированный тур (30/60/120 минут) — клиент ведёт
+## Timed tour (30/60/120 minutes) — the client drives
 
-`app/lib/timed-tour.mjs` (чистый планировщик): дедуп локаций, объединение
-разных произведений на одной физической точке (мульти-фильмовые стопы),
-nearest-neighbor от origin, оценка минут (4.6 км/ч × коэффициент улиц 1.3).
-Клиент перебирает кандидатов 5→4→3 стопа через реальный `/api/route`, пока
-маршрут не уложится в бюджет × допуск 1.15 (`routeFitsBudget`). Только потом
-`/api/tour` с `preserveOrder:true` пишет нарративы. Без AI — детерминированный
+`app/lib/timed-tour.mjs` (a pure planner): dedup locations, merging
+different works at one physical point (multi-film stops),
+nearest-neighbor from origin, minute estimation (4.6 km/h × street coefficient 1.3).
+The client iterates over candidates 5→4→3 stops through the real `/api/route` until
+the route fits within budget × tolerance 1.15 (`routeFitsBudget`). Only then does
+`/api/tour` with `preserveOrder:true` write the narratives. Without AI — the deterministic
 `createFallbackGuide`.
 
-## AI-тур по произведению — сервер ведёт
+## AI tour of a work — the server drives
 
-`/api/tour` без preserveOrder: модель сама выбирает порядок стопов.
-Динамическая Zod-схема `z.enum(locationIds)` + `assertCompleteTour` — модель
-не может выдумать, потерять или задублировать стоп ([[openai]]).
+`/api/tour` without preserveOrder: the model picks the stop order itself.
+A dynamic Zod schema `z.enum(locationIds)` + `assertCompleteTour` — the model
+cannot invent, lose, or duplicate a stop ([[openai]]).
 
-## Аудиогид (VoiceGuide)
+## Audio guide (VoiceGuide)
 
-Текст ≤600 символов → `/api/narration` → mp3-стрим (gpt-4o-mini-tts). Профили
-без имитации реальных людей: neutral «Warm guide» (marin), archivist «Curious
-archivist» (cedar). **Spoiler-free включён по умолчанию** — подменяет историю
-нейтральным рекапом. Отмена при смене локации/профиля.
+Text ≤600 characters → `/api/narration` → mp3 stream (gpt-4o-mini-tts). Profiles
+that don't imitate real people: neutral "Warm guide" (marin), archivist "Curious
+archivist" (cedar). **Spoiler-free is on by default** — it swaps the story
+for a neutral recap. Cancels on a location/profile change.
 
-## Грабли
+## Gotchas
 
-- buildTimedTour: первая же сетевая ошибка /api/route прекращает перебор —
-  берётся candidates[0] с фолбэк-маршрутом.
-- «Generate nearby tour» требует ≥3 видимых локаций; Build route — ≥3 стопов.
-- startTimedTour читает `stop.filmIds ?? [stop.filmId]` — стопы бывают
-  мульти-фильмовыми.
+- buildTimedTour: the very first network error from /api/route stops the iteration —
+  candidates[0] with a fallback route is taken.
+- "Generate nearby tour" requires ≥3 visible locations; Build route — ≥3 stops.
+- startTimedTour reads `stop.filmIds ?? [stop.filmId]` — stops can be
+  multi-film.

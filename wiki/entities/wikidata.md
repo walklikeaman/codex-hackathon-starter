@@ -1,35 +1,35 @@
-# Wikidata — канонический источник локаций
+# Wikidata — the canonical source of locations
 
-Единственный источник истины о связи «произведение → место» (веб-ресёрч LLM —
-только дополнение, [[location-discovery]]). Всё живое, ничего не персистится
-([[supabase]] пуст). Использует [[api-layer]] (`/api/locations`,
-`/api/film-image`), логика — `app/lib/location-search.mjs`.
+The single source of truth about the "work → place" link (LLM web research is
+only a supplement, [[location-discovery]]). Everything is live, nothing is persisted
+([[supabase]] is empty). Uses [[api-layer]] (`/api/locations`,
+`/api/film-image`), with the logic in `app/lib/location-search.mjs`.
 
-## Словарь свойств
+## Property glossary
 
 - **P915** filming location (film, series) · **P840** narrative location (book)
-- **P625** координаты (WKT `Point(lng lat)` — долгота первая!)
-- **P18** фото места (Commons) · **P4947** TMDB ID (только фильмы)
-- rootType: Q11424 фильм · Q5398426 сериал · Q7725634 книга;
-  конфиг — `WORK_KIND_CONFIG`.
+- **P625** coordinates (WKT `Point(lng lat)` — longitude first!)
+- **P18** photo of the place (Commons) · **P4947** TMDB ID (films only)
+- rootType: Q11424 film · Q5398426 series · Q7725634 book;
+  config — `WORK_KIND_CONFIG`.
 
-## Эндпоинты и лимиты
+## Endpoints and limits
 
-- SPARQL `query.wikidata.org/sparql`: nearby через `SERVICE wikibase:around`,
-  таймаут 18 с, кэш 3600, 1 ретрай на 429/503.
-- Entity API `wbsearchentities` (limit 8) + `wbgetentities` чанками по 5,
-  кэш 86400, таймаут 6 с.
-- Обязателен User-Agent.
+- SPARQL `query.wikidata.org/sparql`: nearby via `SERVICE wikibase:around`,
+  timeout 18 s, cache 3600, 1 retry on 429/503.
+- Entity API `wbsearchentities` (limit 8) + `wbgetentities` in chunks of 5,
+  cache 86400, timeout 6 s.
+- User-Agent is required.
 
-## Грабли
+## Gotchas
 
-- Метки-заглушки: label, начинающийся с `Q\d+`, отбрасывается — сущности без
-  en/ru-имени молча выпадают.
-- SPARQL LIMIT применяется ДО фильтра по точному радиусу — в плотных местах
-  часть результатов теряется ещё в Wikidata.
-- BFS по P31/P279 глубиной 4 — произведение с более глубокой цепочкой
-  подклассов не пройдёт валидацию типа в work-режиме.
-- Ранжирование nearby: максимум 5 произведений × 6 локаций, предпочтение
-  работам с несколькими местами в радиусе.
-- Дедуп по ключу work:location:relation_kind; порядок claims решает, какая
-  координата/дата победит (фильтруется только rank deprecated).
+- Placeholder labels: a label starting with `Q\d+` is discarded — entities without
+  an en/ru name silently drop out.
+- The SPARQL LIMIT is applied BEFORE the exact-radius filter — in dense areas
+  some results are lost already in Wikidata.
+- BFS over P31/P279 at depth 4 — a work with a deeper subclass chain
+  won't pass type validation in work mode.
+- Nearby ranking: at most 5 works × 6 locations, with a preference for
+  works that have several places within the radius.
+- Dedup by the key work:location:relation_kind; the order of claims decides which
+  coordinate/date wins (only rank deprecated is filtered out).

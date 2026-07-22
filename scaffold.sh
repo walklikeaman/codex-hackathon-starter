@@ -9,15 +9,15 @@ cd "$ROOT"
 
 # seed local env (never overwrite an existing one) — keys are already in .env.example
 if [ ! -f .env.local ]; then
-  cp .env.example .env.local && echo "  ✓ .env.local создан из .env.example (общие ключи Supabase уже внутри)"
+  cp .env.example .env.local && echo "  ✓ .env.local created from .env.example (shared Supabase keys already inside)"
 fi
 
-echo "▸ ставлю зависимости приложения…"
+echo "▸ installing app dependencies…"
 npm install --no-audit --no-fund
 
 cat <<EOF
 
-✅ Готово. Дальше:
+✅ Done. Next:
    npm run dev     # http://localhost:3000
-   codegraph init  # собрать индекс кода для Codex
+   codegraph init  # build the code index for Codex
 EOF

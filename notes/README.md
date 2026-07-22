@@ -1,11 +1,11 @@
 # notes/
 
-Свободные заметки и черновики агента и команды: наброски, куда что положить,
-временные списки. Ничего структурировать не обязательно.
+Free-form notes and scratch drafts by the agent and the team: rough ideas about
+where to put things, temporary lists. Nothing here has to be structured.
 
-Куда писать что:
+Where to write what:
 
-- Долгоживущие решения и знания → `wiki/log.md` (+ `wiki/concepts/`).
-- Доска задач (кто над чем) → `TASKS.md`.
-- Правила команды → `TEAMWORK.md`.
-- Быстрые заметки на ходу → сюда, в `notes/`.
+- Long-lived decisions and knowledge → `wiki/log.md` (+ `wiki/concepts/`).
+- Task board (who is working on what) → `TASKS.md`.
+- Team rules → `TEAMWORK.md`.
+- Quick notes on the fly → here, in `notes/`.

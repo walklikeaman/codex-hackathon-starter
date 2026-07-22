@@ -40,7 +40,7 @@ codex-hackathon-starter/
 ├── INSTALL.md              # Clean-machine installation checklist
 ├── PREFLIGHT.md             # Short pre-event setup checklist
 ├── IDEAS.md                # Candidate project briefs and prompts
-├── КОМАНДЕ.md              # Chat-ready teammate onboarding message
+├── TEAM.md                 # Chat-ready teammate onboarding message
 ├── setup.sh                # Machine/tool/MCP bootstrap
 ├── scaffold.sh             # App dependency and local-env bootstrap
 ├── package.json            # Next.js package and command manifest
@@ -162,7 +162,7 @@ The root is both the Next.js application root and the agent workspace root. Do n
 - `INSTALL.md`: Full setup checklist.
 - `PREFLIGHT.md`: Short pre-hackathon checklist.
 - `IDEAS.md`: Candidate product briefs.
-- `КОМАНДЕ.md`: Short onboarding message for team chat.
+- `TEAM.md`: Short onboarding message for team chat.
 - `docs/agent-framework.md`: Detailed reference architecture for the agent operating method.
 - `docs/index.html`: Static bilingual onboarding page.
 

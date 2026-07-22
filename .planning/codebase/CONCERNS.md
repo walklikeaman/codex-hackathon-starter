@@ -24,7 +24,7 @@
 
 **Onboarding content has multiple manually maintained sources:**
 - Issue: Installation, shared-infrastructure, command, teamwork, and idea text is duplicated across Markdown documents and a 532-line bilingual static HTML file.
-- Files: `README.md`, `GUIDE.md`, `INSTALL.md`, `PREFLIGHT.md`, `КОМАНДЕ.md`, `IDEAS.md`, `docs/index.html`
+- Files: `README.md`, `GUIDE.md`, `INSTALL.md`, `PREFLIGHT.md`, `TEAM.md`, `IDEAS.md`, `docs/index.html`
 - Impact: Behavior changes require synchronized edits in many files. Current root-path drift demonstrates that copies do not stay consistent.
 - Fix approach: Designate one Markdown source per topic and generate `docs/index.html` plus condensed onboarding documents from it, or reduce secondary documents to links into the canonical source.
 
@@ -43,7 +43,7 @@
 - Workaround: Read the textual output rather than trusting the exit code. The fix is to accumulate a failure flag or return immediately, then exit non-zero when any required check fails.
 
 **`scaffold.sh` can print a false success banner:**
-- Symptoms: A failed dependency installation can be followed by `✅ Готово`, and the script can finish with status `0` because the final heredoc succeeds.
+- Symptoms: A failed dependency installation can be followed by `✅ Done`, and the script can finish with status `0` because the final heredoc succeeds.
 - Files: `scaffold.sh`
 - Trigger: Any `npm install --no-audit --no-fund` failure, such as registry/network failure or an invalid lockfile. The script uses `set -uo pipefail` without `-e` and does not test the npm command's status.
 - Workaround: Inspect npm output manually. The fix is an explicit `if ! npm ...; then ...; exit 1; fi` and a post-install `npm ls --depth=0` verification.
@@ -55,7 +55,7 @@
 - Workaround: Verify with `codex mcp list`. The fix is to return non-zero from the failure branch, aggregate MCP failures, and base the closing banner and exit status on that aggregate.
 
 **The home page claims connectivity without testing connectivity:**
-- Symptoms: The page says `Окружение работает` and marks Supabase as connected when the URL merely starts with `https://` and the anon-key variable is merely non-empty.
+- Symptoms: The page says `Environment works` and marks Supabase as connected when the URL merely starts with `https://` and the anon-key variable is merely non-empty.
 - Files: `app/page.jsx`
 - Trigger: Supply a syntactically HTTPS but incorrect URL and any non-empty key; no Supabase request is made.
 - Workaround: Treat the page as an environment-presence indicator only. The fix is a server-side health query against a known harmless resource, with separate “configured” and “reachable” states.
@@ -63,7 +63,7 @@
 **The published guide's table of contents does not navigate to sections:**
 - Symptoms: Every Russian and English table-of-contents link targets `#top`, so selecting any section returns to the top instead of the requested content.
 - Files: `docs/index.html`
-- Trigger: Click any item under `Содержание` or `Contents`.
+- Trigger: Click any item in either the Russian or English table of contents.
 - Workaround: Scroll manually. The fix is to assign stable section IDs and point each localized link at its corresponding ID.
 
 ## Security Considerations

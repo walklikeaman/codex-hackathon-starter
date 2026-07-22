@@ -1,31 +1,31 @@
-# Личная библиотека — приватность как принцип
+# Personal library — privacy as a principle
 
-«Мои фильмы» пользователя: импорт, хранение, фильтрация карты. Реализация:
-`app/lib/media-library.mjs` + `app/lib/letterboxd-archive.mjs`, UI в
-[[frontend]] (панель My movies).
+The user's "My movies": import, storage, map filtering. Implementation:
+`app/lib/media-library.mjs` + `app/lib/letterboxd-archive.mjs`, UI in
+[[frontend]] (the My movies panel).
 
-## Как работает сегодня
+## How it works today
 
-- Импорт: **Letterboxd ZIP** (watched.csv + ratings.csv, архив ≤25 МБ, CSV
-  ≤10 МБ) и **CSV Letterboxd/IMDb** (свой парсер: кавычки, CRLF, BOM,
-  алиасы заголовков обоих сервисов).
-- Всё парсится **в браузере**; библиотека живёт в localStorage
-  (`scenemap-library`), на сервер не уходит ничего. Реальный экспорт: 2422
-  фильма импортированы, в London-данных нашлось 3 фильма / 6 локаций.
-- mergeLibraries: ключ — imdbId либо slug(title):год; sources объединяются.
-- workIsInLibrary матчит по нормализованному названию (NFKD, a-z0-9) с мягким
-  сравнением года.
-- После импорта авто-включается фильтр «library on map».
+- Import: **Letterboxd ZIP** (watched.csv + ratings.csv, archive ≤25 MB, CSV
+  ≤10 MB) and **Letterboxd/IMDb CSV** (a custom parser: quotes, CRLF, BOM,
+  header aliases for both services).
+- Everything is parsed **in the browser**; the library lives in localStorage
+  (`scenemap-library`), nothing goes to the server. A real export: 2422
+  films imported, of which 3 films / 6 locations were found in the London data.
+- mergeLibraries: the key is imdbId or slug(title):year; sources are merged.
+- workIsInLibrary matches by normalized title (NFKD, a-z0-9) with a loose
+  year comparison.
+- After import, the "library on map" filter is auto-enabled.
 
-## Грабли
+## Gotchas
 
-- Запись из Letterboxd (без imdbId) и из IMDb (с imdbId) НЕ сольются в одну.
-- ZIP с вложенной папкой не распознается — watched.csv ищется строго в корне.
-- Год «совпал», если отсутствует хотя бы с одной стороны — возможны ложные
-  матчи одноимённых фильмов.
+- A record from Letterboxd (no imdbId) and one from IMDb (with imdbId) will NOT merge into one.
+- A ZIP with a nested folder isn't recognized — watched.csv is looked for strictly at the root.
+- The year "matches" if it's missing on at least one side — false matches
+  of same-titled films are possible.
 
-## Дальше (идеи, не в работе)
+## Next (ideas, not in progress)
 
-Вход по нику без файлов — Letterboxd RSS (готовый tmdb-ID!), Trakt, Кинопоиск,
-MyShows, Goodreads RSS: вся матрица — [[personal-collections-matrix]].
-Решение владельца 22.07: пока только идеи.
+Sign in by nickname without files — Letterboxd RSS (ready-made tmdb-ID!), Trakt, Kinopoisk,
+MyShows, Goodreads RSS: the full matrix — [[personal-collections-matrix]].
+Owner's decision 22.07: ideas only for now.

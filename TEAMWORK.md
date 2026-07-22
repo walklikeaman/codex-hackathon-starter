@@ -1,48 +1,48 @@
-# Как работаем командой
+# How we work as a team
 
-Пре-подготовка: правила совместной работы, чтобы вчетвером плюс агенты не толкались.
-Роли и людей раздаём на кикоффе — здесь только схема и правила.
+Pre-prep: the collaboration rules so that four of us plus the agents don't bump into each other.
+Roles and people are handed out at the kickoff — this is just the scheme and the rules.
 
-## Главное правило: разные ветки → один сводит в main
+## The main rule: separate branches → one person merges into main
 
-- Каждый работает в **своей ветке** (`feature/<коротко>`), не в `main`. Напрямую в `main` не пушим — иначе затрёшь чужие изменения и словишь конфликты.
-- Пушишь ветку → открываешь Pull Request → **интегратор** сводит её в `main`.
-- Прямо в `main` пушит **только интегратор**. Остальные — через PR.
-- Общий Vercel собирает превью на каждую ветку, так что показать кусок можно и до мёржа.
+- Everyone works in **their own branch** (`feature/<short>`), not in `main`. We don't push straight to `main` — otherwise you overwrite someone else's changes and hit conflicts.
+- Push your branch → open a Pull Request → the **integrator** merges it into `main`.
+- Only the **integrator** pushes straight into `main`. Everyone else goes through a PR.
+- The shared Vercel builds a preview for every branch, so you can show a piece even before the merge.
 
-## Роли (разобрать на кикоффе, ~1 человек на каждую)
+## Roles (divide up at the kickoff, ~1 person each)
 
-Пока не назначены — впишите себя в `TASKS.md`. Роли не жёсткие: закрыл свой кусок — помоги соседнему.
+Until they're assigned — write yourself into `TASKS.md`. Roles aren't rigid: once you've closed your piece, help the next one.
 
-- **Интегратор / main** — держит `main` зелёным, мёржит PR, ведёт скоуп в `AGENTS.md`, разруливает конфликты.
-- **Бэкенд** — Supabase: схема, авторизация, API. Запускает `./setup.sh --infra`.
-- **Фронтенд** — экраны и флоу.
-- **Демо и деплой** — Vercel, гоняет демо-путь целиком, запись демо, питч.
+- **Integrator / main** — keeps `main` green, merges PRs, owns the scope in `AGENTS.md`, resolves conflicts.
+- **Backend** — Supabase: schema, auth, API. Runs `./setup.sh --infra`.
+- **Frontend** — screens and flows.
+- **Demo and deploy** — Vercel, runs the whole demo path, records the demo, pitch.
 
-## Кикофф (первые 30–45 минут, все вместе)
+## Kickoff (first 30–45 minutes, all together)
 
-1. Заполнить блок «Проект» в `AGENTS.md`: идея, стек, один демо-путь, что вне скоупа.
-2. Договориться о **контракте данных** (таблицы, поля, форма ответа API) — это разблокирует параллельную работу.
-3. Нарезать демо-путь на 4–6 вертикальных срезов, вписать в `TASKS.md`, разобрать по себе.
-4. Владелец поднимает общий Supabase + Vercel и присылает ключи (см. `INSTALL.md`).
+1. Fill out the "Project" block in `AGENTS.md`: idea, stack, one demo path, what's out of scope.
+2. Agree on the **data contract** (tables, fields, the shape of the API response) — this unblocks parallel work.
+3. Slice the demo path into 4–6 vertical slices, write them into `TASKS.md`, divide them among yourselves.
+4. The owner spins up the shared Supabase + Vercel and sends the keys (see `INSTALL.md`).
 
-## Ритм
+## Rhythm
 
-- `git pull` перед началом работы.
-- `/ship` часто, маленькими коммитами.
-- **Интеграция каждые 60–90 минут**: все пушат, интегратор сводит в `main`, деплой превью, проверяем, что демо-путь ещё жив.
+- `git pull` before you start working.
+- `/ship` often, in small commits.
+- **Integration every 60–90 minutes**: everyone pushes, the integrator merges into `main`, deploys a preview, and we check the demo path is still alive.
 
-## Правила
+## Rules
 
-1. Разные ветки, в `main` мёржит только интегратор.
-2. Скоуп зафиксирован в `AGENTS.md`, демо-путь свят. Новая идея → в «вне скоупа», не в код.
-3. Контракт данных — до разделения бэка и фронта.
-4. Не редактировать один файл двумя агентами разом — делим по папкам.
-5. Непрерывный превью-деплой — всегда есть живая ссылка.
-6. Решения и договорённости — в `wiki/` или закреп в чате, чтобы видели все агенты и люди.
+1. Separate branches, only the integrator merges into `main`.
+2. Scope is locked in `AGENTS.md`, the demo path is sacred. A new idea → into "out of scope", not into the code.
+3. The data contract comes before splitting backend and frontend.
+4. Don't have two agents editing one file at once — split by folders.
+5. Continuous preview deploy — there's always a live link.
+6. Decisions and agreements — in `wiki/` or pinned in the chat, so all agents and people can see them.
 
-## Каждый работает в своём Codex
+## Everyone works in their own Codex
 
-Свой Codex на своей ветке — агенты не конфликтуют, пока люди на разных ветках и файлах.
-Интегратор сводит PR (может через `/loop-pr-review`). Одному человеку гнать несколько
-агентов сразу на хакатоне не советую — проще один сфокусированный агент на одну ветку.
+Your own Codex on your own branch — the agents don't conflict as long as the people are on different branches and files.
+The integrator merges the PRs (possibly via `/loop-pr-review`). Running several agents at once for one person
+during a hackathon isn't something I'd recommend — one focused agent per branch is easier.

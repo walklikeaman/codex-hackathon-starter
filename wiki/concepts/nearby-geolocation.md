@@ -1,18 +1,18 @@
-# «Что рядом» — геолокация (issue #17, PR #25)
+# "What's nearby" — geolocation (issue #17, PR #25)
 
-CTA запрашивает геолокацию только по клику; состояния locating / denied /
-unavailable / timeout — каждое с сообщением и кнопкой «Use demo location»
-(детерминированный фолбэк — Трафальгарская площадь, выбрана потому, что
-попадает в лондонский датасет и карточка nearest всегда заполнена).
+The CTA requests geolocation only on click; the states locating / denied /
+unavailable / timeout — each with a message and a "Use demo location" button
+(a deterministic fallback — Trafalgar Square, chosen because it
+falls within the London dataset so the nearest card is always populated).
 
-- Радиусы 100 м / 300 м / 1 км / 3 км; карта летит к пользователю с зумом
-  под радиус, круг радиуса, пульсирующий юзер-пин, ближайший пин со свечением.
-- Ближайшая точка показывается даже вне радиуса — с пометкой «outside radius».
-- Библиотека: `app/lib/nearby.mjs` (haversine в метрах, findNearby,
-  formatDistanceMeters, mapSearchRadiusKm, zoomForRadius) — чистые функции,
-  покрыты тестами ([[testing-conventions]]).
-- Drag карты тоже обновляет локации: RefreshLocationsOnDrag → browseCenter +
-  радиус из вьюпорта, с сохранением выбора/маршрута ([[frontend]]).
+- Radii 100 m / 300 m / 1 km / 3 km; the map flies to the user with a zoom
+  matched to the radius, a radius circle, a pulsing user pin, the nearest pin with a glow.
+- The nearest point is shown even outside the radius — with an "outside radius" label.
+- Library: `app/lib/nearby.mjs` (haversine in meters, findNearby,
+  formatDistanceMeters, mapSearchRadiusKm, zoomForRadius) — pure functions,
+  covered by tests ([[testing-conventions]]).
+- Map drag also updates locations: RefreshLocationsOnDrag → browseCenter +
+  radius from the viewport, preserving the selection/route ([[frontend]]).
 
-Грабля среды: в headless-браузерах без requestAnimationFrame Leaflet flyTo
-замирает — анимации проверять на реальном устройстве.
+Environment gotcha: in headless browsers without requestAnimationFrame, Leaflet flyTo
+freezes — check animations on a real device.

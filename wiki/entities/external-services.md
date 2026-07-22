@@ -1,36 +1,36 @@
-# Внешние сервисы (кроме Wikidata и OpenAI)
+# External services (besides Wikidata and OpenAI)
 
-Отдельные страницы: [[wikidata]], [[openai]]. Здесь остальное, что дергает
-[[api-layer]] и [[frontend]].
+Separate pages: [[wikidata]], [[openai]]. Here is everything else that
+[[api-layer]] and [[frontend]] call.
 
-## OpenStreetMap-семейство
+## OpenStreetMap family
 
-- **Nominatim** (`/api/cities`): геокод города, format=jsonv2, limit=5,
-  радиус из bounding box (кламп 5–50 км), User-Agent `GloryMap/1.0`, кэш 86400.
+- **Nominatim** (`/api/cities`): geocode a city, format=jsonv2, limit=5,
+  radius from the bounding box (clamped 5–50 km), User-Agent `GloryMap/1.0`, cache 86400.
 - **OSRM foot** (`/api/route`): `routing.openstreetmap.de/routed-foot/route/v1/driving`
-  — сегмент `driving` в URL это формальность OSRM, профиль пеший задаёт
-  `routed-foot`. Переопределяется env `WALKING_ROUTER_URL`. Таймаут 8 с;
-  фолбэк на клиенте — прямые линии.
-- **Тайлы**: CARTO dark_all поверх OSM — бесплатные, без ключа.
+  — the `driving` segment in the URL is an OSRM formality, the walking profile is set by
+  `routed-foot`. Overridden via the env `WALKING_ROUTER_URL`. Timeout 8 s;
+  client-side fallback — straight lines.
+- **Tiles**: CARTO dark_all over OSM — free, no key.
 
 ## TMDB
 
-- Только сервер: `api.themoviedb.org/3/movie/{id}/images` → backdrops для
-  [[film-imagery]]. Auth: Bearer `TMDB_API_READ_ACCESS_TOKEN` (или
-  `TMDB_API_KEY`). Кадры на `image.tmdb.org/t/p/w780{path}`.
-- `selectTmdbBackdrops`: дедуп по file_path, сортировка vote_count →
-  vote_average → width, до 24 кандидатов в vision.
-- file_path валидируется regex `^\/[A-Za-z0-9._-]+$` — защита от инъекции в URL.
-- Незадействованный резерв: стиллы эпизодов сериалов
-  (`/tv/{id}/season/{s}/episode/{e}/images`) — см. [[personal-collections-matrix]].
+- Server only: `api.themoviedb.org/3/movie/{id}/images` → backdrops for
+  [[film-imagery]]. Auth: Bearer `TMDB_API_READ_ACCESS_TOKEN` (or
+  `TMDB_API_KEY`). Stills at `image.tmdb.org/t/p/w780{path}`.
+- `selectTmdbBackdrops`: dedup by file_path, sort by vote_count →
+  vote_average → width, up to 24 candidates into vision.
+- file_path is validated by the regex `^\/[A-Za-z0-9._-]+$` — protection against injection into the URL.
+- Unused reserve: episode stills for TV series
+  (`/tv/{id}/season/{s}/episode/{e}/images`) — see [[personal-collections-matrix]].
 
 ## Wikimedia Commons
 
-- Фото «место сейчас» из P18: `commons.wikimedia.org/wiki/Special:FilePath/...`,
-  принудительно https. Входит в allowlist референсов vision вместе с
-  upload.wikimedia.org и images.unsplash.com (демо-фолбэки).
+- "The place today" photos from P18: `commons.wikimedia.org/wiki/Special:FilePath/...`,
+  forced to https. Part of the vision reference allowlist alongside
+  upload.wikimedia.org and images.unsplash.com (demo fallbacks).
 
 ## Bing Images
 
-- Ссылка «Find scenes filmed here» — просто внешний поисковый URL без ключей;
-  исторический фолбэк до появления vision-матчинга.
+- The "Find scenes filmed here" link — just an external search URL with no keys;
+  a historical fallback from before vision matching appeared.

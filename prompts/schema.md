@@ -1,34 +1,34 @@
 ---
-description: Спроектировать МИНИМАЛЬНУЮ схему Supabase под демо-путь и применить её — только после того, как идея зафиксирована. Ведёт один человек (бэкенд).
+description: Design the MINIMAL Supabase schema for the demo path and apply it — only after the idea is locked. Owned by one person (backend).
 ---
 
-# /schema — минимальная база под демо, не больше
+# /schema — a minimal database for the demo, nothing more
 
-Запускать ТОЛЬКО когда идея и демо-путь зафиксированы (блок «Проект» в AGENTS.md заполнен).
-До этого таблиц не создаём — схема наугад под неизвестную идею это выброшенное время.
+Run ONLY once the idea and demo path are locked (the "Project" block in AGENTS.md is filled in).
+Before that, we don't create tables — a schema guessed at for an unknown idea is wasted time.
 
-Схему ведёт **один человек** (бэкенд); остальные читают базу через общие ключи. Так
-не будет конфликтующих миграций в середине хакатона.
+The schema is owned by **one person** (backend); everyone else reads the database via shared keys. That
+way there are no conflicting migrations in the middle of the hackathon.
 
-## Шаги
+## Steps
 
-1. **Возьми демо-путь** и выпиши, какие данные он реально трогает — не «на будущее»,
-   а ровно то, что показывает демо. Обычно это 1–3 таблицы.
-2. **Спроектируй минимум:** таблицы, поля, связи. Никаких таблиц «про запас».
-   Явно назови, что сознательно НЕ делаем сейчас.
-3. **Применить** через Supabase MCP (`apply_migration` / `execute_sql`) на общий проект.
-   Одна миграция с понятным именем.
-4. **RLS.** По умолчанию Supabase блокирует anon-доступ. Для демо включи RLS и добавь
-   политики ровно под демо-путь (например, публичное чтение + вставка для anon, если так
-   задумано). Не оставляй таблицу открытой шире, чем нужно демо.
-5. **Проверка:** сделай одну запись и одно чтение через тот же anon-ключ, что и приложение
-   (`app`/корень читает `NEXT_PUBLIC_SUPABASE_*`). Прошло — схема готова.
-6. **Зафиксируй контракт данных** в `TASKS.md` (таблицы + поля + форма ответа), чтобы
-   фронтенд шёл параллельно.
+1. **Take the demo path** and write out what data it actually touches — not "for the future,"
+   but exactly what the demo shows. Usually that's 1–3 tables.
+2. **Design the minimum:** tables, fields, relations. No "just-in-case" tables.
+   Explicitly name what we're deliberately NOT doing right now.
+3. **Apply** it via Supabase MCP (`apply_migration` / `execute_sql`) to the shared project.
+   One migration with a clear name.
+4. **RLS.** By default Supabase blocks anon access. For the demo, enable RLS and add
+   policies scoped exactly to the demo path (e.g. public read + insert for anon, if that's
+   the intent). Don't leave a table open wider than the demo needs.
+5. **Verify:** do one write and one read with the same anon key the app uses
+   (`app`/root reads `NEXT_PUBLIC_SUPABASE_*`). It passed — the schema is ready.
+6. **Lock the data contract** in `TASKS.md` (tables + fields + response shape) so the
+   frontend can proceed in parallel.
 
-## Правила
+## Rules
 
-- Минимум под демо, расширяем только когда демо-путь этого требует.
-- Меняешь схему на ходу — предупреди команду (контракт данных в `TASKS.md`).
-- Никаких секретов в клиенте: приватные операции — через server-side (service_role в env
-  сервера, не в браузере), не в `NEXT_PUBLIC_*`.
+- Minimum for the demo; expand only when the demo path requires it.
+- Change the schema on the fly — warn the team (data contract in `TASKS.md`).
+- No secrets in the client: private operations go server-side (service_role in the server's
+  env, not in the browser), not in `NEXT_PUBLIC_*`.

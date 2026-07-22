@@ -1,21 +1,21 @@
-# GloryMap — продукт
+# GloryMap — the product
 
-Карта реальных мест из твоих любимых фильмов, сериалов и книг: личная
-коллекция → значимые места города → пеший «стори-маршрут» с аудиогидом.
-Хакатон OpenAI Build Week, Тель-Авив, 21.07.2026. Живёт:
+A map of real places from your favorite films, series, and books: personal
+collection → the city's notable places → a walking "story route" with an audio guide.
+OpenAI Build Week hackathon, Tel Aviv, 21.07.2026. Lives at:
 https://codex-hackathon-starter.vercel.app
 
-- История имени: SceneMap → **GloryMap** (PR #31); внутренние имена
-  компонентов и localStorage-ключи `scenemap-*` сохранены намеренно.
-- Слои: [[frontend]] (клиентский монолит) → [[api-layer]] (7 BFF-роутов) →
-  [[wikidata]] / [[openai]] / [[external-services]]; [[supabase]] создан, но
-  не используется рантаймом.
-- Главный сценарий: [[demo-path]]. Фичи: [[personal-library]],
+- Name history: SceneMap → **GloryMap** (PR #31); the internal component names
+  and localStorage keys `scenemap-*` were kept on purpose.
+- Layers: [[frontend]] (client monolith) → [[api-layer]] (7 BFF routes) →
+  [[wikidata]] / [[openai]] / [[external-services]]; [[supabase]] powers auth
+  and cloud-synced libraries (locations stay live, not persisted).
+- Main scenario: [[demo-path]]. Features: [[personal-library]],
   [[location-discovery]], [[film-imagery]], [[tours-and-voice]],
   [[nearby-geolocation]].
-- Приватность: библиотека и фото пользователя не покидают браузер; ключи
-  моделей — только server-side.
-- Процесс: [[team]], [[deployment-pipeline]], [[testing-conventions]];
-  летопись решений — `wiki/log.md` (append-only, новое сверху).
-- Продуктовая страница — корневой `README.md` (англ., под Devpost);
-  исходный бриф — `Context/brief-scenemap-design.md`.
+- Privacy: the user's library and photos never leave the browser; model keys —
+  server-side only.
+- Process: [[team]], [[deployment-pipeline]], [[testing-conventions]];
+  the chronicle of decisions — `wiki/log.md` (append-only, newest on top).
+- Product page — the root `README.md` (English, for Devpost); the
+  original brief — `Context/brief-scenemap-design.md`.

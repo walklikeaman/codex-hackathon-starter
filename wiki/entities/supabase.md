@@ -1,30 +1,30 @@
-# Supabase — auth и облачные библиотеки (с 22.07 вечера)
+# Supabase — auth and cloud libraries (since the evening of 22.07)
 
-ОБНОВЛЕНО: после PR #42/#43 Supabase используется рантаймом — **Supabase Auth**
-(Google/Facebook OAuth, кнопка Login with Google на главном экране) и
-**облачное хранение личной библиотеки** (нормализованный JSON, user-scoped
-RLS; гостевые импорты остаются локальными и мёржатся после логина —
-[[personal-library]]). Локации по-прежнему НЕ персистятся — живые из
-[[wikidata]] с кэшами Next/CDN.
+UPDATED: after PR #42/#43 Supabase is used at runtime — **Supabase Auth**
+(Google/Facebook OAuth, a Login with Google button on the home screen) and
+**cloud storage of the personal library** (normalized JSON, user-scoped
+RLS; guest imports stay local and are merged after login —
+[[personal-library]]). Locations are still NOT persisted — they're live from
+[[wikidata]] with Next/CDN caches.
 
-## Что существует
+## What exists
 
-- Общий проект команды `codex-hackathon`, ref `quvxxqxowathrcyshhwj`,
-  регион Frankfurt. URL + anon-ключ вкоммичены в `.env.example`
-  (намеренно: публичны по дизайну, защита — RLS; НЕ утечка).
-- Миграция `scenemap_initial_schema` (создана владельцем 21.07):
+- The team's shared project `codex-hackathon`, ref `quvxxqxowathrcyshhwj`,
+  region Frankfurt. The URL + anon key are committed in `.env.example`
+  (on purpose: public by design, protection is RLS; NOT a leak).
+- Migration `scenemap_initial_schema` (created by the owner on 21.07):
   - `locations` (work_wikidata_id, work_tmdb_id, work_title, work_year,
     kind film|book, loc_wikidata_id, loc_name, lat, lng, commons_image, city;
-    уникальность по паре work+loc)
+    uniqueness on the work+loc pair)
   - `scenes` (location_id → locations, scene_title, description,
     source wikidata|ai)
-  - RLS пермиссивный: anon читает и пишет обе таблицы; service_role не нужен.
-- Обе таблицы **пусты** — сид Wikidata не запускался: команда выбрала
-  живые запросы вместо персистентности.
+  - RLS is permissive: anon reads and writes both tables; service_role is not needed.
+- Both tables are **empty** — the Wikidata seed was never run: the team chose
+  live queries over persistence.
 
-## Когда пригодится
+## When it will come in handy
 
-- Кэш дорогих AI-результатов (описания сцен, vision-матчи) между инстансами —
-  сейчас кэш film-image только CDN/in-memory.
-- Общие фичи между пользователями (лента, сохранённые маршруты, wishlist).
-- Управление — через Supabase MCP владельца или `./setup.sh --infra`.
+- Caching expensive AI results (scene descriptions, vision matches) across instances —
+  right now the film-image cache is CDN/in-memory only.
+- Shared features between users (a feed, saved routes, wishlist).
+- Management — via the owner's Supabase MCP or `./setup.sh --infra`.

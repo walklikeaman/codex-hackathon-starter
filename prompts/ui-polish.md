@@ -1,30 +1,30 @@
 ---
-description: Быстрая визуальная полировка демо за ~30 минут — так, чтобы выглядело намеренно, а не «набросали». Полироль, не редизайн.
+description: A fast ~30-minute visual polish of the demo — so it looks intentional, not "thrown together." Polish, not redesign.
 ---
 
-# /ui-polish — чтобы демо выглядело намеренно
+# /ui-polish — make the demo look intentional
 
-Судьи оценивают и то, как выглядит. За 30 минут сырой экран можно сделать
-презентабельным, не переписывая. Это полироль поверх рабочего демо-пути, не редизайн.
+Judges also grade how it looks. In 30 minutes a rough screen can be made
+presentable without a rewrite. This is polish on top of a working demo path, not a redesign.
 
-## Проход (по убыванию отдачи)
+## Pass (in descending order of payoff)
 
-1. **Один акцентный цвет + нейтрали.** Выбери один осмысленный акцент под тему проекта,
-   всё остальное — сдержанные серые/фон. Не радуга.
-2. **Ритм и воздух.** Единая шкала отступов (8/16/24), заголовки крупнее и с воздухом,
-   основной текст ~65 символов в строку. Не лепи всё к краям.
-3. **Состояния.** Пустое состояние (пока нет данных — понятная заглушка, не белый экран),
-   загрузка (спиннер/скелетон), ошибка (что случилось и что делать). Демо часто ломается
-   именно на пустом/загрузочном состоянии.
-4. **Одна типографика.** Один шрифт (системный ок), 3–4 размера, читаемая высота строки.
-5. **Мобильный и тёмная тема** — если демо покажут с телефона: `max-width` картинкам,
-   flex/grid с `gap`, тело страницы не скроллится вбок.
-6. **Убери мусор** — плейсхолдеры, «lorem», тестовые кнопки, консольные ошибки.
+1. **One accent color + neutrals.** Pick one meaningful accent that fits the project's theme,
+   everything else — restrained grays/background. No rainbow.
+2. **Rhythm and breathing room.** A single spacing scale (8/16/24), headings larger and with air,
+   body text ~65 characters per line. Don't cram everything against the edges.
+3. **States.** Empty state (no data yet — a clear placeholder, not a blank screen),
+   loading (spinner/skeleton), error (what happened and what to do). Demos often break
+   precisely on the empty/loading state.
+4. **One typography.** One font (system is fine), 3–4 sizes, a readable line height.
+5. **Mobile and dark theme** — if the demo will be shown from a phone: `max-width` on images,
+   flex/grid with `gap`, the page body doesn't scroll sideways.
+6. **Remove the junk** — placeholders, "lorem," test buttons, console errors.
 
-## Правила
+## Rules
 
-- Не трогай логику демо-пути — только внешний слой. Сломал поток — откати.
-- Реальный контент, не «lorem». Пустых экранов на сцене быть не должно.
-- Проверяй в браузере после каждого шага, а не «на глаз в коде».
+- Don't touch the demo path's logic — only the outer layer. Broke the flow — roll it back.
+- Real content, not "lorem." There should be no empty screens on stage.
+- Check in the browser after each step, not "by eye in the code."
 
-Выдай короткий список того, что поменял, и одно, что стоило бы улучшить, но не успели.
+Deliver a short list of what you changed, and one thing that would've been worth improving but you didn't get to.

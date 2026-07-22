@@ -1,82 +1,82 @@
-# Префлайт — готовимся к хакатону
+# Preflight — getting ready for the hackathon
 
-OpenAI Build Week · Тель-Авив · 21 июля, 17:00 → полночь · строим на Codex.
+OpenAI Build Week · Tel Aviv · July 21, 17:00 → midnight · we build on Codex.
 
-Приходим на площадку с готовым окружением и сразу строим продукт на Codex. Всё,
-что можно поставить дома, ставим накануне: аккаунты, инструменты, сам агент. На
-месте не тратим вечер на настройку. Примерно 25 минут.
+We show up at the venue with a ready environment and start building the product on Codex right away. Everything
+that can be installed at home, we install the night before: accounts, tools, the agent itself. On
+site we don't burn the evening on setup. About 25 minutes.
 
-## Что поставить заранее
+## What to install ahead of time
 
-У каждого свой — только два аккаунта. База и деплой общие на всю команду, их
-заводит владелец один раз (см. ниже).
+Each person has just two accounts of their own. The database and deploy are shared across the whole team; the owner
+sets them up once (see below).
 
-1. **Node 22 или новее** — проверь `node --version`. Нет — поставь LTS с nodejs.org
-   или `nvm install 22`.
-2. **Аккаунт OpenAI** — под ним заходим в Codex. На событии дают $150 кредитов.
-3. **Аккаунт GitHub** — общий репозиторий команды. Дай владельцу свой ник, чтобы
-   он добавил тебя в Collaborators (иначе не сможешь пушить).
+1. **Node 22 or newer** — check with `node --version`. Don't have it — install the LTS from nodejs.org
+   or `nvm install 22`.
+2. **OpenAI account** — you sign in to Codex with it. The event hands out $150 in credits.
+3. **GitHub account** — the team's shared repository. Give the owner your username so
+   they can add you to Collaborators (otherwise you won't be able to push).
 
-**Владелец команды — один раз на всех:** заведи один проект Supabase и один Vercel;
-в Vercel сделай Import и выбери общий GitHub-репозиторий (каждый пуш ветки станет
-превью-деплоем); пришли команде ключи Supabase (URL и anon key); у себя запусти
-`./setup.sh --infra`, чтобы твой Codex мог управлять схемой.
+**Team owner — once for everyone:** create one Supabase project and one Vercel project;
+in Vercel do an Import and pick the shared GitHub repository (every branch push becomes a
+preview deploy); send the team the Supabase keys (URL and anon key); on your own machine run
+`./setup.sh --infra` so your Codex can manage the schema.
 
-## Установка
+## Install
 
 ```bash
-# общий репозиторий команды
+# the team's shared repository
 git clone https://github.com/walklikeaman/codex-hackathon-starter.git
 cd codex-hackathon-starter
 
-./setup.sh      # ставит CodeGraph, подключает его к Codex, кладёт скиллы (участнику этого хватает)
-./scaffold.sh   # рабочее Next.js-приложение в ./app (пакеты качаются сейчас, не на сцене)
-codex           # вход в Codex
+./setup.sh      # installs CodeGraph, connects it to Codex, drops in the skills (enough for a participant)
+./scaffold.sh   # working Next.js app in ./app (packages download now, not on stage)
+codex           # sign in to Codex
 ```
 
-Скопируй `.env.example` в `app/.env.local` и впиши общие ключи Supabase (пришлёт
-владелец). Проверка: `codex mcp list` показывает codegraph; в `~/.codex/prompts`
-лежат `ship.md` и `loop-*.md`. Деплой не настраиваешь — пушишь ветку, общий Vercel
-собирает превью сам.
+Copy `.env.example` to `app/.env.local` and fill in the shared Supabase keys (the owner will
+send them). Check: `codex mcp list` shows codegraph; `~/.codex/prompts` contains
+`ship.md` and `loop-*.md`. You don't configure deploy — you push a branch and the shared Vercel
+builds the preview itself.
 
-## Как работаем в Codex
+## How we work in Codex
 
-1. **Фиксируем скоуп** — заполняем блок «Проект» в `AGENTS.md`: что строим, стек,
-   единственный демо-путь, что вне скоупа.
-2. **Описываем задачу словами** — Codex планирует сам и читает структуру через CodeGraph.
-3. **Codex делает на автопилоте** — пишет, запускает, проверяет вживую. Останавливается
-   только на необратимом (деплой в прод, отправка, удаление данных).
-4. **Гоним демо-путь до зелёного** — `/loop-demo` проходит весь путь как судья, чинит
-   первую поломку, повторяет.
-5. **Сохраняем** — `/ship` делает коммит, пуш и запись в журнал.
+1. **Lock in the scope** — fill in the "Project" block in `AGENTS.md`: what we're building, the stack,
+   the single demo path, what's out of scope.
+2. **Describe the task in words** — Codex plans on its own and reads the structure through CodeGraph.
+3. **Codex works on autopilot** — it writes, runs, and verifies live. It only stops
+   at anything irreversible (deploy to prod, sending, deleting data).
+4. **We run the demo path to green** — `/loop-demo` walks the whole path like a judge, fixes
+   the first breakage, and repeats.
+5. **We save** — `/ship` makes a commit, a push, and a journal entry.
 
-## Команды
+## Commands
 
-- `/autopilot` — веди задачу сам до зелёного гейта и стоп (автономия до гейта, не сквозь него).
-- `/ship` — сохранить и запушить: точечный стейджинг, чистый коммит, проверка синка.
-- `/loop-demo` — довести один демо-путь до зелёного.
-- `/loop-lint` — перед коммитом привести линт, типы и сборку к чистоте.
-- `/loop-debug` — чинить баг; записывает попытки, чтобы не ходить по кругу.
-- `/loop-spec-ship` — небольшую спеку довести до зелёного и заслать.
-- `/loop-guardrails` — записать повторяющуюся ошибку в guardrails.
-- `/loop-docs-sync`, `/loop-migrate`, `/loop-pr-review`, `/loop-de-sloppify` — по необходимости.
-- `/schema` — минимальная схема Supabase (после фиксации идеи), `/ui-polish` — полировка демо, `/pitch` — 90-секундный питч для судей.
+- `/autopilot` — drive the task to the green gate on your own and stop (autonomy up to the gate, not through it).
+- `/ship` — save and push: surgical staging, a clean commit, a sync check.
+- `/loop-demo` — take one demo path to green.
+- `/loop-lint` — get lint, types, and build clean before committing.
+- `/loop-debug` — fix a bug; it records attempts so you don't go in circles.
+- `/loop-spec-ship` — take a small spec to green and ship it.
+- `/loop-guardrails` — record a recurring mistake into the guardrails.
+- `/loop-docs-sync`, `/loop-migrate`, `/loop-pr-review`, `/loop-de-sloppify` — as needed.
+- `/schema` — minimal Supabase schema (after the idea is locked), `/ui-polish` — demo polish, `/pitch` — a 90-second pitch for the judges.
 
-## Что уже умеет окружение
+## What the environment can already do
 
-- **Codex заранее проинструктирован** — читает `AGENTS.md` и работает по нашим
-  правилам, не нужно объяснять заново каждую сессию.
-- **CodeGraph** — локальный граф кода; отвечает «где X, что сломается от Y» без
-  слепого grep.
-- **Supabase и Vercel** — база и деплой прямо из агента.
-- **Память проекта** (`wiki/`, `Context/`) — решения и грабли копятся между сессиями.
-- **Guardrails** — жёсткие правила, показываются в начале сессии.
+- **Codex is pre-instructed** — it reads `AGENTS.md` and works by our
+  rules; no need to re-explain every session.
+- **CodeGraph** — a local code graph; it answers "where is X, what breaks if Y" without
+  blind grep.
+- **Supabase and Vercel** — database and deploy straight from the agent.
+- **Project memory** (`wiki/`, `Context/`) — decisions and gotchas accumulate between sessions.
+- **Guardrails** — hard rules, shown at the start of the session.
 
-## На демо
+## At the demo
 
-- Задеплой превью-ссылку рано — всегда есть что показать.
-- Как только демо заработало, запиши экран на 60–90 секунд (`⌘⇧5`) — страховка на случай,
-  если на сцене отвалится Wi-Fi.
-- Один рабочий поток важнее пяти наполовину. Судьи смотрят живое демо.
+- Deploy a preview link early — there's always something to show.
+- As soon as the demo works, record the screen for 60–90 seconds (`⌘⇧5`) — insurance in case
+  the Wi-Fi drops on stage.
+- One working flow beats five half-done ones. The judges watch a live demo.
 
-Вопросы по установке — в чат.
+Questions about setup — post them in the chat.

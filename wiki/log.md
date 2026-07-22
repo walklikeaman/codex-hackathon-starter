@@ -46,18 +46,19 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ## [2026-07-22] ingest | Wiki rebuilt as a knowledge graph + collections matrix
 
-- Прочитан весь код (6 параллельных читателей: frontend, API, либы, тесты,
-  история) и перестроена wiki: заполнены overview, 9 entities и 7 concepts с
-  перекрёстными [[links]] — репозиторий читается как Obsidian-граф.
-- Зафиксированы легко забываемые факты: Supabase создан, но рантаймом не
-  используется; прод-деплой только вручную через GitHub gate; превью без
-  OPENAI_API_KEY; негативные ответы film-image приходят как 200 + reason.
-- Добавлен sources/personal-collections-matrix.md: проверенный живьём ресёрч
-  «откуда читать личные коллекции» (Letterboxd RSS с готовым tmdb-ID, Trakt
-  без OAuth, Кинопоиск/MyShows для RU, Goodreads RSS; Spotify dev mode — 5
-  юзеров) + идеи про кадры фильмов (IMDb нельзя; резерв — стиллы эпизодов
-   TMDB, Fanart.tv) и «вставь ник Letterboxd». Решение владельца: пока идеи,
-   не в работе.
+- Read the entire codebase (6 parallel readers: frontend, API, libs, tests,
+  history) and rebuilt the wiki: filled in the overview, 9 entities and 7
+  concepts with cross-referencing [[links]] — the repository reads like an
+  Obsidian graph.
+- Recorded easily forgotten facts: Supabase is created but not used at
+  runtime; production deploy is manual only, through a GitHub gate; preview
+  has no OPENAI_API_KEY; negative film-image responses come back as 200 + reason.
+- Added sources/personal-collections-matrix.md: live-verified research on
+  "where to read personal collections from" (Letterboxd RSS with a ready-made
+  tmdb-ID, Trakt without OAuth, Kinopoisk/MyShows for RU, Goodreads RSS; Spotify
+  dev mode — 5 users) + ideas about film frames (IMDb is off-limits; fallback is
+   TMDB episode stills, Fanart.tv) and "paste your Letterboxd handle". Owner's
+   decision: ideas for now, not in progress.
 
 ## [2026-07-22] update | Devpost Codex and GPT-5.6 evidence
 
@@ -73,26 +74,26 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ## [2026-07-22] update | README architecture and Codex development story
 
-- README теперь включает воспроизводимые инструкции локального запуска и проверочный путь для оценки проекта.
-- Подробно описаны подтверждённая full-stack архитектура, границы приватности, API и внешние источники, веточный GitHub-процесс и staging/production Actions.
-- Раздел о Codex и GPT-5.6 отделяет процесс совместной разработки от использования модели внутри функций GloryMap; требования про создание видео намеренно не добавлялись.
+- The README now includes reproducible local-run instructions and a verification path for evaluating the project.
+- Documented in detail the confirmed full-stack architecture, privacy boundaries, the API and external sources, the branch-based GitHub process, and the staging/production Actions.
+- The Codex and GPT-5.6 section separates the collaborative development process from the model's use inside GloryMap features; video-creation requirements were intentionally not added.
 
 ## [2026-07-22] update | Product-only public README
 
-- README сфокусирован на пользовательской боли, ценности GloryMap и пути от личной коллекции к реальному маршруту.
-- Удалены внутренние элементы подготовки: elevator-pitch label, формат импорта, тестовые метрики, API/env, локальная разработка и агентный процесс.
-- Отдельно подчёркнута ключевая функция: фильмы, сериалы и книги из личных коллекций отображаются на карте при наличии значимых локаций в выбранном городе.
+- The README focuses on user pain, GloryMap's value, and the path from a personal collection to a real route.
+- Removed internal preparation elements: the elevator-pitch label, import format, test metrics, API/env, local development, and the agent process.
+- The key feature is called out separately: films, series, and books from personal collections appear on the map when there are meaningful locations in the selected city.
 
 ## [2026-07-22] update | Emotional story-first elevator pitch
 
-- README pitch теперь начинается с эмоциональной связи с фильмами, сериалами и книгами, которые сопровождают человека годами.
-- Product vision описывает единую личную карту для библиотек из Letterboxd, Netflix, Prime Video, Goodreads и Kindle, не сводя идею к механике одного ZIP-импорта.
+- The README pitch now opens with an emotional connection to the films, series, and books that accompany a person for years.
+- The product vision describes a single personal map for libraries from Letterboxd, Netflix, Prime Video, Goodreads, and Kindle, without reducing the idea to the mechanics of a single ZIP import.
 
 ## [2026-07-22] update | Product README and elevator pitch
 
-- Корневой README заменён с описания hackathon starter kit на англоязычную продуктовую страницу GloryMap.
-- Добавлены elevator pitch, live demo, проверяемый demo flow, функции, архитектура, privacy model, API/env reference, ограничения и roadmap.
-- Текст использует подтверждённые результаты Letterboxd browser-проверок и не обещает покрытие городов, которого нет в источниках.
+- The root README was changed from a hackathon starter kit description to an English-language GloryMap product page.
+- Added an elevator pitch, live demo, a verifiable demo flow, features, architecture, privacy model, API/env reference, limitations, and roadmap.
+- The text uses confirmed results from Letterboxd browser checks and does not promise city coverage that is absent from the sources.
 
 ## [2026-07-22] update | Restore scene-matcher candidate recall
 
@@ -104,10 +105,10 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ## [2026-07-22] update | Letterboxd ZIP drives the personal map
 
-- Personal Library принимает полный Letterboxd ZIP и локально читает корневые `watched.csv` и `ratings.csv`; архив и список не отправляются на сервер.
-- После импорта карта автоматически показывает пересечение личной библиотеки с доступными локациями выбранного города; фильтр можно отключить в library panel.
-- Реальный export импортировал 2 422 фильма и 2 407 оценок; в текущих London data нашлось 3 фильма и 6 локаций.
-- ZIP ограничен 25 MB, извлечённые CSV — 10 MB; отдельные Letterboxd/IMDb CSV продолжают работать. `npm test` (62/62) и `npm run build` зелёные.
+- The Personal Library accepts a full Letterboxd ZIP and reads the root `watched.csv` and `ratings.csv` locally; the archive and the list are not sent to the server.
+- After import, the map automatically shows the intersection of the personal library with the available locations of the selected city; the filter can be turned off in the library panel.
+- A real export imported 2,422 films and 2,407 ratings; the current London data contained 3 films and 6 locations.
+- The ZIP is limited to 25 MB and the extracted CSVs to 10 MB; standalone Letterboxd/IMDb CSVs still work. `npm test` (62/62) and `npm run build` are green.
 
 ## [2026-07-21] update | Location-specific film scene matching
 
@@ -247,15 +248,15 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ## [2026-07-21] incident | First Vercel deploy targeted production
 
-- Ветка `feature/scenemap-skeleton` запушена с commit `dd17ac7`; локальный и Vercel builds зелёные.
-- Первый `vercel deploy --yes` после создания проекта неожиданно получил target `production`, хотя команда запускалась без `--prod`; deployment Ready и отвечает HTTP 200 на `https://codex-hackathon-starter-lac.vercel.app`.
-- GitHub Login Connection в Vercel не настроен, поэтому автоматическая Git-интеграция не подключилась; ручной CLI deploy сработал. В guardrails добавлен явный `--target=preview` для новых проектов.
+- The `feature/scenemap-skeleton` branch was pushed at commit `dd17ac7`; local and Vercel builds are green.
+- The first `vercel deploy --yes` after creating the project unexpectedly got the `production` target even though the command ran without `--prod`; the deployment is Ready and returns HTTP 200 at `https://codex-hackathon-starter-lac.vercel.app`.
+- The GitHub Login Connection in Vercel is not configured, so the automatic Git integration did not connect; the manual CLI deploy worked. An explicit `--target=preview` for new projects was added to the guardrails.
 
 ## [2026-07-21] update | SceneMap skeleton slice 1
 
-- Зафиксирован brief в `Context/brief-scenemap-design.md` и заполнен блок «Проект» в `AGENTS.md`.
-- Собран первый срез MVP: тёмная Leaflet-карта Лондона, 10 hardcoded film-location pins, карточка локации, список точек и локальная линия маршрута после добавления 3 stops.
-- Supabase-схема и таблицы не создавались; следующий срез — контракт данных + seed/API.
+- Recorded the brief in `Context/brief-scenemap-design.md` and filled in the "Project" block in `AGENTS.md`.
+- Assembled the first MVP slice: a dark Leaflet map of London, 10 hardcoded film-location pins, a location card, a list of points, and a local route line after adding 3 stops.
+- The Supabase schema and tables were not created; the next slice is the data contract + seed/API.
 ## [2026-07-21] update | Codebase mapped for GSD initialization
 
 - Created the seven reference documents in `.planning/codebase/`.

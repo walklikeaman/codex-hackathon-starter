@@ -2,49 +2,49 @@
 description: Bounded autopilot — drive ONE well-specified task to verified-green on your own (spec → build → run → verify → /ship to your branch), then STOP at the human gate. Autonomy up to the gate, never through it.
 ---
 
-# /autopilot — веди задачу сам до зелёного, стоп на гейте
+# /autopilot — drive the task yourself to green, stop at the gate
 
-Одна команда «сделай это сам». Гоняет задачу по циклу автономно и
-**останавливается на человеческом гейте** — не мёржит в `main`, не деплоит в прод,
-не решает за команду. Автономия ДО гейта, но никогда сквозь него.
+One command that says "do this yourself." It runs the task through the loop autonomously and
+**stops at the human gate** — it doesn't merge into `main`, doesn't deploy to prod,
+doesn't decide on the team's behalf. Autonomy UP TO the gate, but never through it.
 
-## Цикл (одна задача)
+## Loop (one task)
 
-1. **Спека** — перепиши задачу целиком: Цель / Сейчас / Нужно / Как / Готово-когда.
-   Гейт на спеку: если её нельзя отдать свежему агенту и выполнить — доточи, прежде чем кодить.
-2. **Реализация** — на своей ветке (`feature/<name>`), точечно, простейшим путём.
-   Если код уже есть — спроси структуру у CodeGraph, не грепай вслепую.
-3. **Проверка запуском** — прогони по-настоящему: lint/build чисто (`/loop-lint`),
-   демо-путь зелёный (`/loop-demo`). Не «должно работать», а открыл результат и убедился.
-4. **Чекпоинт** — `/ship` в СВОЮ ветку (точечный стейджинг, чистый коммит, пуш), открой PR.
-5. **СТОП + отчёт.** Заверши ход отчётом (ниже). Не мёржи, не деплой в прод, не отправляй.
+1. **Spec** — rewrite the whole task: Goal / Now / Need / How / Done-when.
+   Gate on the spec: if you couldn't hand it to a fresh agent and have them execute it — sharpen it before you code.
+2. **Implementation** — on your own branch (`feature/<name>`), surgically, the simplest way.
+   If the code already exists — ask CodeGraph for the structure, don't grep blindly.
+3. **Verify by running** — run it for real: lint/build clean (`/loop-lint`),
+   demo path green (`/loop-demo`). Not "should work," but you opened the result and confirmed it.
+4. **Checkpoint** — `/ship` to YOUR branch (surgical staging, clean commit, push), open a PR.
+5. **STOP + report.** End the turn with a report (below). Don't merge, don't deploy to prod, don't send anything.
 
-Длинная/многофайловая задача → вынеси шаги 2–3 в отдельную сессию или волну агентов,
-в основную нить верни только вывод (context-rot hygiene).
+Long/multi-file task → offload steps 2–3 into a separate session or a wave of agents,
+and return only the output to the main thread (context-rot hygiene).
 
-## Жёсткие стопы — автопилот их НЕ переходит сам
+## Hard stops — autopilot does NOT cross these on its own
 
-- **Мёрж в `main`** — это интегратор через PR.
-- **Деплой в прод-домен, отправка чего-либо наружу, трата денег.**
-- **Схема БД / таблицы, пока идея не зафиксирована** — решаем в первые 15 минут кикоффа.
-- **Продуктовое или дизайн-решение по вкусу** — предложи вариант, не угадывай.
-- Удаление данных, force-push, `--no-verify`, снятие чужих правок.
+- **Merge into `main`** — that's the integrator, via a PR.
+- **Deploy to the prod domain, sending anything outward, spending money.**
+- **DB schema / tables while the idea isn't locked** — decide this in the first 15 minutes of kickoff.
+- **A product or design decision that's a matter of taste** — propose an option, don't guess.
+- Deleting data, force-push, `--no-verify`, discarding someone else's edits.
 
-Дошёл до стопа — остановись и спроси, а не «решай».
+Hit a stop — stop and ask, don't "just decide."
 
-## Отчёт (всегда в конце)
+## Report (always at the end)
 
 ```
-АВТОПИЛОТ — <задача> — дошёл до: ЗЕЛЁНЫЙ ГЕЙТ
-- Изменил: <файлы, по строке>
-- Проверка: lint чисто · демо-путь зелёный
-- Запушено: <ветка> @ <hash> · PR открыт
-- ★ Нужно решение человека: <что подтвердить / смёржить>
+AUTOPILOT — <task> — reached: GREEN GATE
+- Changed: <files, one per line>
+- Verify: lint clean · demo path green
+- Pushed: <branch> @ <hash> · PR open
+- ★ Needs a human decision: <what to confirm / merge>
 ```
 
-Уперся в жёсткий стоп раньше гейта: `АВТОПИЛОТ — пауза: <почему> — нужно твоё решение по <X>`.
+Hit a hard stop before the gate: `AUTOPILOT — paused: <why> — need your decision on <X>`.
 
-## Очередь задач
+## Task queue
 
-Несколько задач — веди по одной через полный цикл, отчёт, следующая (можно через `/loop`).
-Всё равно стоп на гейте каждой; пачкой не мёржит и не шипит.
+Several tasks — run them one at a time through the full loop, report, next (you can use `/loop`).
+Still stop at each one's gate; it doesn't merge or ship in a batch.

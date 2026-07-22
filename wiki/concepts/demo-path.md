@@ -1,19 +1,19 @@
-# Демо-путь (свят)
+# Demo path (sacred)
 
-Единственный сценарий, который обязан работать на сцене (блок «Проект» в
-`AGENTS.md`). Всё, что не он, — вне scope, пока он не зелёный.
+The one scenario that must work on stage (the "Project" section in
+`AGENTS.md`). Everything else is out of scope until it is green.
 
-1. Открыть [[glorymap-app]] → карта Лондона с локациями (или свои фильмы из
+1. Open [[glorymap-app]] → map of London with locations (or your own films from
    [[personal-library]]).
-2. Выбрать город / «Use my location» ([[nearby-geolocation]]).
-3. Открыть карточку локации: связь с произведением, фото «место сейчас»,
-   AI-кадр из фильма ([[film-imagery]]), аудиогид ([[tours-and-voice]]).
-4. Добавить 3 точки → пеший маршрут (или тур по бюджету 30/60/120 минут).
+2. Pick a city / "Use my location" ([[nearby-geolocation]]).
+3. Open a location card: link to the work, a "the place now" photo,
+   an AI film still ([[film-imagery]]), an audio guide ([[tours-and-voice]]).
+4. Add 3 points → walking route (or a tour on a 30/60/120-minute budget).
 
-Подстраховки демо, встроенные в код: фолбэк-датасет Лондона, пунктирный
-маршрут при падении OSRM, детерминированный fallback-гид без AI, demo-location
-(Трафальгар) при запрете гео. Скринкаст зелёного пути 60–90 сек — страховка
-от Wi-Fi на сцене.
+Demo safeguards baked into the code: London fallback dataset, dashed
+route when OSRM fails, deterministic fallback guide without AI, demo-location
+(Trafalgar) when geo is denied. A 60–90 sec screencast of the green path is insurance
+against the stage Wi-Fi.
 
-Вне scope (решения владельца): auth, аудио-отрывки из фильмов, живые API
-Letterboxd/Amazon, скрейпинг, Тель-Авив как демо-город (пусто в данных).
+Out of scope (owner's decisions): auth, audio clips from films, live Letterboxd/Amazon
+APIs, scraping, Tel Aviv as a demo city (empty in the data).

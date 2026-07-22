@@ -98,7 +98,7 @@ The repository is a hackathon starter rather than an implemented domain product.
 
 **Onboarding Documentation Layer:**
 - Purpose: Explain the environment, team workflow, available commands, and candidate project ideas.
-- Location: `README.md`, `GUIDE.md`, `INSTALL.md`, `PREFLIGHT.md`, `IDEAS.md`, `КОМАНДЕ.md`, `docs/`
+- Location: `README.md`, `GUIDE.md`, `INSTALL.md`, `PREFLIGHT.md`, `IDEAS.md`, `TEAM.md`, `docs/`
 - Contains: Markdown documentation, the full architecture reference, and a standalone bilingual HTML page.
 - Depends on: Manual synchronization with the actual root scripts, prompts, and application structure (`README.md:73`, `GUIDE.md:149`).
 - Used by: New teammates, alternate-agent-runtime users, and the GitHub Pages documentation surface in `docs/index.html`.

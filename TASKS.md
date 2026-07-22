@@ -1,31 +1,31 @@
-# Доска задач
+# Task board
 
-Codex читает этот файл в начале сессии — здесь видно, кто над чем работает и что
-дальше. Держим коротко и в актуальном состоянии; ветку пиши рядом с задачей.
-Правила работы — в `TEAMWORK.md`. Обновляй доску сам после `/ship`.
+Codex reads this file at the start of a session — here you can see who's working on
+what and what's next. Keep it short and up to date; write the branch next to the task.
+The working rules are in `TEAMWORK.md`. Update the board yourself after `/ship`.
 
-## Проект
+## Project
 
-- **Строим:** GloryMap — карта мест из любимых фильмов и пешие кино-маршруты.
-- **Демо-путь:** выбрать фильмы → открыть локацию на карте Лондона → добавить 3 точки → построить пеший маршрут.
+- **Building:** GloryMap — a map of places from favorite films and walking cinema routes.
+- **Demo path:** pick films → open a location on the map of London → add 3 points → build a walking route.
 
-## Роли (впишите себя на кикоффе)
+## Roles (write yourself in at the kickoff)
 
-- Интегратор / main: @—
-- Бэкенд (Supabase): @—
-- Фронтенд: @—
-- Демо и деплой: @—
+- Integrator / main: @—
+- Backend (Supabase): @—
+- Frontend: @—
+- Demo and deploy: @—
 
-## Контракт данных
+## Data contract
 
-<таблицы, поля, форма ответа API — согласовать до разделения работы>
+<tables, fields, the shape of the API response — agree before splitting up work>
 
-## To do (нарезка демо-пути на срезы)
+## To do (slicing the demo path into slices)
 
-- [ ] <срез 1> — @— — `feature/—`
-- [ ] <срез 2> — @— — `feature/—`
-- [ ] <срез 3> — @— — `feature/—`
-- [ ] <срез 4> — @— — `feature/—`
+- [ ] <slice 1> — @— — `feature/—`
+- [ ] <slice 2> — @— — `feature/—`
+- [ ] <slice 3> — @— — `feature/—`
+- [ ] <slice 4> — @— — `feature/—`
 
 ## In progress
 
@@ -42,6 +42,6 @@ Codex читает этот файл в начале сессии — здесь
 - [x] #18: 30/60/120-minute nearby tours from a city/geolocation with real walking-time validation and deterministic fallback — `feature/timed-voice-tour`
 - [x] #20: OpenAI TTS voice guide with narrator profiles, spoiler-free mode and Play/Pause/Resume/Stop — `feature/timed-voice-tour`
 - [x] Personal movie library: Letterboxd/IMDb CSV imports, merge, search and local persistence — @walklikeaman — `feature/personal-account-connectors`
-- [x] Окружение поднято (клон репо + `./setup.sh`)
+- [x] Environment set up (clone the repo + `./setup.sh`)
 - [x] GloryMap MVP: English UI, mapped-film search, 10 locations and street-level walking routes — @walklikeaman — `feature/scenemap-skeleton`
 - [x] AI film guide: stories, stop ordering and walking-route integration — `feature/ai-film-tour`

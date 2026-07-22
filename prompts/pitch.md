@@ -1,33 +1,33 @@
 ---
-description: Собрать 90-секундный питч демо для судей — проблема, живое демо, «вау», просьба. Человеческий язык, без AI-воды.
+description: Put together a 90-second demo pitch for the judges — problem, live demo, "wow," ask. Human language, no AI fluff.
 ---
 
-# /pitch — 90 секунд, которые продают демо
+# /pitch — the 90 seconds that sell the demo
 
-Судьи смотрят десятки проектов. Выигрывает не тот, кто больше сделал, а тот, чьё
-демо понятно за минуту. Собери короткий питч под наш проект (см. блок «Проект» в AGENTS.md).
+Judges watch dozens of projects. The winner isn't whoever built the most, it's whoever's
+demo makes sense in a minute. Put together a short pitch for our project (see the "Project" block in AGENTS.md).
 
-## Структура (90 секунд)
+## Structure (90 seconds)
 
-1. **Проблема (10 сек)** — одно предложение, живое и конкретное. Не «в мире много
-   данных», а «каждый раз, когда X, человек тратит 20 минут на Y».
-2. **Демо (60 сек)** — показываем ЖИВОЙ демо-путь, а не слайды. Один поток от начала
-   до конца. Говори, что делаешь, пока делаешь: «навожу камеру → жму → вот результат».
-3. **Вау (10 сек)** — момент, ради которого стоило прийти. Назови его вслух.
-4. **Просьба (10 сек)** — что дальше / чего просим. Коротко.
+1. **Problem (10 sec)** — one sentence, vivid and concrete. Not "there's a lot of data in
+   the world," but "every time X happens, someone spends 20 minutes on Y."
+2. **Demo (60 sec)** — show the LIVE demo path, not slides. One flow from start
+   to finish. Say what you're doing as you do it: "I point the camera → tap → here's the result."
+3. **Wow (10 sec)** — the moment that made it worth coming. Name it out loud.
+4. **Ask (10 sec)** — what's next / what we're asking for. Short.
 
-## Правила текста
+## Copy rules
 
-- Пиши, как говоришь вслух. Короткие фразы. Без канцелярита и жаргона-ради-драмы.
-- Никаких «революционный», «бесшовный», «на стыке». Конкретика вместо эпитетов.
-- Одно число, если оно честное и сильное (быстрее в N раз, за 3 секунды вместо 10 минут).
-- Не перечисляй фичи. Показывай один поток, который работает.
+- Write the way you'd say it out loud. Short phrases. No bureaucratese, no jargon-for-drama.
+- No "revolutionary," "seamless," "at the intersection of." Specifics instead of epithets.
+- One number, if it's honest and strong (N times faster, 3 seconds instead of 10 minutes).
+- Don't list features. Show one flow that works.
 
-## Выдай
+## Deliver
 
-1. **Скрипт** (то, что говорят вслух, ~130 слов = 90 секунд).
-2. **Раскадровку демо** — по шагам, что нажимать на экране, синхронно со скриптом.
-3. **Один слайд-заставка**: название + одна строка сути (если нужен фон для записи).
+1. **Script** (what's spoken out loud, ~130 words = 90 seconds).
+2. **Demo storyboard** — step by step, what to click on screen, in sync with the script.
+3. **One title slide**: name + one line of the gist (if you need a backdrop for the recording).
 
-Если демо-путь ещё не зелёный — скажи честно, что пока показываем, и предложи
-минимальную версию питча под текущее состояние.
+If the demo path isn't green yet — say honestly what you're showing for now, and propose
+a minimal version of the pitch for the current state.

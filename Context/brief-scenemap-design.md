@@ -1,52 +1,55 @@
-# Хэндовер для Codex — SceneMap (рабочее название)
+# Handover for Codex — SceneMap (working title)
 
-> Бриф на дизайн и сборку MVP. Самодостаточный: здесь вся идея, проверенные
-> источники данных, демо-путь, скоуп и порядок работ. Читай целиком, потом
-> заполни блок «Проект» в `AGENTS.md` из раздела 9 и начинай с раздела 8.
+> A brief for designing and building the MVP. Self-contained: it holds the whole
+> idea, the verified data sources, the demo path, the scope, and the work order.
+> Read it in full, then fill in the "Project" block in `AGENTS.md` from section 9
+> and start with section 8.
 
-## 1. Идея в одном предложении
+## 1. The idea in one sentence
 
-Карта мест из твоих любимых фильмов и книг: подключаешь свою фильмотеку
-(Letterboxd/IMDb-экспорт) или выбираешь любимые фильмы — карта зажигается
-точками, где снимались их сцены; кликаешь точку — видишь кадр из фильма и это
-же место сейчас, строишь пеший маршрут «кино-прогулка» и идёшь снимать такие
-же кадры.
+A map of places from your favorite films and books: you connect your film library
+(a Letterboxd/IMDb export) or pick your favorite films — the map lights up with
+points where their scenes were shot; you click a point and see a frame from the
+film and that same place today, build a walking "movie stroll" route, and go
+shoot the same shots yourself.
 
-## 2. Почему это выигрывает (вау демо)
+## 2. Why it wins (wow demo)
 
-- **Персонализация**: не «карта всех фильмов» (такое есть — moviemaps.org),
-  а карта ИМЕННО ТВОИХ фильмов. Загрузил свой список — увидел свой мир кино.
-- **Пара «кадр ↔ место сейчас»**: кадр из фильма рядом с видом улицы сегодня —
-  мгновенно понятный и шареабельный вау-момент.
-- **Маршрут**: из точек одного города собирается пешая «кино-прогулка» —
-  готовый туристический продукт, судьям понятна ценность.
+- **Personalization**: not a "map of all films" (that already exists —
+  moviemaps.org), but a map of EXACTLY YOUR films. Upload your list and you see
+  your own world of cinema.
+- **The "frame ↔ place today" pair**: a film frame next to today's view of the
+  street — an instantly understandable and shareable wow moment.
+- **Route**: the points within a single city come together into a walking
+  "movie stroll" — a ready-made tourist product whose value is obvious to the
+  judges.
 
-## 3. Единственный демо-путь (свят, всё остальное вторично)
+## 3. The single demo path (sacred; everything else is secondary)
 
-1. Открыть приложение → экран «выбери свои фильмы»: быстрый выбор из
-   популярных (галерея постеров, мультиселект) ИЛИ загрузка Letterboxd CSV.
-2. Карта (Лондон или Нью-Йорк — там данных больше всего) зажигается пинами
-   фильмов пользователя.
-3. Клик по пину → карточка: постер + название сцены + описание, кадр из фильма
-   (TMDB backdrop), «место сейчас» (фото), кнопка «в маршрут».
-4. Добавил 3 точки → «Построить прогулку» → пеший маршрут на карте с порядком
-   обхода и расстоянием.
+1. Open the app → the "pick your films" screen: a quick pick from popular ones
+   (a poster gallery, multi-select) OR a Letterboxd CSV upload.
+2. The map (London or New York — that's where the data is richest) lights up with
+   pins for the user's films.
+3. Click a pin → a card: poster + scene title + description, a film frame
+   (TMDB backdrop), the "place today" (photo), an "add to route" button.
+4. Added 3 points → "Build the stroll" → a walking route on the map with the
+   visiting order and distance.
 
-Демо показываем на городе с богатыми данными (Лондон/Нью-Йорк/Париж).
-НЕ Тель-Авив — по нему в открытых данных почти пусто (проверено).
+We demo on a city with rich data (London/New York/Paris).
+NOT Tel Aviv — the open data for it is almost empty (verified).
 
-## 4. Источники данных — проверено живыми запросами 21.07.2026
+## 4. Data sources — verified with live queries on 21.07.2026
 
-### Локации (ядро) — Wikidata SPARQL, бесплатно, без ключей
+### Locations (the core) — Wikidata SPARQL, free, no keys
 
-- **23 018 фильмов** имеют геокодированные места съёмок:
-  свойство `P915` (filming location) + `P625` (координаты).
-- **12 878 книг** имеют геокодированные места действия: свойство `P840`
-  (narrative location) — книги закрываются тем же запросом.
-- Эндпоинт: `https://query.wikidata.org/sparql` (GET, `format=json`,
-  обязателен заголовок `User-Agent`).
+- **23 018 films** have geocoded filming locations:
+  property `P915` (filming location) + `P625` (coordinates).
+- **12 878 books** have geocoded settings: property `P840`
+  (narrative location) — books are covered by the same query.
+- Endpoint: `https://query.wikidata.org/sparql` (GET, `format=json`,
+  a `User-Agent` header is required).
 
-Рабочий запрос (фильмы + локации + координаты + постер-изображение):
+A working query (films + locations + coordinates + poster image):
 
 ```sparql
 SELECT ?film ?filmLabel ?locLabel ?coord ?image WHERE {
@@ -57,121 +60,122 @@ SELECT ?film ?filmLabel ?locLabel ?coord ?image WHERE {
 }
 ```
 
-Стратегия: слить выборку ОДИН РАЗ скриптом в таблицу Supabase и дальше
-работать со своей базой (SPARQL-эндпоинт медленный и с лимитами — не дёргать
-его с клиента).
+Strategy: dump the result set ONCE with a script into a Supabase table and then
+work off your own database (the SPARQL endpoint is slow and rate-limited — don't
+hit it from the client).
 
-### Метаданные и картинки фильмов — TMDB API (бесплатный ключ)
+### Film metadata and images — TMDB API (free key)
 
-- Поиск по названию+году, постеры, backdrops (кадры), жанры.
-- Матчинг с Wikidata: у Wikidata-сущностей фильмов есть свойство `P4947`
-  (TMDB ID) — забирай его в том же SPARQL-запросе, матчинг точный, без
-  поиска по строкам.
+- Search by title+year, posters, backdrops (frames), genres.
+- Matching with Wikidata: Wikidata film entities have a `P4947` property
+  (TMDB ID) — grab it in the same SPARQL query, the match is exact, no
+  string-based lookups.
 
-### «Твои фильмы» — без закрытых API
+### "Your films" — without closed APIs
 
-- **Letterboxd API закрыт** (доступ по заявке, data/LLM-проектам отказывают).
-  Вместо него: пользовательский **экспорт CSV** (Settings → Data → Export,
-  файлы `watched.csv` / `ratings.csv`, колонки Name, Year, Rating). Парсинг
-  тривиален, матчить по названию+году с нашей таблицей.
-- IMDb тоже отдаёт ratings.csv — тот же парсер.
-- Для надёжности демо основной путь — выбор из галереи популярных фильмов,
-  CSV — второй вход в тот же поток.
+- **The Letterboxd API is closed** (access is by application, and data/LLM
+  projects get rejected). Instead: the user's **CSV export** (Settings → Data →
+  Export, the files `watched.csv` / `ratings.csv`, columns Name, Year, Rating).
+  Parsing is trivial; match by title+year against our table.
+- IMDb also gives out a ratings.csv — the same parser.
+- For demo reliability the main path is picking from a gallery of popular films;
+  CSV is a second entry point into the same flow.
 
-### Книги (если успеем — вторая вкладка того же потока)
+### Books (if we have time — a second tab of the same flow)
 
-- Wikidata `P840` — место действия. Обложки/поиск — Open Library API
-  (открытый). Goodreads API мёртв с 2020 — не тратить время.
+- Wikidata `P840` — the setting. Covers/search — the Open Library API
+  (open). The Goodreads API has been dead since 2020 — don't waste time on it.
 
-### «Место сейчас»
+### "The place today"
 
-- Базово (без ключей): фото локации из Wikidata `P18` (Wikimedia Commons).
-- Лучше (нужен Google-ключ): Street View Static API по координатам —
+- Baseline (no keys): a location photo from Wikidata `P18` (Wikimedia Commons).
+- Better (needs a Google key): the Street View Static API by coordinates —
   `https://maps.googleapis.com/maps/api/streetview?size=600x400&location={lat},{lng}&key=...`
-  Если ключа нет к началу — Commons-фото достаточно для демо.
+  If there's no key by the start — Commons photos are enough for the demo.
 
-### AI-слой (кредиты OpenAI на событии)
+### AI layer (OpenAI credits at the event)
 
-Готовой базы «конкретная сцена → конкретная точка» не существует. Дыру
-закрывает LLM: для выбранного фильма запрос к OpenAI API
-(`response_format: json`) — «3–5 знаменитых сцен: место съёмки, координаты,
-1–2 предложения что происходит в кадре». Модель хорошо знает знаменитые
-локации; результат кэшировать в Supabase (таблица `scenes`), чтобы демо не
-зависело от латентности. Это и обогащение данных, и честный AI-компонент
-проекта.
+There is no ready-made database of "specific scene → specific point." The LLM
+fills that gap: for the selected film, a request to the OpenAI API
+(`response_format: json`) — "3–5 famous scenes: filming location, coordinates,
+1–2 sentences about what happens in the frame." The model knows famous
+locations well; cache the result in Supabase (the `scenes` table) so the demo
+doesn't depend on latency. This is both data enrichment and an honest AI
+component of the project.
 
-### Карта и маршрут
+### Map and route
 
-- **Leaflet + OpenStreetMap** — без ключей и настройки; тёмный стиль тайлов
-  (CartoDB dark_matter — бесплатные тайлы) под киношный вид.
-- Маршрут: публичный OSRM (`router.project-osrm.org/route/v1/foot/...`) —
-  пеший маршрут по 2–5 точкам; фолбэк — просто polyline между точками.
+- **Leaflet + OpenStreetMap** — no keys and no setup; a dark tile style
+  (CartoDB dark_matter — free tiles) for the cinematic look.
+- Route: the public OSRM (`router.project-osrm.org/route/v1/foot/...`) —
+  a walking route over 2–5 points; fallback — just a polyline between the points.
 
-## 5. Стек и архитектура
+## 5. Stack and architecture
 
-Next.js (App Router, JS) + Supabase + Vercel — всё уже поднято в этом репо.
+Next.js (App Router, JS) + Supabase + Vercel — everything is already set up in this repo.
 
 ```text
-Таблицы Supabase:
+Supabase tables:
   locations  (film_tmdb_id, film_title, year, loc_name, lat, lng, commons_image)
   scenes     (film_tmdb_id, loc_id, scene_title, description, source: 'wikidata'|'ai')
-  (users/auth НЕ делаем — состояние выбора фильмов живёт в localStorage)
+  (no users/auth — the film-selection state lives in localStorage)
 
-API-роуты:
-  /api/films/search    — поиск/галерея популярных (TMDB)
-  /api/map?films=...   — пины по выбранным фильмам (из Supabase)
-  /api/scenes/:filmId  — сцены локации (кэш → иначе OpenAI → записать в кэш)
+API routes:
+  /api/films/search    — search/gallery of popular films (TMDB)
+  /api/map?films=...   — pins for the selected films (from Supabase)
+  /api/scenes/:filmId  — location scenes (cache → otherwise OpenAI → write to cache)
 
-Скрипт (одноразовый, node):
+Script (one-off, node):
   scripts/seed-wikidata.mjs — SPARQL → Supabase locations
 ```
 
-## 6. Дизайн-направление
+## 6. Design direction
 
-- **Настроение — кино, ночь**: тёмная карта (CartoDB dark), акцент — тёплый
-  «прожекторный» янтарный/золотой; пины как маленькие кадры-миниатюры или
-  метки-«хлопушки».
-- Карточка локации — как кадр плёнки: сверху backdrop фильма, ниже пара
-  «тогда/сейчас» (два фото рядом), короткий текст сцены, кнопка «в маршрут».
-- Маршрут — яркая линия поверх тёмной карты, нумерованные остановки, суммарное
-  расстояние/время пешком.
-- Mobile-first: демо могут открыть с телефона; карта на весь экран, карточки —
-  bottom-sheet.
+- **Mood — cinema, night**: a dark map (CartoDB dark), the accent a warm
+  "spotlight" amber/gold; pins like little thumbnail frames or
+  clapperboard markers.
+- The location card is like a film frame: the film backdrop on top, below it a
+  "then/now" pair (two photos side by side), a short scene text, an "add to
+  route" button.
+- The route is a bright line over the dark map, numbered stops, total walking
+  distance/time.
+- Mobile-first: the demo may be opened from a phone; the map full-screen, the
+  cards a bottom-sheet.
 
-## 7. Вне скоупа (не трогать, пока демо-путь не зелёный)
+## 7. Out of scope (don't touch until the demo path is green)
 
-- Авторизация, аккаунты, профили.
-- Аудио-отрывки из фильмов (права + нет API).
-- Реальная интеграция Letterboxd/Amazon по API (закрыты).
-- Скрейпинг moviemaps/movie-locations (нет времени и серая зона).
-- Проверка подлинности локаций, модерация, UGC.
-- Тель-Авив как демо-город (мало данных).
+- Authentication, accounts, profiles.
+- Audio clips from films (rights + no API).
+- Real Letterboxd/Amazon API integration (they're closed).
+- Scraping moviemaps/movie-locations (no time, and a gray area).
+- Location authenticity verification, moderation, UGC.
+- Tel Aviv as the demo city (too little data).
 
-## 8. Порядок работ (вертикальные срезы)
+## 8. Work order (vertical slices)
 
-1. **Скелет + карта**: страница с Leaflet на тёмных тайлах + 10 захардкоженных
-   пинов Лондона → задеплоить, убедиться что живёт на Vercel.
-2. **Данные**: `scripts/seed-wikidata.mjs` → таблица `locations` заполнена
-   (тысячи строк); `/api/map` отдаёт пины из базы.
-3. **Выбор фильмов**: галерея популярных (TMDB) + мультиселект → карта
-   фильтруется по выбранному; выбор в localStorage.
-4. **Карточка локации**: backdrop TMDB + Commons/StreetView фото + сцены
-   через `/api/scenes` (LLM с кэшем).
-5. **Маршрут**: корзина точек → OSRM → линия на карте.
-6. **Полировка**: `/ui-polish`, прогон демо-пути целиком, скринкаст 60–90 сек.
+1. **Skeleton + map**: a page with Leaflet on dark tiles + 10 hardcoded
+   London pins → deploy, confirm it lives on Vercel.
+2. **Data**: `scripts/seed-wikidata.mjs` → the `locations` table is filled
+   (thousands of rows); `/api/map` serves pins from the database.
+3. **Film selection**: a gallery of popular films (TMDB) + multi-select → the map
+   is filtered by the selection; the selection lives in localStorage.
+4. **Location card**: TMDB backdrop + Commons/StreetView photo + scenes
+   via `/api/scenes` (an LLM with a cache).
+5. **Route**: a basket of points → OSRM → a line on the map.
+6. **Polish**: `/ui-polish`, a full run-through of the demo path, a 60–90 sec screencast.
 
-Срезы 2–5 параллелятся по людям после среза 1 (контракт данных — раздел 5).
+Slices 2–5 can be parallelized across people after slice 1 (the data contract — section 5).
 
-## 9. Блок «Проект» для AGENTS.md (вставить как есть)
+## 9. The "Project" block for AGENTS.md (paste as is)
 
-- **Что делаем:** SceneMap — карта мест из твоих любимых фильмов: выбираешь
-  фильмы → пины локаций съёмок → карточка «кадр тогда / место сейчас» →
-  пеший маршрут «кино-прогулка».
-- **Категория:** apps-for-life
-- **Стек:** Next.js + Supabase + Vercel, Leaflet/OSM, Wikidata (локации),
-  TMDB (постеры/кадры), OpenAI (описания сцен).
-- **Единственный демо-путь:** выбрать 3–5 фильмов из галереи → карта Лондона
-  с пинами → открыть карточку локации со сценой и фото «сейчас» → добавить
-  3 точки → построить пеший маршрут.
-- **Пока вне scope:** auth, аудио-отрывки, живые API Letterboxd/Amazon,
-  скрейпинг, книги (вторая очередь), Тель-Авив как демо-город.
+- **What we're building:** SceneMap — a map of places from your favorite films:
+  you pick films → pins of filming locations → a "frame then / place now" card →
+  a walking "movie stroll" route.
+- **Category:** apps-for-life
+- **Stack:** Next.js + Supabase + Vercel, Leaflet/OSM, Wikidata (locations),
+  TMDB (posters/frames), OpenAI (scene descriptions).
+- **The single demo path:** pick 3–5 films from the gallery → a map of London
+  with pins → open a location card with a scene and a "now" photo → add
+  3 points → build a walking route.
+- **Out of scope for now:** auth, audio clips, live Letterboxd/Amazon APIs,
+  scraping, books (second priority), Tel Aviv as the demo city.

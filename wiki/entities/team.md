@@ -1,22 +1,22 @@
-# Команда — кто что делает (по git-истории)
+# Team — who does what (per git history)
 
-Роли в TASKS.md формально не заполнены; фактическое распределение видно по
-коммитам (на 22.07.2026):
+Roles in TASKS.md are not formally filled in; the actual split is visible from the
+commits (as of 22.07.2026):
 
-- **Андрей (GitHub timido22, коммиты как vitebskiy.andrey — судя по всему,
-  один человек)** — фактический интегратор (сводит большинство PR в main:
-  #27, #29, #32, #34, #35, #36, #39) и бэкенд-качество: живые
-  Wikidata-локации, walking routes, scene matching, multi-location search,
+- **Andrey (GitHub timido22, commits as vitebskiy.andrey — apparently
+  one person)** — the de facto integrator (merges most PRs into main:
+  #27, #29, #32, #34, #35, #36, #39) and backend quality: live
+  Wikidata locations, walking routes, scene matching, multi-location search,
   viewport refresh, sourced discovery.
-- **Nikita Nakonechnyi / walklikeaman (владелец)** — документация и README
-  (Devpost-серия), ребрендинг GloryMap, деплой-гейты, Letterboxd ZIP-импорт;
-  владелец Supabase/Vercel-инфраструктуры.
-- **ystalinskaya (Илана)** — ветка feature/yana: city search, personal media
+- **Nikita Nakonechnyi / walklikeaman (owner)** — documentation and README
+  (the Devpost series), the GloryMap rebrand, deploy gates, Letterboxd ZIP import;
+  owner of the Supabase/Vercel infrastructure.
+- **ystalinskaya (Ilana)** — branch feature/yana: city search, personal media
   connectors, current-location-to-map.
-- Ефим — без доступа к репо (решение владельца 21.07).
+- Efim — no repo access (owner's decision on 21.07).
 
-GitHub-доступы: walklikeaman (admin), timido22 (write), yanastalin99 (write,
-приглашение), gordonefim (write, приглашение).
+GitHub access: walklikeaman (admin), timido22 (write), yanastalin99 (write,
+invitation), gordonefim (write, invitation).
 
-Правила: ветки `feature/*`, в main — только интегратор через PR
-(`TEAMWORK.md`); прод-деплой — ручной гейт ([[deployment-pipeline]]).
+Rules: `feature/*` branches, into main — only the integrator via a PR
+(`TEAMWORK.md`); prod deploy — a manual gate ([[deployment-pipeline]]).

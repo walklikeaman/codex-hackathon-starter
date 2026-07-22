@@ -4,40 +4,40 @@ Read this FIRST each session. The wiki is the agent's compounding memory —
 decisions, gotchas, and domain knowledge live here so the next session (and the
 next teammate) starts smarter, not from zero.
 
-Полная перестройка 22.07.2026 по итогам чтения всего кода (89 тестов, main
-после PR #41). Открой репозиторий как Obsidian-волт — `[[links]]` образуют граф.
+Full rebuild on 22.07.2026 after reading through all the code (89 tests, main
+after PR #41). Open the repository as an Obsidian vault — the `[[links]]` form a graph.
 
 ## Overview
 
-- [overview.md](overview.md) — синтез: как всё устроено + факты, которые легко забыть
+- [overview.md](overview.md) — synthesis: how everything is wired + facts that are easy to forget
 
-## Entities (что существует)
+## Entities (what exists)
 
-- [glorymap-app](entities/glorymap-app.md) — продукт, хаб графа
-- [frontend](entities/frontend.md) — монолит SceneMapApp + VoiceGuide, паттерны и грабли
-- [api-layer](entities/api-layer.md) — 7 BFF-роутов: контракты, таймауты, кэши
-- [wikidata](entities/wikidata.md) — P915/P840/P4947, SPARQL, лимиты, грабли
-- [openai](entities/openai.md) — 4 роли моделей, принципы недоверия, инциденты
+- [glorymap-app](entities/glorymap-app.md) — the product, the graph hub
+- [frontend](entities/frontend.md) — the SceneMapApp + VoiceGuide monolith, patterns and gotchas
+- [api-layer](entities/api-layer.md) — 7 BFF routes: contracts, timeouts, caches
+- [wikidata](entities/wikidata.md) — P915/P840/P4947, SPARQL, limits, gotchas
+- [openai](entities/openai.md) — 4 model roles, principles of distrust, incidents
 - [external-services](entities/external-services.md) — Nominatim, OSRM, TMDB, Commons
-- [supabase](entities/supabase.md) — создан, но рантаймом НЕ используется
-- [deployment-pipeline](entities/deployment-pipeline.md) — staging автоматом, прод вручную
-- [team](entities/team.md) — кто что делает по git-истории, доступы
+- [supabase](entities/supabase.md) — auth + cloud libraries; locations stay live
+- [deployment-pipeline](entities/deployment-pipeline.md) — staging automatically, prod manually
+- [team](entities/team.md) — who does what per git history, access rights
 
-## Concepts (как это работает)
+## Concepts (how it works)
 
-- [demo-path](concepts/demo-path.md) — единственный святой сценарий
-- [personal-library](concepts/personal-library.md) — Letterboxd ZIP/CSV, приватность
-- [location-discovery](concepts/location-discovery.md) — Wikidata + web-research с гейтом цитат
-- [film-imagery](concepts/film-imagery.md) — HMAC-токен → vision → только high confidence
-- [tours-and-voice](concepts/tours-and-voice.md) — маршрут, таймированный тур, AI-тур, TTS
-- [nearby-geolocation](concepts/nearby-geolocation.md) — «что рядом», радиусы, demo-фолбэк
-- [testing-conventions](concepts/testing-conventions.md) — node:test, ноль сети, DI-образец
+- [demo-path](concepts/demo-path.md) — the one sacred scenario
+- [personal-library](concepts/personal-library.md) — Letterboxd ZIP/CSV, privacy
+- [location-discovery](concepts/location-discovery.md) — Wikidata + web research with a citation gate
+- [film-imagery](concepts/film-imagery.md) — HMAC token → vision → only high confidence
+- [tours-and-voice](concepts/tours-and-voice.md) — route, timed tour, AI tour, TTS
+- [nearby-geolocation](concepts/nearby-geolocation.md) — "what's nearby", radii, demo fallback
+- [testing-conventions](concepts/testing-conventions.md) — node:test, zero network, DI pattern
 
-## Sources (внешнее знание)
+## Sources (external knowledge)
 
 - [personal-collections-matrix](sources/personal-collections-matrix.md) —
-  откуда читать личные коллекции (ресёрч 22.07, проверено живьём) + идеи
-  (кадры фильмов, «вставь ник Letterboxd»)
-- `Context/brief-scenemap-design.md` — исходный бриф продукта
-- `.planning/codebase/` — 7 справочных документов (ARCHITECTURE, CONCERNS…)
-- `wiki/log.md` — летопись решений (append-only, новое сверху)
+  where to read personal collections from (research 22.07, verified live) + ideas
+  (film stills, "paste your Letterboxd handle")
+- `Context/brief-scenemap-design.md` — the original product brief
+- `.planning/codebase/` — 7 reference documents (ARCHITECTURE, CONCERNS…)
+- `wiki/log.md` — the chronicle of decisions (append-only, newest on top)

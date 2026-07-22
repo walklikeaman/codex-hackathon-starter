@@ -1,34 +1,34 @@
-# Тестовые конвенции — 89 тестов, node:test, ноль сети
+# Testing conventions — 89 tests, node:test, zero network
 
-Запуск: `npm test` (`node --test test/*.test.mjs`). Без jest/vitest и
-конфигурации; assert из node:assert/strict. Next.js в тестах не участвует —
-тестируется чистый модульный слой.
+Run: `npm test` (`node --test test/*.test.mjs`). No jest/vitest and no
+configuration; assert from node:assert/strict. Next.js is not involved in the tests —
+the pure module layer is tested.
 
-## Три уровня изоляции
+## Three levels of isolation
 
-1. Большинство файлов — чистые функции/Zod-схемы вообще без моков.
-2. route-api / narration-api — мутируют глобалы (globalThis.fetch,
-   process.env) и ОБЯЗАНЫ восстанавливать через context.after.
-3. film-image-api — фабрика `createFilmImageHandler` с полной инъекцией
-   (env, fetchImpl, createOpenAIClient, allowRequest, verifyToken) — глобалы
-   не трогаются. Предпочтительный образец для новых роутов.
+1. Most files — pure functions/Zod schemas with no mocks at all.
+2. route-api / narration-api — mutate globals (globalThis.fetch,
+   process.env) and MUST restore them via context.after.
+3. film-image-api — the `createFilmImageHandler` factory with full injection
+   (env, fetchImpl, createOpenAIClient, allowRequest, verifyToken) — globals
+   are not touched. The preferred pattern for new routes.
 
-## Конвенции
+## Conventions
 
-- Имена тестов — полные фразы-инварианты («film image API never falls back to
-  a generic backdrop after a matcher error»).
-- Ни один тест не ходит в сеть; внешние ответы (SPARQL, TMDB, OSRM, OpenAI)
-  моделируются payload'ами. Реально исполняются только JSZip и zod.
-- Сквозная тема — безопасность выдачи: allowlist хостов, canonical id,
-  HMAC-токены, rate limit до платных вызовов, запрет кэшировать ошибку как
+- Test names are full invariant phrases ("film image API never falls back to
+  a generic backdrop after a matcher error").
+- No test hits the network; external responses (SPARQL, TMDB, OSRM, OpenAI)
+  are modeled with payloads. Only JSZip and zod actually execute.
+- The cross-cutting theme is output safety: host allowlist, canonical id,
+  HMAC tokens, rate limit before paid calls, no caching an error as
   no-match ([[film-imagery]]).
-- Импорты: роуты как `.js`, либы как `.mjs` — легко перепутать.
+- Imports: routes as `.js`, libs as `.mjs` — easy to mix up.
 
-## Грабли
+## Gotchas
 
-- `test/fixtures/imdb-ratings.csv` — сирота, ни один тест её не читает
-  (CSV строятся inline).
-- Ожидаемые числа кодируют округление исходников точно (1234 м → 1.2 км) —
-  менять округление = чинить тесты.
-- После `git pull` обязательно `npm install` — новые зависимости (openai,
-  zod) иначе роняют 3 тест-файла с ERR_MODULE_NOT_FOUND.
+- `test/fixtures/imdb-ratings.csv` is an orphan, no test reads it
+  (CSVs are built inline).
+- Expected numbers encode the source rounding exactly (1234 m → 1.2 km) —
+  changing the rounding = fixing the tests.
+- After `git pull` always `npm install` — new dependencies (openai,
+  zod) otherwise crash 3 test files with ERR_MODULE_NOT_FOUND.

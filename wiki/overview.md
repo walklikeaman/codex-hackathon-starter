@@ -1,42 +1,42 @@
-# GloryMap — обзор проекта
+# GloryMap — project overview
 
-Синтез на 22.07.2026, после полного прочтения кода (89 тестов, ~4400 строк без
-фронта). Продукт: [[glorymap-app]] — карта реальных мест из твоих любимых
-фильмов, сериалов и книг; из личной коллекции строится пеший «стори-маршрут».
-Бренд: SceneMap → **GloryMap** (PR #31; внутренние имена и localStorage-ключи
-`scenemap-*` намеренно сохранены).
+Synthesis as of 22.07.2026, after a full read-through of the code (89 tests, ~4400 lines excluding
+the frontend). Product: [[glorymap-app]] — a map of real places from your favorite
+films, series, and books; a walking "story route" is built from a personal collection.
+Brand: SceneMap → **GloryMap** (PR #31; internal names and localStorage keys
+`scenemap-*` were kept on purpose).
 
-## Как это работает (один абзац)
+## How it works (one paragraph)
 
-Клиент — один большой Leaflet-компонент [[frontend]]. Он ходит в 7 серверных
-роутов [[api-layer]]: город геокодится через Nominatim, локации ищутся живьём
-в [[wikidata]] (P915 «место съёмки» / P840 «место действия»), при скудном
-результате доисследуются через OpenAI web_search с обязательной проверкой
-источников ([[location-discovery]]). Личная библиотека импортируется из
-Letterboxd ZIP / IMDb CSV и живёт только в браузере ([[personal-library]]).
-Кадр фильма для локации подбирает vision-модель со строгим порогом уверенности
-([[film-imagery]]). Маршрут строит OSRM, туры по бюджету времени и аудиогид —
-[[tours-and-voice]]. «Что рядом» — [[nearby-geolocation]].
+The client is one big Leaflet component [[frontend]]. It talks to 7 server
+routes [[api-layer]]: the city is geocoded via Nominatim, locations are searched live
+in [[wikidata]] (P915 "filming location" / P840 "narrative location"), and when the
+result is thin they're followed up via OpenAI web_search with mandatory source
+verification ([[location-discovery]]). The personal library is imported from
+Letterboxd ZIP / IMDb CSV and lives only in the browser ([[personal-library]]).
+The film still for a location is picked by a vision model with a strict confidence threshold
+([[film-imagery]]). The route is built by OSRM, tours by time budget and the audio guide —
+[[tours-and-voice]]. "What's nearby" — [[nearby-geolocation]].
 
-## Ключевые факты, которые легко забыть
+## Key facts that are easy to forget
 
-- **Supabase в рантайме НЕ используется** — данные не персистятся, всё живое
-  из Wikidata + кэши Next/CDN. Схема `locations`/`scenes` существует, но пуста
+- **Supabase is NOT used at runtime** — data is not persisted, everything is live
+  from Wikidata + Next/CDN caches. The `locations`/`scenes` schema exists, but is empty
   ([[supabase]]).
-- Демо-фолбэк: пока `/api/locations` не ответил, карта показывает 10
-  захардкоженных лондонских точек — приложение никогда не пустое.
-- Прод-деплой — **ручной** через GitHub Actions gate; мерж в main даёт только
-  staging-preview ([[deployment-pipeline]]).
-- UI строго англоязычный (контракт после ревью PR #13).
-- Модели: `gpt-5.6-terra` (туры), `gpt-5-mini` (vision-матчинг кадров),
-  `gpt-4o-mini-tts` (голос), web_search — `gpt-5.6` ([[openai]]).
+- Demo fallback: until `/api/locations` responds, the map shows 10
+  hardcoded London points — the app is never empty.
+- Prod deploy is **manual** via a GitHub Actions gate; a merge into main gives only
+  a staging preview ([[deployment-pipeline]]).
+- The UI is strictly English-only (a contract after the PR #13 review).
+- Models: `gpt-5.6-terra` (tours), `gpt-5-mini` (vision still matching),
+  `gpt-4o-mini-tts` (voice), web_search — `gpt-5.6` ([[openai]]).
 
-## Карта знаний
+## Knowledge map
 
-- Сущности: [[frontend]] · [[api-layer]] · [[wikidata]] · [[openai]] ·
+- Entities: [[frontend]] · [[api-layer]] · [[wikidata]] · [[openai]] ·
   [[external-services]] · [[supabase]] · [[deployment-pipeline]] · [[team]]
-- Концепты: [[demo-path]] · [[personal-library]] · [[location-discovery]] ·
+- Concepts: [[demo-path]] · [[personal-library]] · [[location-discovery]] ·
   [[film-imagery]] · [[tours-and-voice]] · [[nearby-geolocation]] ·
   [[testing-conventions]]
-- Источники: [[personal-collections-matrix]] ·
-  `Context/brief-scenemap-design.md` · `.planning/codebase/` (7 док-справок)
+- Sources: [[personal-collections-matrix]] ·
+  `Context/brief-scenemap-design.md` · `.planning/codebase/` (7 doc references)

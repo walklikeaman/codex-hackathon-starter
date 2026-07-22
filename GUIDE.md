@@ -1,165 +1,165 @@
-# Полная инструкция команде
+# Complete team guide
 
-Всё, что нужно знать, чтобы подключиться и начать: установка, промты, команды,
-как работаем вместе, и идеи проекта. Читается сверху вниз; если некогда — блок «Коротко».
+Everything you need to know to get connected and started: install, prompts, commands,
+how we work together, and project ideas. Read top to bottom; if you're short on time, jump to the "In short" block.
 
-Хакатон: **OpenAI Build Week**, Тель-Авив, 21 июля, 7 часов сборки. Строим на Codex.
-Судят **живое рабочее демо**.
-
----
-
-## Коротко (TL;DR)
-
-1. Скинь свой **GitHub-ник** в чат — добавим в репозиторий.
-2. Поставь **Node 22+** и Codex: `npm install -g @openai/codex`, потом `codex` (вход под OpenAI).
-3. Открой Codex и вставь **промт установки** (ниже, раздел 3) — агент сам всё поднимет.
-4. На кикоффе выбираем **одну идею** (раздел 6), фиксируем один демо-путь, разбираем задачи.
-5. Работаем: каждый в своей ветке → `/ship` → PR → интегратор сводит в `main`.
-
-База и деплой уже настроены — вписывать ключи и настраивать Vercel не нужно.
+Hackathon: **OpenAI Build Week**, Tel Aviv, July 21, 7 hours of building. We build on Codex.
+Judged on a **live working demo**.
 
 ---
 
-## 1. Что уже готово (не настраиваем)
+## In short (TL;DR)
 
-| Что                           | Ссылка / статус                                              |
+1. Drop your **GitHub username** in the chat — we'll add you to the repo.
+2. Install **Node 22+** and Codex: `npm install -g @openai/codex`, then `codex` (sign in with OpenAI).
+3. Open Codex and paste the **setup prompt** (below, section 3) — the agent brings everything up on its own.
+4. At the kickoff we pick **one idea** (section 6), lock in a single demo path, and split up the tasks.
+5. We work: everyone on their own branch → `/ship` → PR → the integrator merges into `main`.
+
+The database and deploy are already set up — no keys to fill in, no Vercel to configure.
+
+---
+
+## 1. What's already done (nothing to configure)
+
+| Item                          | Link / status                                               |
 | ----------------------------- | ------------------------------------------------------------ |
-| Общий репозиторий (код)       | https://github.com/walklikeaman/codex-hackathon-starter      |
-| Живое приложение (деплой)     | https://codex-hackathon-starter.vercel.app — уже открывается |
-| Supabase (база + авторизация) | общий проект команды, подключён на проде ✅                  |
-| Vercel (публикация)           | привязан к репо: **любой пуш = автодеплой в веб**            |
-| Ключи Supabase                | вшиты в репозиторий, вписывать ничего не нужно               |
+| Shared repository (code)      | https://github.com/walklikeaman/codex-hackathon-starter      |
+| Live app (deploy)             | https://codex-hackathon-starter.vercel.app — already live   |
+| Supabase (database + auth)    | shared team project, connected in prod ✅                    |
+| Vercel (publishing)           | linked to the repo: **any push = auto-deploy to the web**   |
+| Supabase keys                 | baked into the repo, nothing to fill in                     |
 
-Полная страница-онбординг со скринами: **https://walklikeaman.github.io/codex-hackathon-starter/**
-
----
-
-## 2. Стек
-
-- **Next.js** — само приложение (React).
-- **Vercel** — хостинг: билдит Next.js, раздаёт по URL, автодеплой на каждый пуш в гит.
-- **Supabase** — managed Postgres + auth + storage, общая база команды.
-- **Демо-путь** — один сценарий, который показываем вживую; всё лишнее «вне скоупа», пока он не зелёный.
-
-Всё уже подключено, руками ничего настраивать не надо.
+Full onboarding page with screenshots: **https://walklikeaman.github.io/codex-hackathon-starter/**
 
 ---
 
-## 3. Установка
+## 2. Stack
 
-### Аккаунты (у каждого — только два)
+- **Next.js** — the app itself (React).
+- **Vercel** — hosting: builds Next.js, serves it at a URL, auto-deploys on every git push.
+- **Supabase** — managed Postgres + auth + storage, the team's shared database.
+- **Demo path** — the one scenario we show live; everything else is "out of scope" until it's green.
 
-- **OpenAI** — вход в Codex (на событии дают $150 кредитов).
-- **GitHub** — общий репозиторий. Скинь ник владельцу для доступа на запись.
+Everything is already wired up; there's nothing to configure by hand.
 
-Supabase и Vercel заводить не нужно — они общие и уже настроены.
+---
 
-### Шаг 1 — руками (~5 минут)
+## 3. Install
+
+### Accounts (just two each)
+
+- **OpenAI** — sign-in for Codex (the event hands out $150 in credits).
+- **GitHub** — the shared repository. Send your username to the owner for write access.
+
+No need to set up Supabase or Vercel — they're shared and already configured.
+
+### Step 1 — by hand (~5 minutes)
 
 ```bash
-# Node 22+ — если нет: nodejs.org (LTS) или nvm install 22
+# Node 22+ — if you don't have it: nodejs.org (LTS) or nvm install 22
 node --version
-# поставить Codex
+# install Codex
 npm install -g @openai/codex
-# войти под аккаунтом OpenAI
+# sign in with your OpenAI account
 codex
 ```
 
-### Шаг 2 — агент ставит всё остальное. Открой Codex и вставь:
+### Step 2 — the agent installs everything else. Open Codex and paste:
 
 ```
-Ты — мой агент настройки окружения. Выполни всё автономно и отчитайся в конце.
+You are my environment-setup agent. Do everything autonomously and report back at the end.
 
-1. Склонируй репозиторий https://github.com/walklikeaman/codex-hackathon-starter.git и зайди в его папку.
-2. Запусти ./setup.sh — поставит CodeGraph, подключит его к Codex и положит скиллы
-   (/ship, /autopilot, /loop-*, /pitch, /ui-polish, /schema) в ~/.codex/prompts.
-3. Запусти ./scaffold.sh — поставит зависимости приложения и создаст .env.local с общими ключами Supabase.
-4. Запусти npm run dev — приложение поднимется на http://localhost:3000.
-5. Прочитай AGENTS.md, TASKS.md и TEAMWORK.md — правила, доска задач и как мы работаем командой.
-6. Отчитайся: что готово. НЕ создавай таблицы в базе, пока мы не зафиксируем идею.
+1. Clone the repository https://github.com/walklikeaman/codex-hackathon-starter.git and cd into its folder.
+2. Run ./setup.sh — it installs CodeGraph, connects it to Codex, and drops the skills
+   (/ship, /autopilot, /loop-*, /pitch, /ui-polish, /schema) into ~/.codex/prompts.
+3. Run ./scaffold.sh — it installs the app's dependencies and creates .env.local with the shared Supabase keys.
+4. Run npm run dev — the app comes up at http://localhost:3000.
+5. Read AGENTS.md, TASKS.md, and TEAMWORK.md — the rules, the task board, and how we work as a team.
+6. Report back on what's done. DO NOT create any tables in the database until we've locked in the idea.
 
-После подключения CodeGraph напомни перезапустить Codex.
+After CodeGraph is connected, remind me to restart Codex.
 ```
 
-Готово: локально приложение работает, база подключена, деплой пойдёт автоматически при пуше.
+Done: the app runs locally, the database is connected, and deploy happens automatically on push.
 
 ---
 
-## 4. Что умеет окружение — команды (пишешь `/имя` в Codex)
+## 4. What the environment can do — commands (type `/name` in Codex)
 
-- **`/autopilot`** — веди свою задачу до зелёного сам (спека → сборка → запуск → проверка → `/ship`), стоп на человеческом гейте.
-- **`/ship`** — сохранить и запушить: аккуратный коммит, пуш, проверка. Секреты не утекают.
-- **`/loop-demo`** — довести один демо-путь до зелёного, от начала до конца.
-- **`/loop-lint`** — перед коммитом привести линт/типы/сборку к чистоте.
-- **`/loop-debug`** — чинить баг; записывает попытки, чтобы не ходить по кругу.
-- **`/loop-spec-ship`** — маленькую спеку довести до зелёного и заслать.
-- **`/loop-guardrails`** — записать повторяющуюся ошибку в правила, чтобы больше не наступать.
-- **`/schema`** — минимальная схема Supabase (ТОЛЬКО после фиксации идеи, ведёт один человек).
-- **`/ui-polish`** — быстрая визуальная полировка демо (~30 мин), чтобы выглядело намеренно.
-- **`/pitch`** — 90-секундный питч для жюри: проблема → живое демо → вау → просьба.
+- **`/autopilot`** — drive your task to green on your own (spec → build → run → verify → `/ship`), stopping at the human gate.
+- **`/ship`** — save and push: a clean commit, push, verification. No secrets leak.
+- **`/loop-demo`** — take one demo path to green, start to finish.
+- **`/loop-lint`** — get lint/types/build clean before committing.
+- **`/loop-debug`** — fix a bug; it records attempts so you don't go in circles.
+- **`/loop-spec-ship`** — take a small spec to green and ship it.
+- **`/loop-guardrails`** — record a recurring mistake into the rules so you don't hit it again.
+- **`/schema`** — minimal Supabase schema (ONLY after the idea is locked, owned by one person).
+- **`/ui-polish`** — a quick visual polish of the demo (~30 min) so it looks intentional.
+- **`/pitch`** — a 90-second pitch for the judges: problem → live demo → wow → ask.
 
-Плюс: **CodeGraph** (агент понимает код без слепого grep) и **память проекта** (`wiki/`, `Context/`) —
-решения копятся между сессиями.
-
----
-
-## 5. Как работаем командой
-
-Главное правило: **разные ветки → один сводит в `main`**. Так четверо не толкаются.
-
-- Каждый — в своей ветке (`feature/<коротко>`). Пушишь → открываешь PR → интегратор мёржит в `main`.
-- В `main` пушит только интегратор. Общий Vercel собирает превью на каждую ветку.
-
-**Роли (разбираем на кикоффе, ~1 человек на каждую):**
-
-- **Интегратор / main** — держит `main` зелёным, мёржит PR, ведёт скоуп.
-- **Бэкенд** — Supabase: схема (`/schema`), API. Схему ведёт он один.
-- **Фронтенд** — экраны и флоу.
-- **Демо и деплой** — гоняет демо-путь целиком, `/ui-polish`, запись демо, `/pitch`.
-
-**Кикофф (первые 30–45 минут, все вместе):**
-
-1. Выбрать идею (раздел 6), заполнить блок «Проект» в `AGENTS.md` (идея, стек, один демо-путь, что вне скоупа).
-2. Договориться о **контракте данных** (какие таблицы/поля) — тогда бэк и фронт идут параллельно.
-3. Нарезать демо-путь на 4–6 кусков, вписать в `TASKS.md`, разобрать по себе.
-
-**Ритм:** `git pull` перед стартом · `/ship` часто · интеграция каждые 60–90 минут (все пушат,
-интегратор сводит, деплой превью, проверяем что демо-путь жив).
-
-Доска задач — `TASKS.md` (её Codex читает на старте). Полные правила — `TEAMWORK.md`.
+Plus: **CodeGraph** (the agent understands the code without blind grep) and **project memory** (`wiki/`, `Context/`) —
+decisions accumulate between sessions.
 
 ---
 
-## 6. Идеи проекта
+## 5. How we work as a team
 
-6 идей под категории, все собираются вчетвером за 7 часов, с сильным живым демо.
-Полные описания и **готовые промты** — в [IDEAS.md](IDEAS.md). Коротко:
+The main rule: **separate branches → one person merges into `main`**. That way four people don't collide.
 
-- **★ SnapSell** (Apps for your life) — фото любой вещи → готовое объявление с ценой и обоснованием. Показ: снимаешь любую вещь из зала — карточка за 5 секунд.
-- **Codex Colosseum** (Developer tools) — три Codex-агента параллельно чинят один баг, ты мёржишь победителя. В тему OpenAI.
-- **Napkin** (Developer tools) — фото наброска UI с whiteboard-доски → живой кликабельный React-компонент.
-- **Viva** (Education) — голосовой устный экзаменатор по конспекту: перебивает на ошибке (Realtime API).
-- **Взломай Оракула** (Games) — ИИ прячет пароль, ты промптом его вытаскиваешь; уровни + лидерборд.
-- **Reply Debt** (Productivity/Work) — показывает только письма, где блокер ты, и пишет черновики ответов.
+- Everyone works on their own branch (`feature/<short>`). Push → open a PR → the integrator merges into `main`.
+- Only the integrator pushes to `main`. The shared Vercel builds a preview for every branch.
 
-Выбираем **одну** на кикоффе → её промт из `IDEAS.md` вставляем в блок «Проект» `AGENTS.md` → дальше `/autopilot` → `/loop-demo` → `/ship`.
+**Roles (assigned at the kickoff, ~1 person each):**
+
+- **Integrator / main** — keeps `main` green, merges PRs, owns the scope.
+- **Backend** — Supabase: schema (`/schema`), API. Owns the schema alone.
+- **Frontend** — screens and flows.
+- **Demo and deploy** — runs the whole demo path, `/ui-polish`, records the demo, `/pitch`.
+
+**Kickoff (first 30–45 minutes, everyone together):**
+
+1. Pick an idea (section 6), fill in the "Project" block in `AGENTS.md` (idea, stack, one demo path, what's out of scope).
+2. Agree on the **data contract** (which tables/fields) — then backend and frontend can go in parallel.
+3. Slice the demo path into 4–6 pieces, add them to `TASKS.md`, and divide them up.
+
+**Rhythm:** `git pull` before you start · `/ship` often · integration every 60–90 minutes (everyone pushes,
+the integrator merges, deploys a preview, and we check the demo path is still alive).
+
+The task board is `TASKS.md` (Codex reads it at startup). Full rules are in `TEAMWORK.md`.
 
 ---
 
-## 7. Карта репозитория (что где)
+## 6. Project ideas
+
+6 ideas mapped to the categories, all buildable by four people in 7 hours, with a strong live demo.
+Full descriptions and **ready-made prompts** are in [IDEAS.md](IDEAS.md). In short:
+
+- **★ SnapSell** (Apps for your life) — a photo of any item → a finished listing with a price and rationale. The show: photograph any object from the room — a card in 5 seconds.
+- **Codex Colosseum** (Developer tools) — three Codex agents fix one bug in parallel, and you merge the winner. On-theme for OpenAI.
+- **Napkin** (Developer tools) — a photo of a UI sketch off a whiteboard → a live, clickable React component.
+- **Viva** (Education) — a voice-based oral examiner working from your notes: it interrupts you on a mistake (Realtime API).
+- **Hack the Oracle** (Games) — the AI hides a password and you extract it with prompts; levels + leaderboard.
+- **Reply Debt** (Productivity/Work) — shows only the emails where you're the blocker and drafts replies for them.
+
+We pick **one** at the kickoff → paste its prompt from `IDEAS.md` into the "Project" block of `AGENTS.md` → then `/autopilot` → `/loop-demo` → `/ship`.
+
+---
+
+## 7. Repository map (what's where)
 
 ```
-AGENTS.md      правила для агента + блок «Проект» (заполняем на кикоффе)
-GUIDE.md       эта инструкция
-КОМАНДЕ.md     короткое сообщение для чата
-IDEAS.md       6 идей с готовыми промтами
-TASKS.md       доска задач (Codex читает на старте)
-TEAMWORK.md    как работаем командой (ветки, роли, кикофф)
-prompts/       команды /ship /autopilot /loop-* /pitch /ui-polish /schema
-app/ · package.json   готовое Next.js-приложение (в корне)
-setup.sh · scaffold.sh   установка окружения + зависимостей
-.env.example   общие ключи Supabase (публичные; scaffold копирует в .env.local)
-wiki/ · Context/   память проекта (решения копятся между сессиями)
+AGENTS.md      the rules for the agent + the "Project" block (filled in at the kickoff)
+GUIDE.md       this guide
+TEAM.md        a short message for the chat
+IDEAS.md       6 ideas with ready-made prompts
+TASKS.md       the task board (Codex reads it at startup)
+TEAMWORK.md    how we work as a team (branches, roles, kickoff)
+prompts/       the /ship /autopilot /loop-* /pitch /ui-polish /schema commands
+app/ · package.json   the ready-made Next.js app (at the root)
+setup.sh · scaffold.sh   environment + dependency setup
+.env.example   shared Supabase keys (public; scaffold copies them into .env.local)
+wiki/ · Context/   project memory (decisions accumulate between sessions)
 ```
 
-Вопросы по установке — в чат команды.
+Questions about setup — post them in the team chat.
