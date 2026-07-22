@@ -220,8 +220,61 @@ export function createFilmImageHandler({
         );
       }
 
-      const frames = acceptedMatches.map((match) => ({
-        image_url: candidateImageUrls[match.candidateIndex],
+      const shortlistedImageUrls = acceptedMatches.map(
+        (match) => candidateImageUrls[match.candidateIndex],
+      );
+      const verificationResponse = await openai.responses.parse(
+        {
+          model: env.OPENAI_VISION_MODEL || "gpt-5-mini",
+          store: false,
+          max_output_tokens: 800,
+          reasoning: { effort: "low" },
+          instructions: [
+            "You are the final verifier for a very small shortlist of filming-location images.",
+            "Evaluate each exact numbered image independently; do not rely on the previous selection.",
+            "Return an image only if it is a photographic film frame, has no prominent title or logo, and visibly supports the verified location.",
+            "Reject close-ups without location evidence, title artwork, posters, logos, and any image whose description would require details not visibly present.",
+            "For an explicit studio location, production-level association is allowed, but never claim a specific set or soundstage.",
+            "Return an empty matches array when no exact shortlisted image passes every check.",
+          ].join(" "),
+          input: [{
+            role: "user",
+            content: buildSceneImageContent({
+              ...sceneContext,
+              candidateImageUrls: shortlistedImageUrls,
+            }),
+          }],
+          text: {
+            format: zodTextFormat(sceneImageMatchSchema, "verified_scene_images"),
+          },
+        },
+        { timeout: 20_000, signal: request.signal },
+      );
+
+      if (verificationResponse.status !== "completed" || !verificationResponse.output_parsed) {
+        throw new Error("Final scene verification response was incomplete or refused");
+      }
+
+      const verifiedMatches = acceptedSceneImageMatches(
+        verificationResponse.output_parsed,
+        shortlistedImageUrls.length,
+      );
+
+      if (!verifiedMatches.length) {
+        return Response.json(
+          {
+            image_url: null,
+            source_url: sourceUrl,
+            frames: [],
+            match_confidence: verificationResponse.output_parsed.matches[0]?.confidence ?? "none",
+            reason: "no_high_confidence_match",
+          },
+          { headers: { "Cache-Control": "public, s-maxage=86400" } },
+        );
+      }
+
+      const frames = verifiedMatches.map((match) => ({
+        image_url: shortlistedImageUrls[match.candidateIndex],
         source_url: sourceUrl,
         location_name: sceneContext.place,
         location_type: studioLocation ? "studio" : match.locationType,

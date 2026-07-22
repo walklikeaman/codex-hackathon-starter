@@ -54,7 +54,16 @@ function frameMatch(overrides = {}) {
   };
 }
 
-function handlerForMatch({ outputParsed, status = "completed", onParse, backdrops, bindings } = {}) {
+function handlerForMatch({
+  outputParsed,
+  verificationParsed,
+  status = "completed",
+  onParse,
+  onVerify,
+  backdrops,
+  bindings,
+} = {}) {
+  let parseCall = 0;
   return createFilmImageHandler({
     env: {
       TMDB_API_READ_ACCESS_TOKEN: "tmdb-test-token",
@@ -68,8 +77,24 @@ function handlerForMatch({ outputParsed, status = "completed", onParse, backdrop
     createOpenAIClient: () => ({
       responses: {
         parse: async (body, options) => {
-          onParse?.(body, options);
-          return { status, output_parsed: outputParsed };
+          const call = parseCall;
+          parseCall += 1;
+          if (call === 0) {
+            onParse?.(body, options);
+            return { status, output_parsed: outputParsed };
+          }
+
+          onVerify?.(body, options);
+          return {
+            status: "completed",
+            output_parsed: verificationParsed ?? {
+              matches: (outputParsed?.matches ?? [])
+                .filter((match) => match.confidence === "high"
+                  && match.isPhotographicFrame === true
+                  && match.hasProminentTitleOrLogo === false)
+                .map((match, index) => ({ ...match, candidateIndex: index })),
+            },
+          };
         },
       },
     }),
@@ -184,6 +209,13 @@ test("film image API returns the location-matched candidate instead of the top b
       );
       assert.equal(options.signal, request.signal);
     },
+    onVerify: (body) => {
+      assert.match(body.instructions, /final verifier/);
+      assert.equal(
+        body.input[0].content.filter((item) => item.type === "input_image").length,
+        2,
+      );
+    },
   });
   const response = await handler(request);
   const payload = await response.json();
@@ -235,6 +267,27 @@ test("film image API returns up to three distinct described frames", async () =>
     ],
   );
   assert.equal(payload.image_url, payload.frames[0].image_url);
+});
+
+test("film image API rejects a shortlisted image that fails exact final verification", async () => {
+  const handler = handlerForMatch({
+    outputParsed: {
+      matches: [frameMatch({
+        candidateIndex: 0,
+        confidence: "high",
+        locationType: "building",
+        description: "The first pass claims this artwork shows the location.",
+      })],
+    },
+    verificationParsed: { matches: [] },
+  });
+  const response = await handler(filmImageRequest());
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.image_url, null);
+  assert.deepEqual(payload.frames, []);
+  assert.equal(payload.reason, "no_high_confidence_match");
 });
 
 test("film image API can associate representative frames with an explicit studio", async () => {
