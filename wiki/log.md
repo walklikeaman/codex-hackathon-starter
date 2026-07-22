@@ -7,6 +7,27 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-22] update | Code audit + render-crash hardening
+
+- Confirmed no unmerged work: 28 PRs merged, 0 open; the many "ahead" remote
+  branches are stale post-merge branches (history rewrite artifact), each maps
+  to a merged PR, no code file on any branch is missing from main.
+- Ran a multi-dimension code audit (dead code, duplication, correctness,
+  simplification, test gaps) with adversarial per-finding verification: 28
+  confirmed, 3 rejected. Baseline 98/98 tests green.
+- Fixed + merged the correctness cluster (PR #78): onError no longer removes
+  React-managed DOM nodes (broken URLs tracked in state), out-of-range
+  coordinates filtered, `flyTo` guarded by `isLatLng`, and a root
+  `app/error.jsx` error boundary turns any uncaught client throw into a
+  recoverable "Try again" card instead of a blank SPA (verified in browser).
+- Fixed + merged hygiene (PR #79): removed 8 dead exports; pinned cities/
+  locations to `runtime="nodejs"` (locations uses node:crypto transitively).
+- Filed the remaining audit findings as Russian tech-debt issues #80–#88
+  (haversine ×4 → geo.mjs, OpenAI-route helper, buildTimedTour split,
+  cloud-save race, test gaps, route dedup, etc.).
+- Note: the preview pane can't render Leaflet (0-size container → flyTo NaN),
+  so live map verification uses the prod site; the error boundary now covers it.
+
 ## [2026-07-22] decision | Roadmap + backlog for post-hackathon development
 
 - Ran a 5-area competitor/approach study (imagery, AI tours, recreate-the-shot,
