@@ -2053,3 +2053,48 @@ figcaption a {
     grid-column: 1 / -1;
   }
 }
+
+.app-error {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #080909;
+}
+
+.app-error-card {
+  max-width: 420px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: center;
+}
+
+.app-error-card h1 {
+  font-size: 1.3rem;
+  margin: 0 0 10px;
+}
+
+.app-error-card p {
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.app-error-digest {
+  font-family: var(--mono, monospace);
+  font-size: 0.78rem;
+}
+
+.app-error-card button {
+  margin-top: 14px;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid rgba(247, 183, 51, 0.44);
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f7b733, #d88725);
+  color: #1b1306;
+  font-weight: 800;
+  cursor: pointer;
+}

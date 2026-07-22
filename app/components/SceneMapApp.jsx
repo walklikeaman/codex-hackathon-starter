@@ -299,7 +299,15 @@ function locationsFromApi(records) {
         evidenceSource: record.evidence_source ?? "wikidata",
       };
     })
-    .filter((location) => Number.isFinite(location.position[0]) && Number.isFinite(location.position[1]));
+    .filter((location) => {
+      const [lat, lng] = location.position;
+      // Reject out-of-range coordinates too: findNearby (nearby.mjs) throws on
+      // them, which would crash the render (no error boundary).
+      return (
+        Number.isFinite(lat) && Number.isFinite(lng) &&
+        lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+      );
+    });
 }
 
 function worksFromLocations(sourceLocations) {
@@ -315,15 +323,27 @@ function worksFromLocations(sourceLocations) {
   ])).values()];
 }
 
+function isLatLng(value) {
+  return (
+    Array.isArray(value) &&
+    Number.isFinite(value[0]) && Number.isFinite(value[1]) &&
+    value[0] >= -90 && value[0] <= 90 && value[1] >= -180 && value[1] <= 180
+  );
+}
+
 function RecenterOnSelection({ center, position }) {
   const map = useMap();
 
   useEffect(() => {
-    map.flyTo(center, 12, { duration: 0.8 });
+    // Guard against invalid coordinates: Leaflet throws "Invalid LatLng object"
+    // on NaN/out-of-range, which crashes the render (no error boundary).
+    if (isLatLng(center)) {
+      map.flyTo(center, 12, { duration: 0.8 });
+    }
   }, [center, map]);
 
   useEffect(() => {
-    if (position) {
+    if (isLatLng(position)) {
       map.flyTo(position, 14, { duration: 0.8 });
     }
   }, [map, position]);
@@ -383,7 +403,7 @@ function FlyToUser({ position, radius }) {
   const map = useMap();
 
   useEffect(() => {
-    if (position) {
+    if (isLatLng(position)) {
       map.flyTo(position, zoomForRadius(radius), { duration: 0.8 });
     }
   }, [map, position, radius]);
@@ -644,6 +664,14 @@ export default function SceneMapApp() {
     status: "unavailable",
   });
   const [filmImageRetry, setFilmImageRetry] = useState(0);
+  // Broken image URLs are tracked in React state instead of removing DOM nodes
+  // directly: mutating React-managed nodes in onError crashes the whole SPA when
+  // reconciliation later touches a detached node (there is no error boundary).
+  const [brokenImages, setBrokenImages] = useState(() => new Set());
+  const markImageBroken = (url) => {
+    if (!url) return;
+    setBrokenImages((current) => (current.has(url) ? current : new Set(current).add(url)));
+  };
   const [routeStops, setRouteStops] = useState([]);
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
@@ -2045,13 +2073,12 @@ export default function SceneMapApp() {
       {activeLocation && (
         <section className="location-sheet" aria-label="Location details">
           <div className="sheet-media">
-            {(activeFilmImage ?? activeLocation.now) && (
-              <img
-                src={activeFilmImage ?? activeLocation.now}
-                alt=""
-                onError={(event) => event.currentTarget.remove()}
-              />
-            )}
+            {(() => {
+              const heroSrc = activeFilmImage ?? activeLocation.now;
+              return heroSrc && !brokenImages.has(heroSrc) ? (
+                <img src={heroSrc} alt="" onError={() => markImageBroken(heroSrc)} />
+              ) : null;
+            })()}
             <div>
               <p><span className={`work-kind kind-${activeLocation.kind}`}>{kindLabel(activeLocation.kind)}</span>{" "}{activeLocation.film}</p>
               <h2>{activeLocation.scene}</h2>
@@ -2144,12 +2171,12 @@ export default function SceneMapApp() {
                   <span>{activeFilmFrames.length - 1}</span>
                 </div>
                 <div className="scene-frame-list">
-                  {activeFilmFrames.slice(1).map((frame) => (
+                  {activeFilmFrames.slice(1).filter((frame) => !brokenImages.has(frame.url)).map((frame) => (
                     <figure key={frame.url}>
                       <img
                         src={frame.url}
                         alt={`Candidate frame from ${activeLocation.film} associated with ${frame.locationName}`}
-                        onError={(event) => event.currentTarget.closest("figure")?.remove()}
+                        onError={() => markImageBroken(frame.url)}
                       />
                       <figcaption>
                         <span className="scene-frame-meta">
