@@ -32,6 +32,21 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 - Guest imports remain local; after login they merge with the user's device and cloud libraries and sync as a normalized JSON list protected by user-scoped RLS.
 - Added the database migration, client-side sync boundary, provider setup documentation, and regression tests for cloud payload validation and user-scoped reads/writes.
 
+## [2026-07-22] ingest | Wiki rebuilt as a knowledge graph + collections matrix
+
+- Прочитан весь код (6 параллельных читателей: frontend, API, либы, тесты,
+  история) и перестроена wiki: заполнены overview, 9 entities и 7 concepts с
+  перекрёстными [[links]] — репозиторий читается как Obsidian-граф.
+- Зафиксированы легко забываемые факты: Supabase создан, но рантаймом не
+  используется; прод-деплой только вручную через GitHub gate; превью без
+  OPENAI_API_KEY; негативные ответы film-image приходят как 200 + reason.
+- Добавлен sources/personal-collections-matrix.md: проверенный живьём ресёрч
+  «откуда читать личные коллекции» (Letterboxd RSS с готовым tmdb-ID, Trakt
+  без OAuth, Кинопоиск/MyShows для RU, Goodreads RSS; Spotify dev mode — 5
+  юзеров) + идеи про кадры фильмов (IMDb нельзя; резерв — стиллы эпизодов
+   TMDB, Fanart.tv) и «вставь ник Letterboxd». Решение владельца: пока идеи,
+   не в работе.
+
 ## [2026-07-22] update | Devpost Codex and GPT-5.6 evidence
 
 - Supplemented the product-focused README with the Devpost-required setup, judge test path, and evidence-backed descriptions of Codex and GPT-5.6 usage.
