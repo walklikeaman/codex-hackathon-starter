@@ -7,6 +7,31 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-22] decision | Ship means a complete production release
+
+- An explicit owner command `ship` now authorizes the full release chain: scoped commit, push, PR readiness, checks, merge to `main`, production deploy, and public verification.
+- Preview-only delivery is not considered shipped; production remains preview-only when the owner has not explicitly said `ship`.
+
+## [2026-07-22] incident | Reject mismatched TMDB artwork and stale scene capabilities
+
+- Live TMDB and GPT-5.6 Terra checks exposed two failure modes: signed location capabilities could remain stale in a public cache, and a first-pass matcher could describe the present-day reference image instead of the shortlisted film frame.
+- Signed `/api/locations` responses are now private and uncached; scene matching requires photographic, logo-free evidence plus a second exact-file verification pass that receives only the shortlisted TMDB files.
+- The conservative fallback is intentional: if the exact location cannot be verified, the API returns `no_high_confidence_match` and the UI shows `No verified scene match` instead of attaching unrelated artwork.
+- Verified 98 tests, the production build, private `Cache-Control`, a live OpenAI/TMDB request, and the production UI at `http://localhost:3000` without exposing credentials.
+
+## [2026-07-22] update | Described film frames per verified location
+
+- The scene matcher now returns up to three distinct TMDB frames with the verified place name, a physical location type, and a short OpenAI Vision description; the legacy top-level `image_url` remains for compatibility.
+- Streets, venues, buildings, and landscapes still require high-confidence visual evidence. An explicitly named studio can group representative production frames, but every description must state that the exact set or soundstage is not visually verified.
+- The location sheet keeps the first frame in the then/now comparison and shows additional matches in a bounded gallery; no database schema or arbitrary image scraping was added.
+- Verified 96 tests, the production build, desktop/mobile layout, and a clean browser console. The local environment has no TMDB credential, so a real Vision gallery still requires the configured preview or production environment.
+
+## [2026-07-22] update | Account-backed personal libraries
+
+- Supabase Auth adds Google and Facebook OAuth entry points to the existing Personal Library without uploading source ZIP/CSV files.
+- Guest imports remain local; after login they merge with the user's device and cloud libraries and sync as a normalized JSON list protected by user-scoped RLS.
+- Added the database migration, client-side sync boundary, provider setup documentation, and regression tests for cloud payload validation and user-scoped reads/writes.
+
 ## [2026-07-22] ingest | Wiki rebuilt as a knowledge graph + collections matrix
 
 - Прочитан весь код (6 параллельных читателей: frontend, API, либы, тесты,
@@ -19,8 +44,8 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
   «откуда читать личные коллекции» (Letterboxd RSS с готовым tmdb-ID, Trakt
   без OAuth, Кинопоиск/MyShows для RU, Goodreads RSS; Spotify dev mode — 5
   юзеров) + идеи про кадры фильмов (IMDb нельзя; резерв — стиллы эпизодов
-  TMDB, Fanart.tv) и «вставь ник Letterboxd». Решение владельца: пока идеи,
-  не в работе.
+   TMDB, Fanart.tv) и «вставь ник Letterboxd». Решение владельца: пока идеи,
+   не в работе.
 
 ## [2026-07-22] update | Devpost Codex and GPT-5.6 evidence
 

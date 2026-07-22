@@ -15,6 +15,7 @@ import {
 import {
   CheckCircle2,
   Clapperboard,
+  Cloud,
   Clock3,
   Crosshair,
   ExternalLink,
@@ -22,6 +23,7 @@ import {
   Link2,
   LoaderCircle,
   LocateFixed,
+  LogOut,
   MapPin,
   Plus,
   Route,
@@ -41,7 +43,9 @@ import {
   zoomForRadius,
 } from "../lib/nearby.mjs";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
+import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { mergeLibraries, parseMediaCsv, workIsInLibrary } from "../lib/media-library.mjs";
+import { getSupabaseBrowserClient } from "../lib/supabase-browser.mjs";
 import { filmLocationImageKey } from "../lib/tmdb-images.mjs";
 import {
   TOUR_BUDGETS,
@@ -52,6 +56,17 @@ import {
 import VoiceGuide from "./VoiceGuide";
 
 const londonCenter = [51.5094, -0.1183];
+const GUEST_LIBRARY_KEY = "scenemap-library";
+
+function readStoredLibrary(key) {
+  if (typeof window === "undefined") return [];
+  try {
+    const storedLibrary = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(storedLibrary) ? storedLibrary : [];
+  } catch {
+    return [];
+  }
+}
 
 const kindLabels = {
   film: "Film",
@@ -214,6 +229,44 @@ function filmImagePlaceholderLabel(status) {
   if (status === "no_match") return "No verified scene match";
   if (status === "error") return "Scene matching failed";
   return "Scene matching unavailable";
+}
+
+const frameLocationLabels = {
+  street: "Street",
+  bar_or_restaurant: "Bar / restaurant",
+  building: "Building",
+  studio: "Studio",
+  landscape: "Landscape",
+  other: "Location",
+};
+
+function frameLocationLabel(type) {
+  return frameLocationLabels[type] ?? frameLocationLabels.other;
+}
+
+function framesFromFilmImagePayload(payload, fallbackPlace) {
+  const rawFrames = Array.isArray(payload.frames) && payload.frames.length
+    ? payload.frames
+    : payload.image_url
+      ? [{
+          image_url: payload.image_url,
+          source_url: payload.source_url,
+          location_name: fallbackPlace,
+          location_type: "other",
+          description: "",
+        }]
+      : [];
+
+  return rawFrames
+    .filter((frame) => typeof frame?.image_url === "string" && frame.image_url)
+    .slice(0, 3)
+    .map((frame) => ({
+      url: frame.image_url,
+      sourceUrl: frame.source_url ?? payload.source_url ?? null,
+      locationName: frame.location_name ?? fallbackPlace,
+      locationType: frame.location_type ?? "other",
+      description: frame.description ?? "",
+    }));
 }
 
 function locationsFromApi(records) {
@@ -587,6 +640,7 @@ export default function SceneMapApp() {
     locationId: fallbackLocations[0].id,
     url: null,
     sourceUrl: null,
+    frames: [],
     status: "unavailable",
   });
   const [filmImageRetry, setFilmImageRetry] = useState(0);
@@ -608,24 +662,103 @@ export default function SceneMapApp() {
   const [timedTourStatus, setTimedTourStatus] = useState("idle");
   const [timedTourMessage, setTimedTourMessage] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const [accountUser, setAccountUser] = useState(null);
+  const [accountStatus, setAccountStatus] = useState(supabase ? "loading" : "unavailable");
+  const [cloudStatus, setCloudStatus] = useState("Saved on this device");
+  const [cloudReady, setCloudReady] = useState(false);
+  const [libraryStorageKey, setLibraryStorageKey] = useState(GUEST_LIBRARY_KEY);
   const [pendingConnector, setPendingConnector] = useState(null);
-  const [library, setLibrary] = useState(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const storedLibrary = JSON.parse(localStorage.getItem("scenemap-library") || "[]");
-      return Array.isArray(storedLibrary) ? storedLibrary : [];
-    } catch {
-      return [];
-    }
-  });
+  const [library, setLibrary] = useState(() => readStoredLibrary(GUEST_LIBRARY_KEY));
   const [libraryQuery, setLibraryQuery] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const [libraryMapOnly, setLibraryMapOnly] = useState(false);
   const [recreateLocation, setRecreateLocation] = useState(null);
 
   useEffect(() => {
-    localStorage.setItem("scenemap-library", JSON.stringify(library));
-  }, [library]);
+    localStorage.setItem(libraryStorageKey, JSON.stringify(library));
+  }, [library, libraryStorageKey]);
+
+  useEffect(() => {
+    if (!supabase) return undefined;
+
+    let cancelled = false;
+    let hydrationId = 0;
+
+    async function applySession(session) {
+      const requestId = hydrationId + 1;
+      hydrationId = requestId;
+      const user = session?.user ?? null;
+
+      if (!user) {
+        setAccountUser(null);
+        setAccountStatus("signed_out");
+        setCloudReady(false);
+        setLibraryStorageKey(GUEST_LIBRARY_KEY);
+        setLibrary(readStoredLibrary(GUEST_LIBRARY_KEY));
+        setCloudStatus("Saved on this device");
+        return;
+      }
+
+      const userStorageKey = `${GUEST_LIBRARY_KEY}:${user.id}`;
+      setAccountUser(user);
+      setAccountStatus("loading");
+      setCloudReady(false);
+      setCloudStatus("Loading your account…");
+
+      const cachedAccountLibrary = readStoredLibrary(userStorageKey);
+      const guestLibrary = readStoredLibrary(GUEST_LIBRARY_KEY);
+
+      try {
+        const cloudLibrary = await loadCloudLibrary(supabase, user.id);
+        const mergedLibrary = mergeLibraries(
+          cloudLibrary,
+          mergeLibraries(cachedAccountLibrary, guestLibrary),
+        );
+        await saveCloudLibrary(supabase, user.id, mergedLibrary);
+        if (cancelled || requestId !== hydrationId) return;
+
+        localStorage.removeItem(GUEST_LIBRARY_KEY);
+        setLibraryStorageKey(userStorageKey);
+        setLibrary(mergedLibrary);
+        setAccountStatus("signed_in");
+        setCloudReady(true);
+        setCloudStatus("Synced to your account");
+      } catch {
+        if (cancelled || requestId !== hydrationId) return;
+        setLibraryStorageKey(userStorageKey);
+        setLibrary(mergeLibraries(cachedAccountLibrary, guestLibrary));
+        setAccountStatus("error");
+        setCloudStatus("Cloud sync is unavailable. Your library is still saved on this device.");
+      }
+    }
+
+    supabase.auth.getSession().then(({ data }) => applySession(data.session));
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      queueMicrotask(() => applySession(session));
+    });
+
+    return () => {
+      cancelled = true;
+      authListener.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!supabase || !accountUser || !cloudReady) return undefined;
+
+    setCloudStatus("Saving…");
+    const timeout = window.setTimeout(async () => {
+      try {
+        await saveCloudLibrary(supabase, accountUser.id, library);
+        setCloudStatus("Synced to your account");
+      } catch {
+        setCloudStatus("Cloud sync failed. Your device copy is safe.");
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timeout);
+  }, [accountUser, cloudReady, library, supabase]);
 
   function applyLocationResults(nextLocations, { preserveContext = false } = {}) {
     const nextFilms = worksFromLocations(nextLocations);
@@ -673,6 +806,7 @@ export default function SceneMapApp() {
         if (cityWikidataId) params.set("exclude", cityWikidataId);
 
         const response = await fetch(`/api/locations?${params}`, {
+          cache: "no-store",
           signal: abortController.signal,
         });
         const payload = await response.json();
@@ -704,10 +838,18 @@ export default function SceneMapApp() {
     if (!activeLocation) return undefined;
 
     if (activeLocation.backdrop && activeLocation.backdropVerified) {
-      setFilmImageState({
-        locationId: activeLocation.id,
+      const frame = {
         url: activeLocation.backdrop,
         sourceUrl: null,
+        locationName: activeLocation.place,
+        locationType: "other",
+        description: activeLocation.description ?? "",
+      };
+      setFilmImageState({
+        locationId: activeLocation.id,
+        url: frame.url,
+        sourceUrl: null,
+        frames: [frame],
         status: "ready",
       });
       return undefined;
@@ -718,6 +860,7 @@ export default function SceneMapApp() {
         locationId: activeLocation.id,
         url: null,
         sourceUrl: null,
+        frames: [],
         status: "unavailable",
       });
       return undefined;
@@ -731,6 +874,7 @@ export default function SceneMapApp() {
         locationId: activeLocation.id,
         url: cached?.url ?? null,
         sourceUrl: cached?.sourceUrl ?? null,
+        frames: cached?.frames ?? [],
         status: cached?.status ?? (cached?.url ? "ready" : "unavailable"),
       });
       return undefined;
@@ -741,6 +885,7 @@ export default function SceneMapApp() {
       locationId: activeLocation.id,
       url: null,
       sourceUrl: null,
+      frames: [],
       status: "loading",
     });
 
@@ -751,7 +896,7 @@ export default function SceneMapApp() {
           workId: String(activeLocation.filmId),
           locationId: String(locationCacheId),
           token: activeLocation.sceneMatchToken,
-          v: "2",
+          v: "4",
         });
         const response = await fetch(`/api/film-image?${query}`, { signal: controller.signal });
         const payload = await response.json();
@@ -762,9 +907,11 @@ export default function SceneMapApp() {
           : ["no_candidates", "no_high_confidence_match"].includes(payload.reason)
             ? "no_match"
             : "unavailable";
+        const frames = framesFromFilmImagePayload(payload, activeLocation.place);
         const cached = {
-          url: payload.image_url ?? null,
-          sourceUrl: payload.source_url ?? null,
+          url: frames[0]?.url ?? payload.image_url ?? null,
+          sourceUrl: frames[0]?.sourceUrl ?? payload.source_url ?? null,
+          frames,
           status,
         };
         filmImageCache.current.set(cacheKey, cached);
@@ -778,6 +925,7 @@ export default function SceneMapApp() {
           locationId: activeLocation.id,
           url: null,
           sourceUrl: null,
+          frames: [],
           status: "error",
         });
       }
@@ -831,17 +979,27 @@ export default function SceneMapApp() {
   }, [library, libraryQuery]);
 
   const routePositions = routeResult?.positions ?? [];
-  const activeFilmImage = activeLocation?.backdrop && activeLocation?.backdropVerified
-    ? activeLocation.backdrop
-    : (filmImageState.locationId === activeLocation?.id ? filmImageState.url : null);
+  const activeFilmFrames = activeLocation?.backdrop && activeLocation?.backdropVerified
+    ? [{
+        url: activeLocation.backdrop,
+        sourceUrl: null,
+        locationName: activeLocation.place,
+        locationType: "other",
+        description: activeLocation.description ?? "",
+      }]
+    : filmImageState.locationId === activeLocation?.id
+      ? filmImageState.frames
+      : [];
+  const activePrimaryFrame = activeFilmFrames[0] ?? null;
+  const activeFilmImage = activePrimaryFrame?.url
+    ?? (filmImageState.locationId === activeLocation?.id ? filmImageState.url : null);
   const activeFilmImageStatus = activeLocation?.backdrop && activeLocation?.backdropVerified
     ? "ready"
     : filmImageState.locationId === activeLocation?.id
       ? filmImageState.status
       : activeLocation?.filmTmdbId ? "loading" : "unavailable";
-  const activeFilmImageSource = filmImageState.locationId === activeLocation?.id
-    ? filmImageState.sourceUrl
-    : null;
+  const activeFilmImageSource = activePrimaryFrame?.sourceUrl
+    ?? (filmImageState.locationId === activeLocation?.id ? filmImageState.sourceUrl : null);
   const activeNarration = aiTour?.stops?.find(
     (stop) => stop.locationId === activeLocation?.id,
   )?.narration;
@@ -930,6 +1088,32 @@ export default function SceneMapApp() {
         : ".csv,text/csv";
       connectorInputRef.current.click();
     }
+  }
+
+  async function signInWithProvider(provider) {
+    if (!supabase) {
+      setCloudStatus("Supabase Auth is not configured.");
+      return;
+    }
+
+    setAccountStatus("authorizing");
+    setCloudStatus(`Opening ${provider === "google" ? "Google" : "Facebook"}…`);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: window.location.origin },
+    });
+
+    if (error) {
+      setAccountStatus("signed_out");
+      setCloudStatus("Sign-in could not be started. Please try again.");
+    }
+  }
+
+  async function signOut() {
+    if (!supabase) return;
+    setCloudStatus("Signing out…");
+    const { error } = await supabase.auth.signOut();
+    if (error) setCloudStatus("Sign-out failed. Please try again.");
   }
 
   async function importLibrary(event) {
@@ -1295,7 +1479,7 @@ export default function SceneMapApp() {
         limit: "30",
       });
       if (cityWikidataId) params.set("exclude", cityWikidataId);
-      const response = await fetch(`/api/locations?${params}`);
+      const response = await fetch(`/api/locations?${params}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Location search failed");
       if (requestId !== locationRequestId.current) return;
@@ -1894,6 +2078,7 @@ export default function SceneMapApp() {
                         locationId: activeLocation.id,
                         url: null,
                         sourceUrl: null,
+                        frames: [],
                         status: "error",
                       });
                     }}
@@ -1919,11 +2104,23 @@ export default function SceneMapApp() {
                   </div>
                 )}
                 <figcaption>
-                  {activeFilmImage && activeFilmImageSource ? (
-                    <a href={activeFilmImageSource} target="_blank" rel="noopener noreferrer">
-                      AI-matched scene · TMDB
-                    </a>
-                  ) : "scene reference"}
+                  <span className="scene-frame-meta">
+                    {activePrimaryFrame && (
+                      <span className="scene-frame-type">
+                        {frameLocationLabel(activePrimaryFrame.locationType)}
+                      </span>
+                    )}
+                    {activeFilmImage && activeFilmImageSource ? (
+                      <a href={activeFilmImageSource} target="_blank" rel="noopener noreferrer">
+                        AI-matched frame · TMDB
+                      </a>
+                    ) : "scene reference"}
+                  </span>
+                  {activePrimaryFrame?.description && (
+                    <span className="scene-frame-description">
+                      {activePrimaryFrame.description}
+                    </span>
+                  )}
                 </figcaption>
               </figure>
               <figure>
@@ -1935,6 +2132,38 @@ export default function SceneMapApp() {
                 <figcaption>the place today</figcaption>
               </figure>
             </div>
+            {activeFilmFrames.length > 1 && (
+              <section className="scene-frame-gallery" aria-label={`More matched frames from ${activeLocation.film}`}>
+                <div className="scene-frame-gallery-heading">
+                  <strong>More matched frames</strong>
+                  <span>{activeFilmFrames.length - 1}</span>
+                </div>
+                <div className="scene-frame-list">
+                  {activeFilmFrames.slice(1).map((frame) => (
+                    <figure key={frame.url}>
+                      <img
+                        src={frame.url}
+                        alt={`Candidate frame from ${activeLocation.film} associated with ${frame.locationName}`}
+                        onError={(event) => event.currentTarget.closest("figure")?.remove()}
+                      />
+                      <figcaption>
+                        <span className="scene-frame-meta">
+                          <span className="scene-frame-type">
+                            {frameLocationLabel(frame.locationType)}
+                          </span>
+                          {frame.sourceUrl && (
+                            <a href={frame.sourceUrl} target="_blank" rel="noopener noreferrer">
+                              TMDB source
+                            </a>
+                          )}
+                        </span>
+                        <span className="scene-frame-description">{frame.description}</span>
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              </section>
+            )}
             <button
               aria-haspopup="dialog"
               className="wide-button recreate-launch"
@@ -1971,15 +2200,46 @@ export default function SceneMapApp() {
             <div className="account-heading">
               <div className="account-avatar"><User size={22} /></div>
               <div>
-                <p className="eyebrow">Personal library</p>
-                <h2 id="account-title">My movies</h2>
+                <p className="eyebrow">Personal account</p>
+                <h2 id="account-title">My library</h2>
               </div>
               <button className="icon-button" type="button" onClick={() => setAccountOpen(false)} aria-label="Close movie library">
                 <X size={18} />
               </button>
             </div>
 
-            <p className="account-copy">Import your official account export. Your list stays on this device and can combine both services.</p>
+            <p className="account-copy">
+              Import your official account export. Sign in to keep the normalized movie list in your private account and access it on another device.
+            </p>
+
+            <div className="account-auth">
+              {accountUser ? (
+                <div className="account-session">
+                  <span className="account-user-mark">{(accountUser.user_metadata?.name || accountUser.email || "U").slice(0, 1).toUpperCase()}</span>
+                  <span>
+                    <strong>{accountUser.user_metadata?.name || "Signed in"}</strong>
+                    <small>{accountUser.email}</small>
+                  </span>
+                  <button type="button" onClick={signOut}><LogOut size={16} />Sign out</button>
+                </div>
+              ) : (
+                <div className="oauth-buttons">
+                  <button type="button" onClick={() => signInWithProvider("google")} disabled={accountStatus === "authorizing" || accountStatus === "loading"}>
+                    <span className="oauth-logo is-google">G</span>
+                    Login with Google
+                  </button>
+                  <button type="button" onClick={() => signInWithProvider("facebook")} disabled={accountStatus === "authorizing" || accountStatus === "loading"}>
+                    <span className="oauth-logo is-facebook">f</span>
+                    Login with Facebook
+                  </button>
+                </div>
+              )}
+              <p className={accountUser && cloudReady ? "cloud-status is-synced" : "cloud-status"} role="status">
+                {accountStatus === "loading" || accountStatus === "authorizing" ? <LoaderCircle className="spin" size={15} /> : <Cloud size={15} />}
+                {cloudStatus}
+              </p>
+            </div>
+
             <input
               ref={connectorInputRef}
               type="file"
@@ -2044,7 +2304,7 @@ export default function SceneMapApp() {
               {library.length > 0 && filteredLibrary.length === 0 && <p className="empty-library">No movies match your search.</p>}
             </div>
 
-            <div className="account-privacy"><CheckCircle2 size={17} /><span>Import files are processed locally. GloryMap never asks for your Letterboxd or IMDb password.</span></div>
+            <div className="account-privacy"><CheckCircle2 size={17} /><span>The ZIP or CSV is processed locally and is never uploaded. When you sign in, only the normalized movie list is stored under your account.</span></div>
           </section>
         </div>
       )}
