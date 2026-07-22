@@ -41,7 +41,7 @@ export async function POST(request) {
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await openai.responses.parse({
-      model: process.env.OPENAI_MODEL || "gpt-5.6-terra",
+      model: process.env.OPENAI_MODEL || "gpt-5-nano",
       store: false,
       max_output_tokens: 700,
       reasoning: { effort: "low" },
