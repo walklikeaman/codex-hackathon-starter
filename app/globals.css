@@ -1353,6 +1353,16 @@ figcaption a {
   color: var(--gold-strong);
 }
 
+.account-button.is-login {
+  border-color: rgba(247, 183, 51, 0.45);
+  background: rgba(247, 183, 51, 0.12);
+}
+
+.account-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .account-backdrop {
   position: fixed;
   inset: 0;
@@ -1981,6 +1991,10 @@ figcaption a {
   .account-button {
     padding: 9px;
     font-size: 0;
+  }
+
+  .account-button.is-login {
+    font-size: 0.7rem;
   }
 
   .connector-list {
