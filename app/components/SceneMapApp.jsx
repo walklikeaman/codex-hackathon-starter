@@ -1645,9 +1645,14 @@ export default function SceneMapApp() {
             <p className="eyebrow">GloryMap</p>
             <h1>Stories on the map · {cityName}</h1>
           </div>
-          <button className="account-button" type="button" onClick={() => setAccountOpen(true)}>
-            <User size={18} />
-            My movies
+          <button
+            className={`account-button${accountUser ? "" : " is-login"}`}
+            type="button"
+            onClick={() => accountUser ? setAccountOpen(true) : signInWithProvider("google")}
+            disabled={!accountUser && ["authorizing", "loading", "unavailable"].includes(accountStatus)}
+          >
+            {accountUser ? <User size={18} /> : <span className="oauth-logo is-google">G</span>}
+            {accountUser ? "My movies" : "Login with Google"}
           </button>
         </div>
 

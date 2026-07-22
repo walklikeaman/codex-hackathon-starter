@@ -28,10 +28,10 @@ export async function POST(request) {
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await openai.responses.parse({
-      model: process.env.OPENAI_SEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-5.6",
+      model: process.env.OPENAI_SEARCH_MODEL || process.env.OPENAI_MODEL || "gpt-5-nano",
       store: false,
-      max_output_tokens: 1400,
-      max_tool_calls: 3,
+      max_output_tokens: 3000,
+      max_tool_calls: 1,
       reasoning: { effort: "low" },
       tools: [{
         type: "web_search",
@@ -46,7 +46,7 @@ export async function POST(request) {
       instructions: [
         "You research story locations for a map and must prefer accuracy over quantity.",
         `Return at most five ${relation} inside the supplied city boundary.`,
-        "Use web search for every returned place.",
+        "Make exactly one web search and use it as evidence for every returned place.",
         "Only include a place when a consulted source directly supports the connection; do not infer from proximity or general knowledge.",
         "Give precise coordinates for the named public place, a short scene or story label, and one factual sentence explaining the connection.",
         "Copy the exact supporting source URL into sourceUrl.",
