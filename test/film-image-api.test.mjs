@@ -12,7 +12,7 @@ function filmImageRequest(overrides = {}, init = {}) {
     ...overrides,
   });
   params.delete("v");
-  params.set("v", overrides.v ?? "2");
+  params.set("v", overrides.v ?? "4");
   return new Request(`http://localhost/api/film-image?${params}`, init);
 }
 
@@ -46,14 +46,22 @@ function upstreamFetch({ bindings, backdrops } = {}) {
   };
 }
 
-function handlerForMatch({ outputParsed, status = "completed", onParse, backdrops } = {}) {
+function frameMatch(overrides = {}) {
+  return {
+    isPhotographicFrame: true,
+    hasProminentTitleOrLogo: false,
+    ...overrides,
+  };
+}
+
+function handlerForMatch({ outputParsed, status = "completed", onParse, backdrops, bindings } = {}) {
   return createFilmImageHandler({
     env: {
       TMDB_API_READ_ACCESS_TOKEN: "tmdb-test-token",
       OPENAI_API_KEY: "openai-test-key",
       OPENAI_VISION_MODEL: "test-vision-model",
     },
-    fetchImpl: upstreamFetch({ backdrops }),
+    fetchImpl: upstreamFetch({ backdrops, bindings }),
     allowRequest: () => true,
     verifyToken: () => true,
     logError: () => {},
@@ -82,7 +90,7 @@ test("film image API redirects stale or cache-busting queries to the current mat
   assert.equal(response.status, 307);
   assert.equal(
     response.headers.get("location"),
-    "http://localhost/api/film-image?tmdbId=185&workId=Q181086&locationId=Q386707&v=2",
+    "http://localhost/api/film-image?tmdbId=185&workId=Q181086&locationId=Q386707&v=4",
   );
 });
 
@@ -157,16 +165,19 @@ test("film image API returns the location-matched candidate instead of the top b
   const request = filmImageRequest();
   const handler = handlerForMatch({
     outputParsed: {
-      candidateIndex: 1,
-      confidence: "high",
-      evidence: "The same prison gate and brick wings are visible.",
+      matches: [frameMatch({
+        candidateIndex: 1,
+        confidence: "high",
+        locationType: "building",
+        description: "The same prison gate and brick wings are visible.",
+      })],
     },
     onParse: (body, options) => {
       assert.equal(body.model, "test-vision-model");
       assert.equal(body.reasoning.effort, "low");
-      assert.equal(body.max_output_tokens, 600);
+      assert.equal(body.max_output_tokens, 1000);
       assert.match(body.instructions, /already been verified/);
-      assert.match(body.instructions, /different viewpoint/);
+      assert.match(body.instructions, /up to three distinct candidate frames/);
       assert.equal(
         body.input[0].content.filter((item) => item.type === "input_image").length,
         3,
@@ -181,6 +192,80 @@ test("film image API returns the location-matched candidate instead of the top b
   assert.equal(payload.image_url, "https://image.tmdb.org/t/p/w780/matching.jpg");
   assert.equal(payload.match_method, "openai_vision");
   assert.equal(payload.match_confidence, "high");
+  assert.deepEqual(payload.frames, [{
+    image_url: "https://image.tmdb.org/t/p/w780/matching.jpg",
+    source_url: "https://www.themoviedb.org/movie/185/images/backdrops",
+    location_name: "HM Prison Wandsworth",
+    location_type: "building",
+    description: "The same prison gate and brick wings are visible.",
+    match_confidence: "high",
+    match_method: "openai_vision",
+  }]);
+});
+
+test("film image API returns up to three distinct described frames", async () => {
+  const handler = handlerForMatch({
+    outputParsed: {
+      matches: [
+        frameMatch({
+          candidateIndex: 1,
+          confidence: "high",
+          locationType: "building",
+          description: "The brick gate matches the verified prison location.",
+        }),
+        frameMatch({
+          candidateIndex: 0,
+          confidence: "high",
+          locationType: "building",
+          description: "The institutional courtyard repeats the same brick layout.",
+        }),
+      ],
+    },
+  });
+  const response = await handler(filmImageRequest());
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.frames.length, 2);
+  assert.deepEqual(
+    payload.frames.map((frame) => frame.image_url),
+    [
+      "https://image.tmdb.org/t/p/w780/matching.jpg",
+      "https://image.tmdb.org/t/p/w780/generic.jpg",
+    ],
+  );
+  assert.equal(payload.image_url, payload.frames[0].image_url);
+});
+
+test("film image API can associate representative frames with an explicit studio", async () => {
+  const handler = handlerForMatch({
+    bindings: [{
+      workLabel: { value: "Test Film" },
+      locationLabel: { value: "Pinewood Studios" },
+      tmdbId: { value: "185" },
+    }],
+    outputParsed: {
+      matches: [frameMatch({
+        candidateIndex: 0,
+        confidence: "high",
+        locationType: "building",
+        description: "An interior production frame; the exact soundstage is not visible.",
+      })],
+    },
+    onParse: (body) => {
+      assert.equal(
+        body.input[0].content.filter((item) => item.type === "input_image").length,
+        2,
+      );
+      assert.match(body.input[0].content[0].text, /explicitly a studio/);
+    },
+  });
+  const response = await handler(filmImageRequest());
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.frames[0].location_name, "Pinewood Studios");
+  assert.equal(payload.frames[0].location_type, "studio");
 });
 
 test("film image API can match a relevant backdrop beyond the first six", async () => {
@@ -193,9 +278,12 @@ test("film image API can match a relevant backdrop beyond the first six", async 
   const handler = handlerForMatch({
     backdrops,
     outputParsed: {
-      candidateIndex: 10,
-      confidence: "high",
-      evidence: "The same prison courtyard is visible.",
+      matches: [frameMatch({
+        candidateIndex: 10,
+        confidence: "high",
+        locationType: "building",
+        description: "The same prison courtyard is visible.",
+      })],
     },
     onParse: (body) => {
       assert.equal(
@@ -215,9 +303,12 @@ test("film image API can match a relevant backdrop beyond the first six", async 
 test("film image API hides a generic backdrop when confidence is not high", async () => {
   const handler = handlerForMatch({
     outputParsed: {
-      candidateIndex: 0,
-      confidence: "medium",
-      evidence: "The city looks similar but no landmark is conclusive.",
+      matches: [frameMatch({
+        candidateIndex: 0,
+        confidence: "medium",
+        locationType: "street",
+        description: "The city looks similar but no landmark is conclusive.",
+      })],
     },
   });
   const response = await handler(filmImageRequest());

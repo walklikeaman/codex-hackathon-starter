@@ -231,6 +231,44 @@ function filmImagePlaceholderLabel(status) {
   return "Scene matching unavailable";
 }
 
+const frameLocationLabels = {
+  street: "Street",
+  bar_or_restaurant: "Bar / restaurant",
+  building: "Building",
+  studio: "Studio",
+  landscape: "Landscape",
+  other: "Location",
+};
+
+function frameLocationLabel(type) {
+  return frameLocationLabels[type] ?? frameLocationLabels.other;
+}
+
+function framesFromFilmImagePayload(payload, fallbackPlace) {
+  const rawFrames = Array.isArray(payload.frames) && payload.frames.length
+    ? payload.frames
+    : payload.image_url
+      ? [{
+          image_url: payload.image_url,
+          source_url: payload.source_url,
+          location_name: fallbackPlace,
+          location_type: "other",
+          description: "",
+        }]
+      : [];
+
+  return rawFrames
+    .filter((frame) => typeof frame?.image_url === "string" && frame.image_url)
+    .slice(0, 3)
+    .map((frame) => ({
+      url: frame.image_url,
+      sourceUrl: frame.source_url ?? payload.source_url ?? null,
+      locationName: frame.location_name ?? fallbackPlace,
+      locationType: frame.location_type ?? "other",
+      description: frame.description ?? "",
+    }));
+}
+
 function locationsFromApi(records) {
   return records
     .map((record) => {
@@ -602,6 +640,7 @@ export default function SceneMapApp() {
     locationId: fallbackLocations[0].id,
     url: null,
     sourceUrl: null,
+    frames: [],
     status: "unavailable",
   });
   const [filmImageRetry, setFilmImageRetry] = useState(0);
@@ -767,6 +806,7 @@ export default function SceneMapApp() {
         if (cityWikidataId) params.set("exclude", cityWikidataId);
 
         const response = await fetch(`/api/locations?${params}`, {
+          cache: "no-store",
           signal: abortController.signal,
         });
         const payload = await response.json();
@@ -798,10 +838,18 @@ export default function SceneMapApp() {
     if (!activeLocation) return undefined;
 
     if (activeLocation.backdrop && activeLocation.backdropVerified) {
-      setFilmImageState({
-        locationId: activeLocation.id,
+      const frame = {
         url: activeLocation.backdrop,
         sourceUrl: null,
+        locationName: activeLocation.place,
+        locationType: "other",
+        description: activeLocation.description ?? "",
+      };
+      setFilmImageState({
+        locationId: activeLocation.id,
+        url: frame.url,
+        sourceUrl: null,
+        frames: [frame],
         status: "ready",
       });
       return undefined;
@@ -812,6 +860,7 @@ export default function SceneMapApp() {
         locationId: activeLocation.id,
         url: null,
         sourceUrl: null,
+        frames: [],
         status: "unavailable",
       });
       return undefined;
@@ -825,6 +874,7 @@ export default function SceneMapApp() {
         locationId: activeLocation.id,
         url: cached?.url ?? null,
         sourceUrl: cached?.sourceUrl ?? null,
+        frames: cached?.frames ?? [],
         status: cached?.status ?? (cached?.url ? "ready" : "unavailable"),
       });
       return undefined;
@@ -835,6 +885,7 @@ export default function SceneMapApp() {
       locationId: activeLocation.id,
       url: null,
       sourceUrl: null,
+      frames: [],
       status: "loading",
     });
 
@@ -845,7 +896,7 @@ export default function SceneMapApp() {
           workId: String(activeLocation.filmId),
           locationId: String(locationCacheId),
           token: activeLocation.sceneMatchToken,
-          v: "2",
+          v: "4",
         });
         const response = await fetch(`/api/film-image?${query}`, { signal: controller.signal });
         const payload = await response.json();
@@ -856,9 +907,11 @@ export default function SceneMapApp() {
           : ["no_candidates", "no_high_confidence_match"].includes(payload.reason)
             ? "no_match"
             : "unavailable";
+        const frames = framesFromFilmImagePayload(payload, activeLocation.place);
         const cached = {
-          url: payload.image_url ?? null,
-          sourceUrl: payload.source_url ?? null,
+          url: frames[0]?.url ?? payload.image_url ?? null,
+          sourceUrl: frames[0]?.sourceUrl ?? payload.source_url ?? null,
+          frames,
           status,
         };
         filmImageCache.current.set(cacheKey, cached);
@@ -872,6 +925,7 @@ export default function SceneMapApp() {
           locationId: activeLocation.id,
           url: null,
           sourceUrl: null,
+          frames: [],
           status: "error",
         });
       }
@@ -925,17 +979,27 @@ export default function SceneMapApp() {
   }, [library, libraryQuery]);
 
   const routePositions = routeResult?.positions ?? [];
-  const activeFilmImage = activeLocation?.backdrop && activeLocation?.backdropVerified
-    ? activeLocation.backdrop
-    : (filmImageState.locationId === activeLocation?.id ? filmImageState.url : null);
+  const activeFilmFrames = activeLocation?.backdrop && activeLocation?.backdropVerified
+    ? [{
+        url: activeLocation.backdrop,
+        sourceUrl: null,
+        locationName: activeLocation.place,
+        locationType: "other",
+        description: activeLocation.description ?? "",
+      }]
+    : filmImageState.locationId === activeLocation?.id
+      ? filmImageState.frames
+      : [];
+  const activePrimaryFrame = activeFilmFrames[0] ?? null;
+  const activeFilmImage = activePrimaryFrame?.url
+    ?? (filmImageState.locationId === activeLocation?.id ? filmImageState.url : null);
   const activeFilmImageStatus = activeLocation?.backdrop && activeLocation?.backdropVerified
     ? "ready"
     : filmImageState.locationId === activeLocation?.id
       ? filmImageState.status
       : activeLocation?.filmTmdbId ? "loading" : "unavailable";
-  const activeFilmImageSource = filmImageState.locationId === activeLocation?.id
-    ? filmImageState.sourceUrl
-    : null;
+  const activeFilmImageSource = activePrimaryFrame?.sourceUrl
+    ?? (filmImageState.locationId === activeLocation?.id ? filmImageState.sourceUrl : null);
   const activeNarration = aiTour?.stops?.find(
     (stop) => stop.locationId === activeLocation?.id,
   )?.narration;
@@ -1415,7 +1479,7 @@ export default function SceneMapApp() {
         limit: "30",
       });
       if (cityWikidataId) params.set("exclude", cityWikidataId);
-      const response = await fetch(`/api/locations?${params}`);
+      const response = await fetch(`/api/locations?${params}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Location search failed");
       if (requestId !== locationRequestId.current) return;
@@ -2014,6 +2078,7 @@ export default function SceneMapApp() {
                         locationId: activeLocation.id,
                         url: null,
                         sourceUrl: null,
+                        frames: [],
                         status: "error",
                       });
                     }}
@@ -2039,11 +2104,23 @@ export default function SceneMapApp() {
                   </div>
                 )}
                 <figcaption>
-                  {activeFilmImage && activeFilmImageSource ? (
-                    <a href={activeFilmImageSource} target="_blank" rel="noopener noreferrer">
-                      AI-matched scene · TMDB
-                    </a>
-                  ) : "scene reference"}
+                  <span className="scene-frame-meta">
+                    {activePrimaryFrame && (
+                      <span className="scene-frame-type">
+                        {frameLocationLabel(activePrimaryFrame.locationType)}
+                      </span>
+                    )}
+                    {activeFilmImage && activeFilmImageSource ? (
+                      <a href={activeFilmImageSource} target="_blank" rel="noopener noreferrer">
+                        AI-matched frame · TMDB
+                      </a>
+                    ) : "scene reference"}
+                  </span>
+                  {activePrimaryFrame?.description && (
+                    <span className="scene-frame-description">
+                      {activePrimaryFrame.description}
+                    </span>
+                  )}
                 </figcaption>
               </figure>
               <figure>
@@ -2055,6 +2132,38 @@ export default function SceneMapApp() {
                 <figcaption>the place today</figcaption>
               </figure>
             </div>
+            {activeFilmFrames.length > 1 && (
+              <section className="scene-frame-gallery" aria-label={`More matched frames from ${activeLocation.film}`}>
+                <div className="scene-frame-gallery-heading">
+                  <strong>More matched frames</strong>
+                  <span>{activeFilmFrames.length - 1}</span>
+                </div>
+                <div className="scene-frame-list">
+                  {activeFilmFrames.slice(1).map((frame) => (
+                    <figure key={frame.url}>
+                      <img
+                        src={frame.url}
+                        alt={`Candidate frame from ${activeLocation.film} associated with ${frame.locationName}`}
+                        onError={(event) => event.currentTarget.closest("figure")?.remove()}
+                      />
+                      <figcaption>
+                        <span className="scene-frame-meta">
+                          <span className="scene-frame-type">
+                            {frameLocationLabel(frame.locationType)}
+                          </span>
+                          {frame.sourceUrl && (
+                            <a href={frame.sourceUrl} target="_blank" rel="noopener noreferrer">
+                              TMDB source
+                            </a>
+                          )}
+                        </span>
+                        <span className="scene-frame-description">{frame.description}</span>
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              </section>
+            )}
             <button
               aria-haspopup="dialog"
               className="wide-button recreate-launch"
