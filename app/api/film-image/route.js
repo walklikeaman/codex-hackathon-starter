@@ -169,7 +169,7 @@ export function createFilmImageHandler({
       const openai = createOpenAIClient(openAIKey);
       const matchResponse = await openai.responses.parse(
         {
-          model: env.OPENAI_VISION_MODEL || "gpt-5-mini",
+          model: env.OPENAI_VISION_MODEL || "gpt-5-nano",
           store: false,
           max_output_tokens: 1000,
           reasoning: { effort: "low" },
@@ -225,7 +225,7 @@ export function createFilmImageHandler({
       );
       const verificationResponse = await openai.responses.parse(
         {
-          model: env.OPENAI_VISION_MODEL || "gpt-5-mini",
+          model: env.OPENAI_VISION_MODEL || "gpt-5-nano",
           store: false,
           max_output_tokens: 800,
           reasoning: { effort: "low" },
