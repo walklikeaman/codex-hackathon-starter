@@ -241,6 +241,7 @@ export function createFilmImageHandler({
             role: "user",
             content: buildSceneImageContent({
               ...sceneContext,
+              locationImageUrl: null,
               candidateImageUrls: shortlistedImageUrls,
             }),
           }],
