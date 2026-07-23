@@ -1,35 +1,16 @@
+import { WALKING_SPEED_KMH, haversineKm, isFinitePair } from "./geo.mjs";
+
 export const TOUR_BUDGETS = [30, 60, 120];
 const TOUR_MIN_STOPS = 3;
 const TOUR_MAX_STOPS = 5;
 export const TOUR_BUDGET_TOLERANCE = 1.15;
 
-const WALKING_SPEED_KMH = 4.6;
 const STREET_DISTANCE_FACTOR = 1.3;
 const MAX_SEEDS = 8;
 
-function isPosition(value) {
-  return (
-    Array.isArray(value) &&
-    value.length === 2 &&
-    Number.isFinite(value[0]) &&
-    Number.isFinite(value[1])
-  );
-}
-
 export function distanceKm(from, to) {
-  if (!isPosition(from) || !isPosition(to)) return Number.POSITIVE_INFINITY;
-
-  const toRadians = (value) => (value * Math.PI) / 180;
-  const earthRadiusKm = 6371;
-  const latitudeDelta = toRadians(to[0] - from[0]);
-  const longitudeDelta = toRadians(to[1] - from[1]);
-  const a =
-    Math.sin(latitudeDelta / 2) ** 2 +
-    Math.cos(toRadians(from[0])) *
-      Math.cos(toRadians(to[0])) *
-      Math.sin(longitudeDelta / 2) ** 2;
-
-  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  if (!isFinitePair(from) || !isFinitePair(to)) return Number.POSITIVE_INFINITY;
+  return haversineKm(from, to);
 }
 
 function estimateTourMinutes(stops) {
@@ -128,13 +109,13 @@ export function createTimedTourCandidates(locations, origin, budgetMinutes) {
 
   const uniqueLocations = combineLocationWorks([...new Map(
     (Array.isArray(locations) ? locations : [])
-      .filter((location) => location?.id && isPosition(location.position))
+      .filter((location) => location?.id && isFinitePair(location.position))
       .map((location) => [location.id, location]),
   ).values()]);
 
   if (uniqueLocations.length < TOUR_MIN_STOPS) return [];
 
-  const effectiveOrigin = isPosition(origin) ? origin : uniqueLocations[0].position;
+  const effectiveOrigin = isFinitePair(origin) ? origin : uniqueLocations[0].position;
   const nearbySeeds = [...uniqueLocations]
     .sort((left, right) => {
       const distanceDelta =
