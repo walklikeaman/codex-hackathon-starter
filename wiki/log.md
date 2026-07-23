@@ -7,6 +7,30 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-23] update | Step 1 slice 1c — external-id → Wikidata QID cross-walk
+
+- #92 (Step 1): the id cross-walk. PR #102 merged. The join Step 2 (#93 Location
+  Resolution Engine) needs to turn an imported work into its Wikidata entity.
+- app/lib/connectors/wikidata-crosswalk.mjs: pure builders/parser
+  (crosswalkCandidates / buildCrosswalkSparql / parseCrosswalkResults /
+  resolveWorkQids) + injectable fetch wrapper (crosswalkWikidataIds), same
+  pure/route split as letterboxd-rss.mjs. Reuses wikidataId / isWikidataId from
+  [[wikidata]] (location-search.mjs). One batched SPARQL VALUES query per set.
+- Properties live-verified vs query.wikidata.org: P4947 TMDb movie / P4983 TV,
+  P345 IMDb, P212/P957 ISBN-13/10, P436 release group / P4404 recording.
+  works.kind picks the property (tmdb never misread as a TV id).
+- Injection defense: property from a hard-coded allow-list only; each value
+  passes a per-type format regex then isSparqlLiteralSafe (rejects
+  quote/backslash/control), re-checked in the builder. resolveWorkQids is
+  deterministic (smallest QID) and flags conflicts (ISBN edition splits, id
+  disagreement). ISBN is best-effort (Wikidata hyphenation + sparse coverage).
+- Built research-first + adversarial-review workflow: a research fan-out
+  (repo conventions + live-verified properties), then a 3-lens review whose 6
+  confirmed findings (1 correctness + 5 mutation-verified coverage) were all
+  fixed before merge. 19 module tests, 160/160 suite green.
+- Remaining in #92: connectors (Trakt / Kinopoisk / Goodreads / Open Library /
+  Last.fm) reuse this cross-walk; then #93 wires works → Wikidata → locations.
+
 ## [2026-07-23] update | Step 1 slice 1b — Letterboxd import route (write layer)
 
 - #92 (Step 1): the write path on top of slice 1a's pure core. PR #101 merged.
