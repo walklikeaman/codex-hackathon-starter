@@ -8,6 +8,7 @@
 **Roadmap** = the themes and the order (this file).
 **Backlog** = the prioritized list of concrete issues, ready to take
 ([open issues](https://github.com/walklikeaman/codex-hackathon-starter/issues?q=is%3Aissue+is%3Aopen)).
+Everything is **ranked by importance** in [`PRIORITIES.md`](PRIORITIES.md) — start there.
 
 ## How we work the board
 
