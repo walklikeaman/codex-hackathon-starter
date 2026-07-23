@@ -15,6 +15,14 @@ create extension if not exists postgis;
 create extension if not exists pg_trgm;
 create extension if not exists vector;
 
+-- Consolidation: drop the superseded ad-hoc tables (empty, created out-of-band by
+-- the earlier scenemap_initial_schema). The canonical graph below replaces them.
+-- `scenes` in particular is recreated here with a different shape, so the old one
+-- must go first (otherwise `create table if not exists` would keep the wrong schema
+-- and the work_place_links.scene_id FK would fail on a type mismatch).
+drop table if exists public.locations cascade;
+drop table if exists public.scenes cascade;
+
 -- One classification vocabulary (foundational decision #2). Detected by Wikidata
 -- P31 BFS in the resolver, never by name. fictional/unknown may carry NULL coords.
 do $$ begin
