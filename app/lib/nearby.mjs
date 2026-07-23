@@ -1,3 +1,5 @@
+import { assertPosition, haversineMeters } from "./geo.mjs";
+
 export const RADIUS_OPTIONS_METERS = [100, 300, 1000, 3000];
 
 // Deterministic fallback for demos and denied-permission flows: Trafalgar
@@ -8,35 +10,10 @@ export const DEMO_LOCATION = {
   position: [51.508, -0.1281],
 };
 
-function assertPosition(value, name) {
-  const isValid =
-    Array.isArray(value) &&
-    value.length === 2 &&
-    Number.isFinite(value[0]) &&
-    Number.isFinite(value[1]) &&
-    value[0] >= -90 &&
-    value[0] <= 90 &&
-    value[1] >= -180 &&
-    value[1] <= 180;
-
-  if (!isValid) {
-    throw new Error(`${name} must be a [latitude, longitude] pair`);
-  }
-}
-
 export function distanceMeters(from, to) {
   assertPosition(from, "from");
   assertPosition(to, "to");
-
-  const toRad = (value) => (value * Math.PI) / 180;
-  const earthMeters = 6371000;
-  const dLat = toRad(to[0] - from[0]);
-  const dLon = toRad(to[1] - from[1]);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(from[0])) * Math.cos(toRad(to[0])) * Math.sin(dLon / 2) ** 2;
-
-  return earthMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return haversineMeters(from, to);
 }
 
 export function findNearby(userPosition, locations, radiusMeters) {

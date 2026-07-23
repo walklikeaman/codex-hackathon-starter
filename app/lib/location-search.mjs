@@ -1,3 +1,5 @@
+import { haversineKm } from "./geo.mjs";
+
 const WORK_KIND_CONFIG = {
   film: {
     label: "film",
@@ -24,8 +26,6 @@ const WORK_KIND_CONFIG = {
     relationLabel: "Story setting",
   },
 };
-
-const EARTH_RADIUS_KM = 6371;
 
 export function workKindConfig(kind) {
   return WORK_KIND_CONFIG[kind] ?? null;
@@ -268,16 +268,7 @@ export function normalizeWikidataEntityLocations(workEntity, locationEntities, {
 }
 
 export function distanceKm(first, second) {
-  const toRadians = (value) => (value * Math.PI) / 180;
-  const latDistance = toRadians(second.lat - first.lat);
-  const lngDistance = toRadians(second.lng - first.lng);
-  const firstLat = toRadians(first.lat);
-  const secondLat = toRadians(second.lat);
-  const haversine =
-    Math.sin(latDistance / 2) ** 2 +
-    Math.cos(firstLat) * Math.cos(secondLat) * Math.sin(lngDistance / 2) ** 2;
-
-  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  return haversineKm([first.lat, first.lng], [second.lat, second.lng]);
 }
 
 export function cityRadiusKm({ lat, lng, boundingBox }) {

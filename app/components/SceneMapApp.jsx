@@ -45,6 +45,7 @@ import {
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
 import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { createCoalescingRunner } from "../lib/coalesce.mjs";
+import { WALKING_SPEED_KMH, haversineKm, isLatLng } from "../lib/geo.mjs";
 import { mergeLibraries, parseMediaCsv, workIsInLibrary } from "../lib/media-library.mjs";
 import { getSupabaseBrowserClient } from "../lib/supabase-browser.mjs";
 import { filmLocationImageKey } from "../lib/tmdb-images.mjs";
@@ -324,14 +325,6 @@ function worksFromLocations(sourceLocations) {
   ])).values()];
 }
 
-function isLatLng(value) {
-  return (
-    Array.isArray(value) &&
-    Number.isFinite(value[0]) && Number.isFinite(value[1]) &&
-    value[0] >= -90 && value[0] <= 90 && value[1] >= -180 && value[1] <= 180
-  );
-}
-
 function RecenterOnSelection({ center, position }) {
   const map = useMap();
 
@@ -430,19 +423,10 @@ const GEOLOCATION_ERRORS = {
 function kmBetween(routeStops) {
   if (routeStops.length < 2) return 0;
 
-  return routeStops.slice(1).reduce((sum, stop, index) => {
-    const [lat1, lon1] = routeStops[index].position;
-    const [lat2, lon2] = stop.position;
-    const toRad = (value) => (value * Math.PI) / 180;
-    const earthKm = 6371;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-
-    return sum + earthKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  }, 0);
+  return routeStops.slice(1).reduce(
+    (sum, stop, index) => sum + haversineKm(routeStops[index].position, stop.position),
+    0,
+  );
 }
 
 function makeFallbackRoute(routeStops) {
@@ -451,7 +435,7 @@ function makeFallbackRoute(routeStops) {
   return {
     positions: routeStops.map((stop) => stop.position),
     distanceKm: Math.round(distanceKm * 10) / 10,
-    durationMinutes: Math.max(8, Math.round((distanceKm / 4.6) * 60)),
+    durationMinutes: Math.max(8, Math.round((distanceKm / WALKING_SPEED_KMH) * 60)),
     source: "fallback",
   };
 }
