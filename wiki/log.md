@@ -7,6 +7,19 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-23] update | content_graph migration applied + geo.mjs consolidation
+
+- Applied the content_graph migration to the shared Supabase (owner-authorized):
+  8 graph tables (creators/works/work_creators/places/scenes/work_place_links/
+  place_evidence/user_library_items) with RLS. Verified live: anon reads the graph
+  (200), anon write blocked (42501), per-user library isolated. Dropped the empty
+  superseded locations/scenes. Step 0 fully done → #91 closed, Steps 1-2 unblocked.
+  Advisory: spatial_ref_sys (PostGIS system table, 8500 SRID rows) has RLS off —
+  expected and must stay off (enabling it breaks spatial functions).
+- Consolidated the haversine (×4) + Earth radius (×4) + coord validators (×3) into
+  one pure app/lib/geo.mjs (PR #99, closes #80). Bit-identical delegation → existing
+  exact-value tests pass unchanged; +6 geo tests. 121/121 tests, build green.
+
 ## [2026-07-23] update | Step 0 merged + cloud-save race fixed (by priority)
 
 - Merged PR #89 (Step 0): grounding.mjs + content_graph migration file + 13 tests
