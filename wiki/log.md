@@ -7,6 +7,18 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-23] update | Step 0 merged + cloud-save race fixed (by priority)
+
+- Merged PR #89 (Step 0): grounding.mjs + content_graph migration file + 13 tests
+  now on main. NOTE: the migration is NOT yet applied to the shared Supabase DB —
+  that remains the gated action to unblock backbone Steps 1-2 (issue #91).
+- Fixed #83 (★★★★ real data-loss bug, PR #98): the debounced cloud-library save
+  cancelled the pending timeout but not the in-flight request, so a stale save
+  could overwrite a newer one. New pure app/lib/coalesce.mjs serializes saves
+  (last-write-wins, no overlap), 4 unit tests. 115/115 tests, build green.
+- Next parallel-safe ★★★★ items available without the DB migration: #80 (geo.mjs),
+  #60 (attribution component).
+
 ## [2026-07-23] decision | Grand architecture — grounded content-to-map engine
 
 - 5-architect + skeptic design pass → ARCHITECTURE.md (root): the full-scope
