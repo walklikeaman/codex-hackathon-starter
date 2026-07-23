@@ -7,6 +7,18 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-23] update | Step 1 slice 1a — import funnel core (Letterboxd RSS)
+
+- Started #92 (Step 1): pure, reusable core of the import funnel. PR #100 merged.
+- app/lib/connectors/letterboxd-rss.mjs: parse letterboxd.com/{handle}/rss/ →
+  watched films; each carries a ready tmdb:movieId so it joins straight to the
+  TMDB-keyed graph, no id cross-walk needed. Handle validation + feed-URL builder.
+- app/lib/content-graph.mjs: normalizeWorkTitle (NFKD + strip accents so
+  "Amélie"=="Amelie" — stricter than media-library's), works-row mapping,
+  dedup by natural key, per-user library items. 12 tests, 133/133 green.
+- Remaining in #92 (noted on the issue): /api/import/letterboxd route
+  (service-role write + user auth, DI handler) + id cross-walk + more connectors.
+
 ## [2026-07-23] update | content_graph migration applied + geo.mjs consolidation
 
 - Applied the content_graph migration to the shared Supabase (owner-authorized):
