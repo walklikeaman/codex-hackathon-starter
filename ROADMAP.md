@@ -29,6 +29,28 @@ See [Releases](https://github.com/walklikeaman/codex-hackathon-starter/releases)
 
 ---
 
+## 🏛️ Phase F · Foundation — the grounded content graph *(do first)*
+**Goal:** the spine that makes every later phase possible — one canonical content
+graph where **every point is backed by evidence, never invented**, and studio /
+street / fiction are distinguished at the schema level.
+**Design:** [`ARCHITECTURE.md`](ARCHITECTURE.md) — read it before building here.
+
+Build order (each step unblocks the next):
+
+- **Step 0** — `content_graph` migration + `grounding.mjs` *(in [PR #89](https://github.com/walklikeaman/codex-hackathon-starter/pull/89))*
+- **Step 1** — import connectors + ID cross-walk (tmdb/imdb/isbn/mbid → wikidata) + `user_library_items`
+- **Step 2** — Location Resolution Engine MVP (Wikidata Stage 0 + P31 classification, persist/dedup)
+- **Step 3** — map reads from the graph: `place_class`+confidence inline, PostGIS bbox/cluster RPC, canvas markers
+- **Step 4** — growth (gated): budgeted web_search + one deferred GeoCLIP + Mapillary/Commons grounding module
+- **Step 5** — ambient audio reads `place_class` from the graph + TTS cache/offline
+- **Step 6** — Story Trails on first-class `scenes` + `narrative_order`
+
+*Why first:* the current phases below assume trustworthy, deduped, classified
+places. Phase F is the schema and grounding that guarantees them. The thematic
+phases are the features; Phase F is the engine underneath.
+
+---
+
 ## 🎯 Phase 1 · Precision & Trust
 **Goal:** make every pin trustworthy — city, street, or exact building, with its
 source shown. Accuracy is the foundation everything else stands on.
