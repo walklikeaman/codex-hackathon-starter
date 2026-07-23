@@ -7,6 +7,23 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-23] decision | Grand architecture — grounded content-to-map engine
+
+- 5-architect + skeptic design pass → ARCHITECTURE.md (root): the full-scope
+  engine where every point is evidence-backed, never invented; studio/street/
+  fiction distinguished at the schema level.
+- Locked 5 foundational decisions (resolve the data-model divergence): one
+  canonical `places` + `work_place_links` + a single `place_evidence` ledger; one
+  `place_class` enum (P31 BFS, not name-match); one `grounding.mjs` confidence
+  fn + threshold; globally-shared graph ("my library" = JOIN via
+  user_library_items, service_role writes); persisted-first runtime.
+- Location Resolution Engine spine: cheap→expensive cascade (Wikidata canonical +
+  P31 classification = MVP; web_search + GeoCLIP + Mapillary/Commons grounding =
+  one deferred growth module). Free-tier-first; only web_search + vision/TTS cost.
+- ROADMAP: added Phase F · Foundation (Steps 0-6). Created architecture epics
+  #90-#97. Step 0 shipped as PR #89 (grounding.mjs + content_graph migration +
+  13 tests; migration is review-only, applying to shared DB is a gated step).
+
 ## [2026-07-22] update | Code audit + render-crash hardening
 
 - Confirmed no unmerged work: 28 PRs merged, 0 open; the many "ahead" remote
