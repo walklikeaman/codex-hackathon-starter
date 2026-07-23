@@ -7,6 +7,25 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-23] update | Step 1 slice 1b — Letterboxd import route (write layer)
+
+- #92 (Step 1): the write path on top of slice 1a's pure core. PR #101 merged.
+- app/api/import/letterboxd/route.js: POST fetches a member's RSS with a browser
+  User-Agent (bare server request 403s), parses watched films, upserts canonical
+  works by tmdb_id (service role → shared graph) + this user's user_library_items
+  (auth.uid()). DI-factory createLetterboxdImportHandler (env / fetchImpl /
+  resolveUserId / createWriter) mirrors createFilmImageHandler — 8 handler tests,
+  no live Supabase or network. 141/141 green.
+- Migration works_unique_ids: plain (non-partial) unique indexes on
+  works(tmdb_id/imdb_id/isbn/mbid) so imports upsert-or-get by external id.
+  Non-partial because a partial index can't be an `on conflict (col)` target.
+  Applied to the shared project.
+- Not browser-verifiable: needs SUPABASE_SERVICE_ROLE_KEY + a signed-in user,
+  so the DB-write path runs only in prod (like OpenAI/TMDB) — [[deployment-pipeline]].
+- Remaining in #92: id cross-walk (tmdb/imdb/isbn/mbid → wikidata_id) for
+  connectors without a ready tmdb id, then Trakt / Kinopoisk / Goodreads /
+  Open Library / Last.fm connectors.
+
 ## [2026-07-23] update | Step 1 slice 1a — import funnel core (Letterboxd RSS)
 
 - Started #92 (Step 1): pure, reusable core of the import funnel. PR #100 merged.
