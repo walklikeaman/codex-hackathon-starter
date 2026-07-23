@@ -44,6 +44,7 @@ import {
 } from "../lib/nearby.mjs";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
 import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
+import { createCoalescingRunner } from "../lib/coalesce.mjs";
 import { mergeLibraries, parseMediaCsv, workIsInLibrary } from "../lib/media-library.mjs";
 import { getSupabaseBrowserClient } from "../lib/supabase-browser.mjs";
 import { filmLocationImageKey } from "../lib/tmdb-images.mjs";
@@ -772,17 +773,26 @@ export default function SceneMapApp() {
     };
   }, [supabase]);
 
-  useEffect(() => {
-    if (!supabase || !accountUser || !cloudReady) return undefined;
-
-    setCloudStatus("Saving…");
-    const timeout = window.setTimeout(async () => {
+  // A coalescing runner serializes cloud saves so an out-of-order network
+  // completion can't let a stale library overwrite a newer one (issue #83).
+  const cloudSaverRef = useRef(null);
+  if (!cloudSaverRef.current) {
+    cloudSaverRef.current = createCoalescingRunner(async ({ client, userId, movies }) => {
       try {
-        await saveCloudLibrary(supabase, accountUser.id, library);
+        await saveCloudLibrary(client, userId, movies);
         setCloudStatus("Synced to your account");
       } catch {
         setCloudStatus("Cloud sync failed. Your device copy is safe.");
       }
+    });
+  }
+
+  useEffect(() => {
+    if (!supabase || !accountUser || !cloudReady) return undefined;
+
+    setCloudStatus("Saving…");
+    const timeout = window.setTimeout(() => {
+      cloudSaverRef.current.submit({ client: supabase, userId: accountUser.id, movies: library });
     }, 500);
 
     return () => window.clearTimeout(timeout);
