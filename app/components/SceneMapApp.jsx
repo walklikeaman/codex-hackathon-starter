@@ -34,6 +34,7 @@ import {
   User,
   X,
   Layers,
+  LogIn,
 } from "lucide-react";
 import {
   DEMO_LOCATION,
@@ -1727,8 +1728,8 @@ export default function SceneMapApp() {
             onClick={() => accountUser ? setAccountOpen(true) : signInWithProvider("google")}
             disabled={!accountUser && ["authorizing", "loading", "unavailable"].includes(accountStatus)}
           >
-            {accountUser ? <User size={18} /> : <span className="oauth-logo is-google">G</span>}
-            {accountUser ? "My movies" : "Login with Google"}
+            {accountUser ? <User size={18} /> : <LogIn size={17} />}
+            {accountUser ? "My movies" : "Login"}
           </button>
         </div>
 
@@ -1789,6 +1790,27 @@ export default function SceneMapApp() {
                     );
                   })}
                 </div>
+
+                {graphWorks.some((work) => work.poster_thumb_url) && (
+                  <ul className="work-posters" aria-label="Works with cover art">
+                    {graphWorks.filter((work) => work.poster_thumb_url).slice(0, 12).map((work) => (
+                      <li key={work.work_id}>
+                        <button
+                          type="button"
+                          aria-pressed={graphWorkId === work.work_id}
+                          className={`cover-tile${graphWorkId === work.work_id ? " is-on" : ""}`}
+                          title={`${work.title} · ${work.place_count} places`}
+                          onClick={() =>
+                            setGraphWorkId((current) => (current === work.work_id ? "" : work.work_id))
+                          }
+                        >
+                          <img alt="" loading="lazy" src={work.poster_thumb_url} />
+                          <span className="cover-caption">{work.title}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
                 <label className="work-filter">
                   <span className="visually-hidden">Show one work</span>
