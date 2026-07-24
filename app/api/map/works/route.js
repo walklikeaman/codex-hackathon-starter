@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { graphFailureReason } from "../points/route.js";
 import { parseKindsParam } from "../../../lib/map-points.mjs";
 import { posterUrl, POSTER_SIZES } from "../../../lib/work-artwork.mjs";
+import { imdbUrl, rottenTomatoesUrl } from "../../../lib/work-ratings.mjs";
 
 export const runtime = "nodejs";
 
@@ -61,6 +62,11 @@ export function createMapWorksHandler({
             // one for a card. image.tmdb.org needs no key, so these are plain URLs.
             poster_url: posterUrl(row.poster_path, POSTER_SIZES.card),
             poster_thumb_url: posterUrl(row.poster_path, POSTER_SIZES.thumb),
+            // Each rating keeps its source's own wording and a link back to it —
+            // a score with no attribution is just a number we ask people to trust.
+            ratings: Array.isArray(row.ratings) ? row.ratings : [],
+            imdb_url: imdbUrl(row.imdb_id),
+            rotten_tomatoes_url: rottenTomatoesUrl(row.rt_path),
           })),
         },
         { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=900" } },

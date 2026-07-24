@@ -2342,3 +2342,64 @@ figcaption a {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+
+/* --- Work card: cover + ratings that link back to their source --------------- */
+
+.work-card {
+  margin-top: 12px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  gap: 10px;
+  border: 1px solid rgba(247, 183, 51, 0.22);
+  border-radius: 12px;
+  background: rgba(22, 19, 12, 0.6);
+}
+
+.work-card-poster {
+  width: 62px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 7px;
+  display: block;
+}
+
+.work-card-body { display: grid; gap: 5px; align-content: start; }
+
+.work-card-meta {
+  font-size: 11px;
+  color: rgba(244, 231, 200, 0.6);
+}
+
+.rating-row {
+  list-style: none;
+  margin: 3px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rating-chip a,
+.rating-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.rating-chip { padding: 0; border: 0; }
+.rating-chip a:hover { border-color: rgba(247, 183, 51, 0.6); }
+
+.rating-source { color: rgba(244, 231, 200, 0.62); font-size: 10px; }
+.rating-score { font-weight: 700; }
+
+.rating-chip.is-imdb .rating-score { color: #f5c518; }            /* IMDb yellow */
+.rating-chip.is-rotten_tomatoes .rating-score { color: #fa320a; } /* RT red */
+.rating-chip.is-metacritic .rating-score { color: #66cc33; }
+.rating-chip.is-tmdb .rating-score { color: #01b4e4; }

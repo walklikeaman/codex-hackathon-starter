@@ -26,6 +26,22 @@ export function tmdbPropertyForKind(kind) {
   return TMDB_PROPERTY_BY_KIND[kind] ?? null;
 }
 
+// The IMDb id (P345) and Rotten Tomatoes path (P1258) — the two identifiers that make
+// a rating clickable back to its source. External-id claims are plain strings.
+export function externalIdsFromEntity(entity) {
+  const first = (property, pattern) => {
+    for (const value of entityClaimValues(entity, property)) {
+      const id = typeof value === "string" ? value : value?.id ?? value?.value;
+      if (typeof id === "string" && pattern.test(id)) return id;
+    }
+    return null;
+  };
+  return {
+    imdb_id: first("P345", /^tt\d{7,10}$/),   // titles only; nm*/co* are people/companies
+    rt_path: first("P1258", /^(?:m|tv)\/[A-Za-z0-9_-]+$/),
+  };
+}
+
 // A TMDB id read off a Wikidata entity. Values arrive as plain strings for external
 // identifiers (unlike item claims, which are {id: "Q..."}), so take the first that is
 // a positive integer and ignore anything malformed rather than guessing.
