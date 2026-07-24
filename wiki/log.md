@@ -7,6 +7,52 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-24] update | Step 3 slice 3b — grounded-places layer on the map
+
+- PR #105 merged. The content graph is now ON the map, not just in JSON.
+- **Scope decision**: the layer is ADDITIVE, behind a toggle. The graph holds 70
+  places from 15 works while /api/locations answers for any city via live
+  Wikidata, so switching the map over wholesale (as #94 words it) would make
+  searching e.g. Paris come back nearly empty — a demo-path regression.
+- app/lib/map-layer.mjs (pure, 13 tests): BADGE_STYLES / pointStyle / clusterStyle
+  / viewportQuery / pointSummary. What a pin MEANS is decided and tested here,
+  not inside a Leaflet callback.
+- app/components/GraphLayer.jsx: CircleMarkers on a shared L.canvas() renderer,
+  debounced refetch, AbortController, cluster bubbles that zoom in on click.
+- SceneMapApp: "Grounded places" toggle, a legend per badge, and the
+  "Fictional — not on the map" strip.
+- Honesty in the styling: filmed-here / studio / a book's setting / a city
+  centroid are four different claims. Colour alone can't carry it (exact and
+  approximate share the amber), so approximate is ALSO larger, dashed and faded —
+  it must read as a region, never a doorstep. A test pins that.
+- Cluster bubbles use a LOG scale: a test caught that sqrt*3 saturated at ~45,
+  so clusters of 50 and 5000 were drawn identically.
+- **Fixed the long-standing Leaflet crash** ([[nearby-geolocation]] recorded it as
+  an environment gotcha): animated moves interpolate through the container size,
+  and at zero size that yields NaN → Leaflet throws → the WHOLE app fell into the
+  error boundary over an animation nobody could see. moveMap() degrades to a
+  non-animated setView; fitBounds guarded the same way.
+- **Stale RPC overloads**: `create or replace function` only replaces an EXACT
+  signature, so adding p_kinds/p_limit/p_max_clusters in the fixes migration
+  created OVERLOADS and left the ORIGINAL buggy functions live and callable
+  (geography bbox, no evidence gate, antimeridian inversion) — and made the call
+  ambiguous for PostgREST. Dropped. Changing a parameter list is a DROP, not a
+  replace; verify with pg_get_function_identity_arguments after applying.
+- /api/map/points now returns a coarse reason code (graph_auth_rejected /
+  graph_schema_mismatch / graph_query_failed) so a deployment failure is
+  diagnosable without exposing the key or the SQL.
+- **Open issue for the owner**: the Vercel PREVIEW deployment returns 502
+  `graph_query_failed` for /api/map/points, while the same RPCs return correct
+  data when called directly with either the legacy anon key or the publishable
+  key. The database side is sound, so the preview environment's
+  NEXT_PUBLIC_SUPABASE_URL / ANON_KEY appear to point elsewhere. Values are not
+  readable from here — needs checking in Vercel project settings.
+- Verification limit: the canvas pins themselves were NOT visually confirmed —
+  the preview pane reports a 0x0 viewport (for local AND remote URLs), so the
+  map's bounds are degenerate. Needs a real browser.
+- 236/236 green. Remaining in #94: layer filters wired to the UI (the API already
+  takes workId/kinds) and KNN remote_points.
+
 ## [2026-07-24] update | Step 3 slice 3a — map reads from the graph + first graph data
 
 - PR #104 merged. The map's READ path now serves the persistent graph, not live
