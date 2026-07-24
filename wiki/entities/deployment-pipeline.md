@@ -15,10 +15,11 @@ account `walklikeaman1904`), linked to the GitHub repo. The framework is forced 
 - The GitHub Actions path needs three secrets. `VERCEL_ORG_ID`
   (`team_oulXyCQDRVVkXELdoJuaaVEE`) and `VERCEL_PROJECT_ID`
   (`prj_FM31BOAjGEmwLlOFFK0zcpzcqStE`) are identifiers, not credentials, and are set.
-  **`VERCEL_TOKEN` is still missing**, so the workflow fails at the first step with
-  `You defined "--token", but it's missing a value`. Until it is added, production is
-  deployed with the CLI: `vercel pull --yes --environment=production`,
-  `vercel build --prod`, `vercel deploy --prebuilt --prod`.
+  `VERCEL_TOKEN` (an owner-minted account access token, scope walklikeaman1904) is set
+  too, so the workflow now runs green end to end. Trigger:
+  `gh workflow run "Deploy production" -f ref=main -f confirm_production=true`.
+  The CLI path (`vercel pull` / `build --prod` / `deploy --prebuilt --prod`) still
+  works as a fallback.
 
 ## Incident lesson (guardrail)
 

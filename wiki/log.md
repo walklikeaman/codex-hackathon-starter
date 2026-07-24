@@ -19,9 +19,10 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
   `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` are now set (identifiers, not
   credentials). **`VERCEL_TOKEN` is still missing** — minting and storing a
   credential is the owner's call, not the agent's.
-- Until that token exists, production ships via the CLI (see
-  [[deployment-pipeline]]). That is how this deploy was made, with the owner's
-  explicit go-ahead.
+- **Resolved same day**: the owner minted and stored VERCEL_TOKEN, and the workflow
+  then ran GREEN end to end (all six steps) — the CI production-deploy path now
+  works. The CLI path remains a fallback. Verified live afterwards: 28 map points,
+  14 works, no error.
 - Local Vercel CLI updated 52.0.0 → 57.0.0 (52 loops on `env add ... preview`).
 
 ## [2026-07-24] incident | Vercel env: NEXT_PUBLIC_SUPABASE_* were sensitive, breaking the client
