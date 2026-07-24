@@ -32,7 +32,8 @@ function defaultCreateReader(env) {
   return {
     points: (params) => call("map_points_in_view", params),
     clusters: (params) => call("map_clusters_in_view", params),
-    fictional: (workId) => call("fictional_places", { p_work_id: workId ?? null }),
+    fictional: ({ workId, kinds }) =>
+      call("fictional_places", { p_work_id: workId ?? null, p_kinds: kinds ?? null }),
   };
 }
 
@@ -50,7 +51,7 @@ export function createMapPointsHandler({
 
   return async function GET(request) {
     const query = parseMapQuery(new URL(request.url).searchParams);
-    if (!query) return jsonError("Provide a valid bbox (west, south, east, north)", 400);
+    if (query.error) return jsonError(query.error, 400);
 
     const reader = makeReader(env);
     if (!reader) return jsonError("Map graph is not configured", 503);
@@ -68,9 +69,10 @@ export function createMapPointsHandler({
     try {
       const [rows, fictional] = await Promise.all([
         query.clustered
-          ? reader.clusters(params)
+          ? reader.clusters({ ...params, p_max_clusters: MAX_MAP_POINTS })
           : reader.points({ ...params, p_max_points: MAX_MAP_POINTS, p_cluster_below_zoom: CLUSTER_BELOW_ZOOM }),
-        reader.fictional(query.workId),
+        // Same work/kind filters as the map, so the strip always describes the same query.
+        reader.fictional({ workId: query.workId, kinds: query.kinds }),
       ]);
 
       return Response.json(buildMapResponse(query, rows, fictional), {

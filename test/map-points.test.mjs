@@ -36,15 +36,33 @@ function placeRow(overrides = {}) {
 // --- query parsing -----------------------------------------------------------
 
 test("parseMapQuery rejects a missing or out-of-range bbox", () => {
-  assert.equal(parseMapQuery(params({})), null);
-  assert.equal(parseMapQuery(params({ ...LONDON, north: "999" })), null);
-  assert.equal(parseMapQuery(params({ ...LONDON, west: "abc" })), null);
+  assert.match(parseMapQuery(params({})).error, /bbox/);
+  assert.match(parseMapQuery(params({ ...LONDON, north: "999" })).error, /bbox/);
+  assert.match(parseMapQuery(params({ ...LONDON, west: "abc" })).error, /bbox/);
 });
 
-test("parseMapQuery normalizes a flipped bbox and rounds the zoom", () => {
-  const query = parseMapQuery(params({ west: "0.05", east: "-0.35", south: "51.65", north: "51.35", z: "13.4" }));
-  assert.equal(query.west, -0.35);
-  assert.equal(query.east, 0.05);
+test("parseMapQuery names the zoom as the problem, not the bbox", () => {
+  assert.match(parseMapQuery(params({ ...LONDON, z: "99" })).error, /Zoom/);
+});
+
+test("parseMapQuery preserves an antimeridian-crossing viewport", () => {
+  // west > east is a real window across the date line. Sorting the pair would turn
+  // the strip in front of the user into its own complement — the rest of the world.
+  const query = parseMapQuery(params({ west: "170", south: "-60", east: "-170", north: "75", z: "13" }));
+  assert.equal(query.west, 170);
+  assert.equal(query.east, -170);
+});
+
+test("parseMapQuery refuses a filter it cannot honour instead of widening silently", () => {
+  // Quietly dropping a bad workId would answer "this film's places" with the whole
+  // graph — a wrong answer dressed as a successful one.
+  assert.match(parseMapQuery(params({ ...LONDON, workId: "not-a-uuid" })).error, /workId/);
+  assert.match(parseMapQuery(params({ ...LONDON, kinds: "film,nonsense" })).error, /kinds/);
+  assert.match(parseMapQuery(params({ ...LONDON, kinds: "" })).error, /kinds/);
+});
+
+test("parseMapQuery normalizes flipped latitudes and rounds the zoom", () => {
+  const query = parseMapQuery(params({ west: "-0.35", east: "0.05", south: "51.65", north: "51.35", z: "13.4" }));
   assert.equal(query.south, 51.35);
   assert.equal(query.north, 51.65);
   assert.equal(query.zoom, 13);
@@ -55,12 +73,11 @@ test("parseMapQuery switches to clustering below the zoom threshold", () => {
   assert.equal(parseMapQuery(params({ ...LONDON, z: String(CLUSTER_BELOW_ZOOM) })).clustered, false);
 });
 
-test("parseMapQuery accepts only a real uuid work id and known kinds", () => {
-  assert.equal(parseMapQuery(params({ ...LONDON, workId: "not-a-uuid" })).workId, null);
+test("parseMapQuery accepts a real uuid work id and known kinds", () => {
   const uuid = "22222222-2222-2222-2222-222222222222";
   assert.equal(parseMapQuery(params({ ...LONDON, workId: uuid })).workId, uuid);
-  assert.deepEqual(parseMapQuery(params({ ...LONDON, kinds: "film,book,nonsense" })).kinds, ["film", "book"]);
-  assert.equal(parseMapQuery(params({ ...LONDON, kinds: "nonsense" })).kinds, null);
+  assert.deepEqual(parseMapQuery(params({ ...LONDON, kinds: "film,book" })).kinds, ["film", "book"]);
+  assert.equal(parseMapQuery(params({ ...LONDON })).kinds, null);
 });
 
 // --- badges & shaping --------------------------------------------------------
@@ -188,6 +205,22 @@ test("map points route passes the work and kind filters through to the graph", a
   await handler(mapRequest({ ...LONDON, z: "13", workId: uuid, kinds: "film,series" }));
   assert.equal(seen.p_work_id, uuid);
   assert.deepEqual(seen.p_kinds, ["film", "series"]);
+});
+
+test("the fictional strip is filtered by the same query as the map", async () => {
+  // A strip describing a different query than the pins would misreport what the user
+  // is looking at ("your film is set in Mordor" while showing another film's places).
+  let fictionalArgs = null;
+  const uuid = "44444444-4444-4444-4444-444444444444";
+  const handler = handlerWith({
+    reader: {
+      points: async () => [],
+      clusters: async () => [],
+      fictional: async (args) => { fictionalArgs = args; return []; },
+    },
+  });
+  await handler(mapRequest({ ...LONDON, z: "13", workId: uuid, kinds: "book" }));
+  assert.deepEqual(fictionalArgs, { workId: uuid, kinds: ["book"] });
 });
 
 test("map points route maps a graph failure to 502", async () => {

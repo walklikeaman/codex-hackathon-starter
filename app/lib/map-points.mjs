@@ -33,37 +33,53 @@ function numeric(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-// Parse a viewport request. Returns null when the bbox is unusable — the caller
-// answers 400 rather than guessing at a window over the whole planet.
+// Parse a viewport request. Returns { error } instead of a query when the request is
+// unusable, so the caller can say WHICH part was wrong rather than blaming the bbox.
+//
+// A filter that was asked for but could not be honoured is an error, never a silent
+// widening: quietly dropping an unparseable workId would answer "your film's places"
+// with the entire graph, which reads as a wrong answer rather than a rejected one.
 export function parseMapQuery(searchParams) {
   const west = finite(searchParams.get("west"), { min: -180, max: 180 });
   const east = finite(searchParams.get("east"), { min: -180, max: 180 });
   const south = finite(searchParams.get("south"), { min: -90, max: 90 });
   const north = finite(searchParams.get("north"), { min: -90, max: 90 });
-  if (west === null || east === null || south === null || north === null) return null;
+  if (west === null || east === null || south === null || north === null) {
+    return { error: "Provide a valid bbox (west, south, east, north)" };
+  }
 
   const zoomRaw = searchParams.get("z");
   const zoom = zoomRaw === null ? CLUSTER_BELOW_ZOOM : finite(zoomRaw, { min: MIN_ZOOM, max: MAX_ZOOM });
-  if (zoom === null) return null;
+  if (zoom === null) return { error: `Zoom must be between ${MIN_ZOOM} and ${MAX_ZOOM}` };
 
   const workIdRaw = searchParams.get("workId");
-  const workId = workIdRaw && UUID.test(workIdRaw) ? workIdRaw : null;
+  if (workIdRaw !== null && !UUID.test(workIdRaw)) {
+    return { error: "workId must be a uuid" };
+  }
 
-  const kindsRaw = (searchParams.get("kinds") ?? "")
-    .split(",")
-    .map((kind) => kind.trim())
-    .filter((kind) => WORK_KINDS.has(kind));
-  const kinds = kindsRaw.length > 0 ? [...new Set(kindsRaw)] : null;
+  const kindsParam = searchParams.get("kinds");
+  let kinds = null;
+  if (kindsParam !== null) {
+    const requested = kindsParam.split(",").map((kind) => kind.trim()).filter(Boolean);
+    if (requested.length === 0 || requested.some((kind) => !WORK_KINDS.has(kind))) {
+      return { error: `kinds must be one or more of: ${[...WORK_KINDS].join(", ")}` };
+    }
+    kinds = [...new Set(requested)];
+  }
 
+  const roundedZoom = Math.round(zoom);
   return {
-    west: Math.min(west, east),
-    east: Math.max(west, east),
+    // Longitude is NOT normalized: west > east is meaningful — it is a viewport
+    // crossing the antimeridian, and the SQL reads it as [west,180] ∪ [-180,east].
+    // Sorting the pair would turn that window into its own complement.
+    west,
+    east,
     south: Math.min(south, north),
     north: Math.max(south, north),
-    zoom: Math.round(zoom),
-    workId,
+    zoom: roundedZoom,
+    workId: workIdRaw,
     kinds,
-    clustered: Math.round(zoom) < CLUSTER_BELOW_ZOOM,
+    clustered: roundedZoom < CLUSTER_BELOW_ZOOM,
   };
 }
 
