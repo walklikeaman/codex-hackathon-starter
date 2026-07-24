@@ -7,6 +7,39 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-24] update | Step 2 — Location Resolution Engine (Stage 0 + 1), #93 closed
+
+- PR #103 merged. The spine: an imported work now becomes map-ready places.
+  Stage 0 reads Wikidata location claims (P915 film/series, P840 book), Stage 1
+  classifies by P31→P279* ancestry, POST /api/resolve write-throughs to
+  places / work_place_links / place_evidence.
+- app/lib/location-resolver.mjs: pure classifyPlace / buildResolutionPlan /
+  missingEvidenceRows + injectable fetchWikidataEntities / fetchTypeGraph /
+  resolveWorkPlaces. Deliberately does NOT use normalizeWikidataLocations —
+  it drops coordinate-less rows ([[wikidata]]), which would delete every
+  fictional place. Reads the entity primitives instead.
+- location-search.mjs: typeAncestry extracted from workMatchesTypeGraph (now a
+  thin wrapper); entityText/entityCoordinate exported; entityCoordinate rejects
+  non-Earth globes and keeps Wikidata's own P625 precision.
+- **The spec was wrong**: issue #93 and ARCHITECTURE said studio→Q1107679, which
+  is *animation studio*. Verified live — real studios (Pinewood, Shepperton,
+  Cinecittà, Babelsberg) are P31→Q375336; Q21550789 is the separate building
+  sense that does not reach it. With the spec value a soundstage shoot would have
+  been recorded as a real street. ARCHITECTURE.md corrected.
+- Classification never uses names: isStudioLocation is a name regex and only
+  raises a QA flag ([[film-imagery]] uses it for its own purpose).
+- Built via a judge panel (3 designs × 3 judges, winner "entity-primitives"
+  33.7/40) then a 4-lens adversarial review: 22 findings reviewed, **19
+  confirmed and all fixed**, incl. 4 critical — non-Earth P625 pinned on Earth
+  (the Moon is 0,0 → Null Island; Mars lng 0..360 → batch-wide 502), duplicate
+  location statements → Postgres cardinality violation, type-graph node budget
+  failing OPEN (severed fiction chain → real pin), and shared-place class
+  depending on iteration order.
+- Live-validated on 5 real works: 24 places / 24 links / 48 evidence; Leavesden →
+  studio_interior with its own coords; 9 fictional places all coordinate-free;
+  Moon/Mars targets refused. 43 tests, 203/203 green.
+- Next: Step 3 (#94) render the map from the graph; Stages 2-4 stay deferred.
+
 ## [2026-07-23] update | Step 1 slice 1c — external-id → Wikidata QID cross-walk
 
 - #92 (Step 1): the id cross-walk. PR #102 merged. The join Step 2 (#93 Location
