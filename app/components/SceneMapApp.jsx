@@ -33,6 +33,7 @@ import {
   Trash2,
   User,
   X,
+  Layers,
 } from "lucide-react";
 import {
   DEMO_LOCATION,
@@ -56,6 +57,8 @@ import {
   routeFitsBudget,
 } from "../lib/timed-tour.mjs";
 import VoiceGuide from "./VoiceGuide";
+import GraphLayer from "./GraphLayer";
+import { BADGE_STYLES } from "../lib/map-layer.mjs";
 
 const londonCenter = [51.5094, -0.1183];
 const GUEST_LIBRARY_KEY = "scenemap-library";
@@ -325,21 +328,35 @@ function worksFromLocations(sourceLocations) {
   ])).values()];
 }
 
+// Leaflet's animated moves interpolate through the container size. When that size is
+// zero — a hidden tab, a headless/preview pane, a panel that has not been laid out yet
+// — the arithmetic yields NaN and Leaflet throws "Invalid LatLng object", which took
+// the WHOLE app into the error boundary over an animation nobody could see. Valid
+// coordinates are not enough; the map itself has to be measurable.
+function mapHasSize(map) {
+  const size = map?.getSize?.();
+  return Boolean(size) && size.x > 0 && size.y > 0;
+}
+
+// Move the map, degrading to a plain jump when it cannot be animated.
+function moveMap(map, center, zoom) {
+  if (!isLatLng(center)) return;
+  if (!mapHasSize(map)) {
+    map.setView(center, zoom, { animate: false });
+    return;
+  }
+  map.flyTo(center, zoom, { duration: 0.8 });
+}
+
 function RecenterOnSelection({ center, position }) {
   const map = useMap();
 
   useEffect(() => {
-    // Guard against invalid coordinates: Leaflet throws "Invalid LatLng object"
-    // on NaN/out-of-range, which crashes the render (no error boundary).
-    if (isLatLng(center)) {
-      map.flyTo(center, 12, { duration: 0.8 });
-    }
+    moveMap(map, center, 12);
   }, [center, map]);
 
   useEffect(() => {
-    if (isLatLng(position)) {
-      map.flyTo(position, 14, { duration: 0.8 });
-    }
+    moveMap(map, position, 14);
   }, [map, position]);
 
   return null;
@@ -349,7 +366,8 @@ function FitRoute({ positions }) {
   const map = useMap();
 
   useEffect(() => {
-    if (positions.length > 1) {
+    // fitBounds derives the zoom from the container size too, so it needs the same guard.
+    if (positions.length > 1 && mapHasSize(map)) {
       map.fitBounds(L.latLngBounds(positions), {
         animate: true,
         maxZoom: 14,
@@ -397,9 +415,7 @@ function FlyToUser({ position, radius }) {
   const map = useMap();
 
   useEffect(() => {
-    if (isLatLng(position)) {
-      map.flyTo(position, zoomForRadius(radius), { duration: 0.8 });
-    }
+    moveMap(map, position, zoomForRadius(radius));
   }, [map, position, radius]);
 
   return null;
@@ -624,6 +640,10 @@ function RecreateShot({ location, onClose }) {
 export default function SceneMapApp() {
   const connectorInputRef = useRef(null);
   const [liveLocations, setLiveLocations] = useState(null);
+  // The graph layer is an additive overlay: the live Wikidata path stays the default
+  // so searching any city still works, while the graph shows what we have grounded.
+  const [graphLayerOn, setGraphLayerOn] = useState(false);
+  const [graphSummary, setGraphSummary] = useState(null);
   const [mapCenter, setMapCenter] = useState(londonCenter);
   const [browseCenter, setBrowseCenter] = useState(londonCenter);
   const [browseRadius, setBrowseRadius] = useState(10);
@@ -1644,6 +1664,15 @@ export default function SceneMapApp() {
               </Popup>
             </Marker>
           ))}
+          {graphLayerOn && (
+            <GraphLayer
+              onSummary={setGraphSummary}
+              onSelect={(feature) => {
+                const [lng, lat] = feature.geometry?.coordinates ?? [];
+                if (Number.isFinite(lat) && Number.isFinite(lng)) setMapCenter([lat, lng]);
+              }}
+            />
+          )}
           {routePositions.length > 1 && (
             <Polyline
               positions={routePositions}
@@ -1677,6 +1706,61 @@ export default function SceneMapApp() {
             {accountUser ? "My movies" : "Login with Google"}
           </button>
         </div>
+
+        <section className="graph-layer-panel" aria-label="Grounded places layer">
+          <button
+            className={`graph-toggle${graphLayerOn ? " is-on" : ""}`}
+            type="button"
+            aria-pressed={graphLayerOn}
+            onClick={() => setGraphLayerOn((on) => !on)}
+          >
+            <Layers size={16} aria-hidden="true" />
+            Grounded places
+            {graphLayerOn && graphSummary ? (
+              <span className="graph-count">
+                {graphSummary.clustered
+                  ? `${graphSummary.count} clusters`
+                  : `${graphSummary.count} points`}
+              </span>
+            ) : null}
+          </button>
+
+          {graphLayerOn && (
+            <>
+              <ul className="graph-legend">
+                {["exact", "approximate", "studio", "narrative"].map((badge) => (
+                  <li key={badge} className={`legend-item badge-${badge}`}>
+                    <span aria-hidden="true" className="legend-dot" />
+                    <span className="legend-label">{BADGE_STYLES[badge].label}</span>
+                    <span className="legend-hint">{BADGE_STYLES[badge].hint}</span>
+                  </li>
+                ))}
+              </ul>
+
+              {graphSummary?.truncated && (
+                <p className="graph-note">
+                  Showing the first {graphSummary.count} — zoom in for the rest.
+                </p>
+              )}
+
+              {graphSummary?.fictional?.length > 0 && (
+                <div className="fictional-strip">
+                  <p className="fictional-title">
+                    Fictional — not on the map ({graphSummary.fictional.length})
+                  </p>
+                  <ul>
+                    {graphSummary.fictional.map((place) => (
+                      <li key={place.place_id ?? place.wikidata_id}>{place.name}</li>
+                    ))}
+                  </ul>
+                  <p className="graph-note">
+                    These places exist only in the story, so they are never given a coordinate.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </section>
 
         <div className="place-controls">
           <form className="city-search" onSubmit={searchCity}>
