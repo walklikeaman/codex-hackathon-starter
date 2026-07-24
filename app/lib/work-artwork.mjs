@@ -39,6 +39,7 @@ export function externalIdsFromEntity(entity) {
   return {
     imdb_id: first("P345", /^tt\d{7,10}$/),   // titles only; nm*/co* are people/companies
     rt_path: first("P1258", /^(?:m|tv)\/[A-Za-z0-9_-]+$/),
+    mc_path: first("P1712", /^(?:movie|tv)\/[A-Za-z0-9_-]+$/),
   };
 }
 

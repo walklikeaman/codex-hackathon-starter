@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   imdbUrl,
   isImdbId,
+  metacriticUrl,
   normalizeScore,
   ratingFromTmdb,
   ratingRows,
@@ -81,6 +82,24 @@ test("a Rotten Tomatoes link is built only from a real P1258 path", () => {
   for (const bad of ["skyfall", "https://evil.example", "m/../../etc", ""]) {
     assert.equal(rottenTomatoesUrl(bad), null);
   }
+});
+
+test("a Metacritic link is built only from a real P1712 path", () => {
+  assert.equal(metacriticUrl("movie/skyfall"), "https://www.metacritic.com/movie/skyfall");
+  assert.equal(metacriticUrl("tv/the-crown"), "https://www.metacritic.com/tv/the-crown");
+  for (const bad of ["skyfall", "m/skyfall", "https://evil.example", ""]) {
+    assert.equal(metacriticUrl(bad), null);
+  }
+});
+
+test("every chip a user can see links somewhere real", () => {
+  // A rating chip that isn't clickable reads as unfinished — and a score without a
+  // source is exactly what this feature exists to avoid.
+  const rows = ratingsFromOmdb(OMDB_SKYFALL, {
+    imdbId: "tt1074638", rtPath: "m/skyfall", mcPath: "movie/skyfall",
+  });
+  assert.equal(rows.length, 3);
+  assert.ok(rows.every((r) => typeof r.source_url === "string" && r.source_url.startsWith("https://")));
 });
 
 test("an IMDb link is built only from a real imdb id", () => {

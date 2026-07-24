@@ -67,3 +67,4 @@ language sql stable as $$
   order by count(distinct l.place_id) desc, w.title
   limit p_limit
 $$;
+alter table works add column if not exists mc_path text;

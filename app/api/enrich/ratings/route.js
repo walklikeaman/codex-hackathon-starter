@@ -22,7 +22,7 @@ async function loadWorksAnon(env, fetchImpl, limit) {
   if (!url || !anonKey) throw new Error("Supabase is not configured");
 
   const endpoint = new URL(`${url}/rest/v1/works`);
-  endpoint.searchParams.set("select", "id,kind,title,wikidata_id,imdb_id,rt_path");
+  endpoint.searchParams.set("select", "id,kind,title,wikidata_id,imdb_id,rt_path,mc_path");
   endpoint.searchParams.set("kind", "in.(film,series)"); // OMDb has no books
   endpoint.searchParams.set("limit", String(limit));
 
@@ -43,7 +43,7 @@ function defaultCreateWriter(env) {
     async loadWorks(limit) {
       const { data, error } = await client
         .from("works")
-        .select("id, kind, title, wikidata_id, imdb_id, rt_path")
+        .select("id, kind, title, wikidata_id, imdb_id, rt_path, mc_path")
         .in("kind", ["film", "series"])
         .limit(limit);
       if (error) throw new Error(`works load failed: ${error.message}`);
@@ -53,7 +53,7 @@ function defaultCreateWriter(env) {
       for (const row of rows) {
         const { error } = await client
           .from("works")
-          .update({ imdb_id: row.imdb_id, rt_path: row.rt_path })
+          .update({ imdb_id: row.imdb_id, rt_path: row.rt_path, mc_path: row.mc_path })
           .eq("id", row.id);
         if (error) throw new Error(`identifier update failed: ${error.message}`);
       }
@@ -101,7 +101,7 @@ export function createRatingsEnrichHandler({
 
       // One batched Wikidata call for whatever identifiers are still missing.
       const needIds = works.filter(
-        (work) => isWikidataId(work.wikidata_id) && (!work.imdb_id || !work.rt_path),
+        (work) => isWikidataId(work.wikidata_id) && (!work.imdb_id || !work.rt_path || !work.mc_path),
       );
       const learned = [];
       if (needIds.length > 0) {
@@ -117,8 +117,11 @@ export function createRatingsEnrichHandler({
           const ids = externalIdsFromEntity(payload?.entities?.[work.wikidata_id]);
           work.imdb_id = work.imdb_id ?? ids.imdb_id;
           work.rt_path = work.rt_path ?? ids.rt_path;
-          if (ids.imdb_id || ids.rt_path) {
-            learned.push({ id: work.id, imdb_id: work.imdb_id, rt_path: work.rt_path });
+          work.mc_path = work.mc_path ?? ids.mc_path;
+          if (ids.imdb_id || ids.rt_path || ids.mc_path) {
+            learned.push({
+              id: work.id, imdb_id: work.imdb_id, rt_path: work.rt_path, mc_path: work.mc_path,
+            });
           }
         }
       }
@@ -141,6 +144,7 @@ export function createRatingsEnrichHandler({
         const rows = ratingRows(work.id, ratingsFromOmdb(await response.json(), {
           imdbId: work.imdb_id,
           rtPath: work.rt_path,
+          mcPath: work.mc_path,
         }));
         if (rows.length === 0) continue;
         allRatings.push(...rows);

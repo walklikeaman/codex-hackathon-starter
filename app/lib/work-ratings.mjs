@@ -25,6 +25,8 @@ export const RATING_LABELS = Object.freeze({
 const IMDB_ID = /^tt\d{7,10}$/;
 // Wikidata P1258 is a path like "m/skyfall" or "tv/the_crown" — never a full URL.
 const RT_PATH = /^(?:m|tv)\/[A-Za-z0-9_-]+$/;
+// Wikidata P1712, e.g. "movie/skyfall" or "tv/the-crown".
+const MC_PATH = /^(?:movie|tv)\/[A-Za-z0-9_-]+$/;
 
 export function isImdbId(value) {
   return typeof value === "string" && IMDB_ID.test(value);
@@ -37,6 +39,12 @@ export function imdbUrl(imdbId) {
 export function rottenTomatoesUrl(rtPath) {
   return typeof rtPath === "string" && RT_PATH.test(rtPath)
     ? `https://www.rottentomatoes.com/${rtPath}`
+    : null;
+}
+
+export function metacriticUrl(mcPath) {
+  return typeof mcPath === "string" && MC_PATH.test(mcPath)
+    ? `https://www.metacritic.com/${mcPath}`
     : null;
 }
 
@@ -71,7 +79,7 @@ function parseVotes(value) {
 
 // Turn one OMDb payload into rating rows. `links` supplies the source URLs, which OMDb
 // itself does not return for Rotten Tomatoes or Metacritic.
-export function ratingsFromOmdb(payload, { imdbId, rtPath } = {}) {
+export function ratingsFromOmdb(payload, { imdbId, rtPath, mcPath } = {}) {
   if (payload?.Response !== "True") return [];
 
   const rows = [];
@@ -94,7 +102,9 @@ export function ratingsFromOmdb(payload, { imdbId, rtPath } = {}) {
         ? imdbUrl(imdbId ?? payload.imdbID)
         : source === "rotten_tomatoes"
           ? rottenTomatoesUrl(rtPath)
-          : null,
+          : source === "metacritic"
+            ? metacriticUrl(mcPath)
+            : null,
     });
   }
   return rows;
