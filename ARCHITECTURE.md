@@ -130,7 +130,7 @@ stage only *appends* evidence, then `fuseCandidates` merges signals per place.
 | Stage | What | Cost | When |
 |---|---|---|---|
 | **0 · Wikidata canonical** | P915 (film/series) / P840 (book) / music places; reuse `buildLocationsSparql`, `normalizeWikidata*` | free | always |
-| **1 · Classification** | P31 BFS (reuse `workMatchesTypeGraph`): fictional→Q3895768, studio→Q1107679 + `isStudioLocation`, else real; sets `place_class`, `shot_on_set` | free | always |
+| **1 · Classification** | P31→P279* ancestry (reuse `typeAncestry`): fictional→Q3895768/Q14897293, studio→Q375336/Q21550789, else real; sets `place_class`, `shot_on_set` | free | always |
 | **2 · Web research** | reuse `/api/locations/discover` (citation-gate); only if <3 points | **paid** (web_search) | gated |
 | **3 · Image-geolocation** | GeoCLIP-ONNX (0 LLM tokens) on real-exterior frames → coarse GPS *hypothesis* only | free-compute | gated |
 | **4 · Grounding** | Mapillary + Commons Geosearch around the guess → vision cross-check (reuse `scene-image-match`) → promote candidate→verified | free + **paid vision** | gated |
@@ -138,6 +138,16 @@ stage only *appends* evidence, then `fuseCandidates` merges signals per place.
 **MVP spine = Stage 0 + 1 only** (Wikidata canonical + P31 classification +
 persist/dedup). Stages 2–4 are *growth*, and 3+4 must be **one deferred
 image→GPS module**, not baked into the backbone and not duplicated.
+
+Stage 1 target types were verified live against Wikidata when Step 2 was built
+(`app/lib/location-resolver.mjs`, `PLACE_TYPE_TARGETS`) — an earlier draft of this
+table said studio→Q1107679, which is *animation studio*; real studios (Pinewood,
+Shepperton, Cinecittà, Babelsberg) are all `P31 → Q375336 film studio`, and
+Q21550789 is the separate building sense that does **not** reach Q375336. Stage 0
+reads the location claims off the entity rather than through
+`normalizeWikidataLocations`, which drops coordinate-less rows and would therefore
+delete every fictional place. `isStudioLocation` is a *name* regex: it may raise a QA
+flag but must never decide `place_class` — classification comes from the type graph.
 
 `fuseCandidates`: cluster evidence by proximity (<50 m, reuse `distanceKm`) → one
 place per cluster; `confidence` = noisy-OR with method priors (wikidata 0.9,

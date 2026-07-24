@@ -178,16 +178,28 @@ export function entityClaimIds(entity, property) {
     .filter(isWikidataId);
 }
 
-function entityText(entity, property) {
+export function entityText(entity, property) {
   return entity?.[property]?.en?.value
     ?? entity?.[property]?.ru?.value
     ?? null;
 }
 
-function entityCoordinate(entity) {
+const EARTH_GLOBE = "http://www.wikidata.org/entity/Q2";
+
+export function entityCoordinate(entity) {
   const value = entityClaimValues(entity, "P625")[0];
   if (!Number.isFinite(value?.latitude) || !Number.isFinite(value?.longitude)) return null;
-  return { lat: value.latitude, lng: value.longitude };
+  // Every P625 states which celestial body it belongs to. The Moon's own coordinate
+  // is 0,0 — pinning it on an Earth map puts it in the Gulf of Guinea — and Mars
+  // longitudes run 0..360, which no Earth map (or our lat/lng CHECK) accepts.
+  if (value.globe && value.globe !== EARTH_GLOBE) return null;
+  return {
+    lat: value.latitude,
+    lng: value.longitude,
+    // Wikidata states how precise its own coordinate is, in degrees. Kept so callers
+    // never record a precision bucket finer than the source itself claims.
+    precisionDeg: Number.isFinite(value.precision) ? value.precision : null,
+  };
 }
 
 function entityReleaseYear(entity) {
@@ -201,25 +213,32 @@ function entityImageUrl(entity) {
   return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=1200`;
 }
 
-export function workMatchesTypeGraph(workEntity, typeEntities, kind) {
-  const rootType = workKindConfig(kind)?.rootType;
-  if (!rootType) return false;
-
+// Every type reachable from an entity's P31 classes by walking P279* upward through
+// the supplied type graph. The walk terminates on `visited`; how far the graph
+// reaches is bounded by whatever the caller fetched, not by this function.
+// Used for work-kind validation here and for place classification in
+// app/lib/location-resolver.mjs.
+export function typeAncestry(entity, typeEntities) {
   const graph = typeEntities instanceof Map
     ? typeEntities
     : new Map(Object.entries(typeEntities ?? {}));
-  const pending = [...entityClaimIds(workEntity, "P31")];
-  const visited = new Set();
+  const pending = [...entityClaimIds(entity, "P31")];
+  const ancestry = new Set();
 
   while (pending.length) {
     const typeId = pending.pop();
-    if (typeId === rootType) return true;
-    if (visited.has(typeId)) continue;
-    visited.add(typeId);
+    if (ancestry.has(typeId)) continue;
+    ancestry.add(typeId);
     pending.push(...entityClaimIds(graph.get(typeId), "P279"));
   }
 
-  return false;
+  return ancestry;
+}
+
+export function workMatchesTypeGraph(workEntity, typeEntities, kind) {
+  const rootType = workKindConfig(kind)?.rootType;
+  if (!rootType) return false;
+  return typeAncestry(workEntity, typeEntities).has(rootType);
 }
 
 export function normalizeWikidataEntityLocations(workEntity, locationEntities, { kind }) {
