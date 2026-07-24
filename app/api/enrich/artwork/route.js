@@ -19,6 +19,25 @@ function jsonError(message, status) {
   return Response.json({ error: message }, { status, headers: noStoreHeaders });
 }
 
+// The graph is public-read under RLS, so a dry run can list the works that still need
+// artwork with the anon key alone.
+async function loadWorksAnon(env, fetchImpl, limit) {
+  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) throw new Error("Supabase is not configured");
+
+  const endpoint = new URL(`${url}/rest/v1/works`);
+  endpoint.searchParams.set("select", "id,kind,title,wikidata_id,tmdb_id,poster_path");
+  endpoint.searchParams.set("poster_path", "is.null");
+  endpoint.searchParams.set("limit", String(limit));
+
+  const response = await fetchImpl(endpoint, {
+    headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}`, Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`works read failed with ${response.status}`);
+  return response.json();
+}
+
 function defaultCreateWriter(env) {
   const url = env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
@@ -74,11 +93,18 @@ export function createArtworkEnrichHandler({
     const tmdbKey = env.TMDB_API_KEY;
     if (!tmdbToken && !tmdbKey) return jsonError("TMDB is not configured", 503);
 
+    // ?dry=1 resolves the artwork and reports it without touching the database, so a
+    // pass can be inspected before it is written — and so lookups still work while the
+    // service-role key is absent.
+    const dryRun = new URL(request.url).searchParams.get("dry") === "1";
+
     const writer = makeWriter(env);
-    if (!writer) return jsonError("Enrichment is not configured", 503);
+    if (!writer && !dryRun) return jsonError("Enrichment is not configured", 503);
 
     try {
-      const works = await writer.loadWorks(MAX_WORKS);
+      const works = writer
+        ? await writer.loadWorks(MAX_WORKS)
+        : await loadWorksAnon(env, fetchImpl, MAX_WORKS);
       const candidates = artworkCandidates(works);
       if (candidates.length === 0) {
         return Response.json(
@@ -127,6 +153,12 @@ export function createArtworkEnrichHandler({
       }
 
       const updates = artworkUpdates(results);
+      if (dryRun) {
+        return Response.json(
+          { dry_run: true, checked: works.length, found: updates.length, updates },
+          { headers: noStoreHeaders },
+        );
+      }
       const saved = updates.length > 0 ? await writer.saveArtwork(updates) : 0;
 
       return Response.json(
