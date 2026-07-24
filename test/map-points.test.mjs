@@ -223,6 +223,30 @@ test("the fictional strip is filtered by the same query as the map", async () =>
   assert.deepEqual(fictionalArgs, { workId: uuid, kinds: ["book"] });
 });
 
+test("a graph failure names its cause so a deployment can be diagnosed", async () => {
+  // "Could not load" alone is undiagnosable: a wrong anon key, a missing function and
+  // a real outage all look the same from outside.
+  const cases = [
+    ["Invalid API key", "graph_auth_rejected"],
+    ["Could not find the function public.map_points_in_view", "graph_schema_mismatch"],
+    ["connection reset", "graph_query_failed"],
+  ];
+  for (const [message, expected] of cases) {
+    const handler = handlerWith({
+      reader: {
+        points: async () => { throw new Error(message); },
+        clusters: async () => [],
+        fictional: async () => [],
+      },
+    });
+    const response = await handler(mapRequest({ ...LONDON, z: "13" }));
+    const body = await response.json();
+    assert.equal(response.status, 502);
+    assert.equal(body.reason, expected);
+    assert.ok(!JSON.stringify(body).includes("Invalid API key") || expected === "graph_auth_rejected");
+  }
+});
+
 test("map points route maps a graph failure to 502", async () => {
   const handler = handlerWith({
     reader: {
