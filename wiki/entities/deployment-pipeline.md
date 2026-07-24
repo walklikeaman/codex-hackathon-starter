@@ -12,6 +12,13 @@ account `walklikeaman1904`), linked to the GitHub repo. The framework is forced 
   confirmation via the `production` environment. Credentials (`VERCEL_TOKEN`,
   `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`) — in GitHub environment secrets.
 - Prod URL: https://codex-hackathon-starter.vercel.app
+- The GitHub Actions path needs three secrets. `VERCEL_ORG_ID`
+  (`team_oulXyCQDRVVkXELdoJuaaVEE`) and `VERCEL_PROJECT_ID`
+  (`prj_FM31BOAjGEmwLlOFFK0zcpzcqStE`) are identifiers, not credentials, and are set.
+  **`VERCEL_TOKEN` is still missing**, so the workflow fails at the first step with
+  `You defined "--token", but it's missing a value`. Until it is added, production is
+  deployed with the CLI: `vercel pull --yes --environment=production`,
+  `vercel build --prod`, `vercel deploy --prebuilt --prod`.
 
 ## Incident lesson (guardrail)
 

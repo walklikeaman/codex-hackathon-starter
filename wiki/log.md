@@ -7,6 +7,23 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-24] update | Production deployed with the graph layer; CI deploy path half-fixed
+
+- Production now runs the post-env-fix build. Verified on the live domain:
+  /api/map/points → 28 London points, 3 studios (Elstree, Pinewood, Leavesden),
+  2 approximate (Esher, London), 6 fictional; /api/map/works → 14; world z3 → 24
+  clusters over 63 points; and the "Login with Google" button is enabled again,
+  which is the visible proof the browser Supabase client initialises.
+- The `Deploy production` workflow FAILED twice first: its GitHub secrets were
+  never set, so it ran `vercel pull --token=""` and stopped immediately.
+  `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` are now set (identifiers, not
+  credentials). **`VERCEL_TOKEN` is still missing** — minting and storing a
+  credential is the owner's call, not the agent's.
+- Until that token exists, production ships via the CLI (see
+  [[deployment-pipeline]]). That is how this deploy was made, with the owner's
+  explicit go-ahead.
+- Local Vercel CLI updated 52.0.0 → 57.0.0 (52 loops on `env add ... preview`).
+
 ## [2026-07-24] incident | Vercel env: NEXT_PUBLIC_SUPABASE_* were sensitive, breaking the client
 
 - Symptom: the graph endpoints returned 502 `graph_query_failed` on every
