@@ -60,6 +60,7 @@ import {
 import VoiceGuide from "./VoiceGuide";
 import GraphLayer from "./GraphLayer";
 import { BADGE_STYLES } from "../lib/map-layer.mjs";
+import { RATING_LABELS } from "../lib/work-ratings.mjs";
 
 const londonCenter = [51.5094, -0.1183];
 const GUEST_LIBRARY_KEY = "scenemap-library";
@@ -1827,6 +1828,51 @@ export default function SceneMapApp() {
                   </select>
                 </label>
               </div>
+
+              {(() => {
+                const selected = graphWorks.find((work) => work.work_id === graphWorkId);
+                if (!selected) return null;
+                const ratings = selected.ratings ?? [];
+                return (
+                  <article className="work-card">
+                    {selected.poster_url && (
+                      <img alt="" className="work-card-poster" src={selected.poster_url} />
+                    )}
+                    <div className="work-card-body">
+                      <strong>{selected.title}</strong>
+                      <span className="work-card-meta">
+                        {kindLabel(selected.kind)} · {selected.place_count} places
+                      </span>
+                      {ratings.length > 0 ? (
+                        <ul className="rating-row">
+                          {ratings.map((rating) => {
+                            const label = RATING_LABELS[rating.source] ?? rating.source;
+                            const chip = (
+                              <>
+                                <span className="rating-source">{label}</span>
+                                <span className="rating-score">{rating.display}</span>
+                              </>
+                            );
+                            return (
+                              <li key={rating.source} className={`rating-chip is-${rating.source}`}>
+                                {/* A score links back to where it came from; without a
+                                    link it is just a number we ask people to trust. */}
+                                {rating.url ? (
+                                  <a href={rating.url} rel="noreferrer noopener" target="_blank">
+                                    {chip}
+                                  </a>
+                                ) : chip}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <span className="work-card-meta">No ratings yet</span>
+                      )}
+                    </div>
+                  </article>
+                );
+              })()}
 
               {graphSummary?.count === 0 && graphSummary?.nearest?.length > 0 && (
                 <div className="graph-nearest">
