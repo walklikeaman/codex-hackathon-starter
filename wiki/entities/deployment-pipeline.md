@@ -21,6 +21,17 @@ to production. For a newly linked project you must use
 
 ## Gotchas
 
+- **`vercel env add` defaults to SENSITIVE on Production and Preview.** A sensitive
+  variable is withheld from the *build*, so a `NEXT_PUBLIC_*` value never gets inlined
+  into the client bundle — the browser Supabase client silently became `null` (no
+  login, no cloud library) while server routes, which read `process.env` at runtime,
+  still got a value. That mismatch produced a 502 rather than an honest "not
+  configured" 503. Always pass **`--no-sensitive`** for `NEXT_PUBLIC_*`. Verify with
+  `vercel env pull`: a sensitive value comes back EMPTY.
+- **`vercel env rm NAME preview` removes the whole variable**, not just that target,
+  when one entry covers several environments. Re-add every environment afterwards.
+- Vercel CLI 52 loops on `env add ... preview` with an `action_required` hint even when
+  the suggested flags are passed; `npx vercel@latest` works.
 - The preview/staging environment has **no `OPENAI_API_KEY`** — AI features ([[openai]])
   are verified only in prod after a manual deploy.
 - Prod env variables: NEXT_PUBLIC_SUPABASE_* (not used at runtime —

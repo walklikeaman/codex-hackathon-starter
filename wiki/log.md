@@ -7,6 +7,32 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-24] incident | Vercel env: NEXT_PUBLIC_SUPABASE_* were sensitive, breaking the client
+
+- Symptom: the graph endpoints returned 502 `graph_query_failed` on every
+  deployment, while the same RPCs returned correct data when called directly with
+  either key type — so the database was never the problem.
+- **Root cause**: both `NEXT_PUBLIC_SUPABASE_URL` and `..._ANON_KEY` were stored as
+  **sensitive** variables (the `vercel env add` default on Production and Preview).
+  Vercel withholds sensitive values from the BUILD, so a `NEXT_PUBLIC_*` value is
+  never inlined into the client bundle — a scan of every production chunk found no
+  `supabase.co` at all, meaning the browser client was `null` and login / cloud
+  library were quietly dead. Server routes still read `process.env` at runtime, so
+  they got *something* and failed later — hence 502 instead of an honest 503.
+- Fix: removed and re-added both variables for Production, Preview and Development
+  with `--no-sensitive`. Verified with `vercel env pull` that the values are now
+  readable (a sensitive value pulls back EMPTY — that is how the cause was found).
+- Two CLI traps hit on the way, both recorded in [[deployment-pipeline]]:
+  `vercel env rm NAME preview` removed the variable for **all** environments (one
+  entry covered both), and CLI 52 loops on `env add ... preview` even with the
+  flags it suggests — `npx vercel@latest` works.
+- Verified on a fresh preview deployment: /api/map/points → 28 London points, 3
+  studios, 6 fictional; /api/map/works → 14; and the "Login with Google" button is
+  enabled again, which is the visible proof the browser client initialises.
+- **Production still runs the pre-fix build.** Its variables are correct now, but
+  the value is baked at build time, so it needs a manual production deploy
+  (workflow_dispatch + confirm_production) — deliberately a human decision.
+
 ## [2026-07-24] update | Step 3 slice 3c — layer filters + KNN nearest, #94 closed
 
 - PR #106 merged. The graph layer is now navigable, not just visible.
