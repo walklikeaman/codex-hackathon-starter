@@ -57,15 +57,8 @@ export function parseMapQuery(searchParams) {
     return { error: "workId must be a uuid" };
   }
 
-  const kindsParam = searchParams.get("kinds");
-  let kinds = null;
-  if (kindsParam !== null) {
-    const requested = kindsParam.split(",").map((kind) => kind.trim()).filter(Boolean);
-    if (requested.length === 0 || requested.some((kind) => !WORK_KINDS.has(kind))) {
-      return { error: `kinds must be one or more of: ${[...WORK_KINDS].join(", ")}` };
-    }
-    kinds = [...new Set(requested)];
-  }
+  const kinds = parseKindsParam(searchParams.get("kinds"));
+  if (kinds?.error) return { error: kinds.error };
 
   const roundedZoom = Math.round(zoom);
   return {
@@ -78,9 +71,21 @@ export function parseMapQuery(searchParams) {
     north: Math.max(south, north),
     zoom: roundedZoom,
     workId: workIdRaw,
-    kinds,
+    kinds: kinds?.value ?? null,
     clustered: roundedZoom < CLUSTER_BELOW_ZOOM,
   };
+}
+
+// Shared by every endpoint that filters by work kind, so the validation (and the
+// refusal to silently widen) is defined once. Returns null when absent,
+// { value } when valid, { error } when the caller asked for something we can't honour.
+export function parseKindsParam(raw) {
+  if (raw === null || raw === undefined) return null;
+  const requested = String(raw).split(",").map((kind) => kind.trim()).filter(Boolean);
+  if (requested.length === 0 || requested.some((kind) => !WORK_KINDS.has(kind))) {
+    return { error: `kinds must be one or more of: ${[...WORK_KINDS].join(", ")}` };
+  }
+  return { value: [...new Set(requested)] };
 }
 
 // How a pin should read on the map. Kept here (not in the client) so every surface
@@ -126,10 +131,38 @@ function clusterFeature(row) {
   };
 }
 
+// The centre of the requested viewport, for "nothing here — the nearest is…".
+// Handles a window that crosses the antimeridian, where the midpoint is not the mean.
+export function viewportCenter(query) {
+  const lat = (query.south + query.north) / 2;
+  if (query.west <= query.east) return { lat, lng: (query.west + query.east) / 2 };
+  const span = 360 - query.west + query.east;
+  let lng = query.west + span / 2;
+  if (lng > 180) lng -= 360;
+  return { lat, lng };
+}
+
+function nearestEntry(row) {
+  return {
+    place_id: row.place_id,
+    wikidata_id: row.wikidata_id,
+    name: row.name,
+    lat: row.lat,
+    lng: row.lng,
+    place_class: row.place_class,
+    badge: pointBadge(row),
+    // Rounded to the kilometre: the point is "far away in that direction", and a
+    // metre-precise figure would imply a precision the underlying point may not have.
+    distance_km: Number.isFinite(Number(row.distance_m))
+      ? Math.round(Number(row.distance_m) / 1000)
+      : null,
+  };
+}
+
 // Shape the RPC rows into GeoJSON. Rows without a usable coordinate are dropped here
 // too — the database already filters them, but the map must never receive a pin it
 // cannot honestly place.
-export function buildMapResponse(query, rows, fictionalRows = []) {
+export function buildMapResponse(query, rows, fictionalRows = [], nearestRows = []) {
   const source = Array.isArray(rows) ? rows : [];
   const features = source
     .filter((row) => hasValidCoordinate(numeric(row?.lat), numeric(row?.lng)))
@@ -150,5 +183,10 @@ export function buildMapResponse(query, rows, fictionalRows = []) {
       name: row.name,
       work_count: row.work_count ?? 0,
     })),
+    // An empty viewport should say "we have nothing HERE", not imply we have nothing.
+    // Only populated when there is genuinely nothing in view.
+    nearest: features.length === 0
+      ? (Array.isArray(nearestRows) ? nearestRows : []).map(nearestEntry)
+      : [],
   };
 }

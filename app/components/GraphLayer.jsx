@@ -49,6 +49,9 @@ export default function GraphLayer({
         clustered: body.clustered === true,
         truncated: body.truncated === true,
         fictional: body.fictional ?? [],
+        // Populated only when the viewport is empty, so the panel can say
+        // "nothing here" and offer somewhere to go.
+        nearest: body.nearest ?? [],
       });
     } catch (error) {
       if (error?.name === "AbortError") return; // superseded by a newer viewport

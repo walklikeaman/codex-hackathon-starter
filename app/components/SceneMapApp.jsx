@@ -644,6 +644,29 @@ export default function SceneMapApp() {
   // so searching any city still works, while the graph shows what we have grounded.
   const [graphLayerOn, setGraphLayerOn] = useState(false);
   const [graphSummary, setGraphSummary] = useState(null);
+  const [graphKinds, setGraphKinds] = useState([]);   // [] = every kind
+  const [graphWorkId, setGraphWorkId] = useState(""); // "" = the whole library
+  const [graphWorks, setGraphWorks] = useState([]);
+
+  // Works that actually have a mappable place under the current kind filter, so the
+  // selector can never offer a work with nothing to show.
+  useEffect(() => {
+    if (!graphLayerOn) return undefined;
+    const controller = new AbortController();
+    const query = graphKinds.length ? `?kinds=${graphKinds.join(",")}` : "";
+    (async () => {
+      try {
+        const response = await fetch(`/api/map/works${query}`, { signal: controller.signal });
+        if (!response.ok) throw new Error(`works responded ${response.status}`);
+        const body = await response.json();
+        setGraphWorks(Array.isArray(body.works) ? body.works : []);
+      } catch (error) {
+        if (error?.name !== "AbortError") setGraphWorks([]);
+      }
+    })();
+    return () => controller.abort();
+  }, [graphLayerOn, graphKinds]);
+
   const [mapCenter, setMapCenter] = useState(londonCenter);
   const [browseCenter, setBrowseCenter] = useState(londonCenter);
   const [browseRadius, setBrowseRadius] = useState(10);
@@ -1666,6 +1689,8 @@ export default function SceneMapApp() {
           ))}
           {graphLayerOn && (
             <GraphLayer
+              kinds={graphKinds.length ? graphKinds : null}
+              workId={graphWorkId || null}
               onSummary={setGraphSummary}
               onSelect={(feature) => {
                 const [lng, lat] = feature.geometry?.coordinates ?? [];
@@ -1708,6 +1733,8 @@ export default function SceneMapApp() {
         </div>
 
         <section className="graph-layer-panel" aria-label="Grounded places layer">
+          {/* The work list follows the kind filter, so it can only ever offer works
+              that actually have a place to fly to under the current filter. */}
           <button
             className={`graph-toggle${graphLayerOn ? " is-on" : ""}`}
             type="button"
@@ -1736,6 +1763,67 @@ export default function SceneMapApp() {
                   </li>
                 ))}
               </ul>
+
+              <div className="graph-filters">
+                <div className="kind-chips" role="group" aria-label="Filter by kind">
+                  {["film", "series", "book"].map((kind) => {
+                    const on = graphKinds.includes(kind);
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        aria-pressed={on}
+                        className={`kind-chip${on ? " is-on" : ""}`}
+                        onClick={() => {
+                          // Changing the kind can orphan the selected work, so clear it.
+                          setGraphWorkId("");
+                          setGraphKinds((current) =>
+                            current.includes(kind)
+                              ? current.filter((k) => k !== kind)
+                              : [...current, kind],
+                          );
+                        }}
+                      >
+                        {kindLabel(kind)}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <label className="work-filter">
+                  <span className="visually-hidden">Show one work</span>
+                  <select
+                    value={graphWorkId}
+                    onChange={(event) => setGraphWorkId(event.target.value)}
+                  >
+                    <option value="">Whole library ({graphWorks.length})</option>
+                    {graphWorks.map((work) => (
+                      <option key={work.work_id} value={work.work_id}>
+                        {work.title} ({work.place_count})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              {graphSummary?.count === 0 && graphSummary?.nearest?.length > 0 && (
+                <div className="graph-nearest">
+                  <p className="graph-note">Nothing grounded in this view. Nearest:</p>
+                  <ul>
+                    {graphSummary.nearest.map((place) => (
+                      <li key={place.place_id}>
+                        <button
+                          type="button"
+                          className="nearest-jump"
+                          onClick={() => setMapCenter([place.lat, place.lng])}
+                        >
+                          {place.name} · {place.distance_km} km
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {graphSummary?.truncated && (
                 <p className="graph-note">

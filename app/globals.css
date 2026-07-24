@@ -2220,3 +2220,73 @@ figcaption a {
 .graph-badge.badge-approximate { color: #b8860b; }
 .graph-badge.badge-studio { color: #6b3fa0; }
 .graph-badge.badge-narrative { color: #1f7a70; }
+
+.graph-filters {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.kind-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.kind-chip {
+  padding: 4px 11px;
+  border: 1px solid rgba(247, 183, 51, 0.3);
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(244, 231, 200, 0.75);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.kind-chip.is-on {
+  background: rgba(247, 183, 51, 0.18);
+  border-color: rgba(247, 183, 51, 0.6);
+  color: #f4e7c8;
+}
+
+.work-filter select {
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid rgba(247, 183, 51, 0.25);
+  border-radius: 9px;
+  background: rgba(22, 19, 12, 0.9);
+  color: #f4e7c8;
+  font: inherit;
+  font-size: 12px;
+}
+
+.graph-nearest { margin-top: 10px; }
+
+.graph-nearest ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.nearest-jump {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #f7b733;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

@@ -5,6 +5,7 @@ import {
   CLUSTER_BELOW_ZOOM,
   MAX_MAP_POINTS,
   parseMapQuery,
+  viewportCenter,
 } from "../../../lib/map-points.mjs";
 
 export const runtime = "nodejs";
@@ -48,6 +49,11 @@ function defaultCreateReader(env) {
     clusters: (params) => call("map_clusters_in_view", params),
     fictional: ({ workId, kinds }) =>
       call("fictional_places", { p_work_id: workId ?? null, p_kinds: kinds ?? null }),
+    nearest: ({ lat, lng, workId, kinds, limit = 3 }) =>
+      call("remote_points", {
+        p_lat: lat, p_lng: lng, p_limit: limit,
+        p_work_id: workId ?? null, p_kinds: kinds ?? null,
+      }),
   };
 }
 
@@ -89,7 +95,18 @@ export function createMapPointsHandler({
         reader.fictional({ workId: query.workId, kinds: query.kinds }),
       ]);
 
-      return Response.json(buildMapResponse(query, rows, fictional), {
+      // Only when the viewport is genuinely empty: one extra KNN query so the answer is
+      // "nothing HERE, the nearest is X km away" rather than a blank map that reads as
+      // "there is nothing". Never paid for on a populated viewport.
+      let nearest = [];
+      if ((rows?.length ?? 0) === 0 && reader.nearest) {
+        const center = viewportCenter(query);
+        nearest = await reader.nearest({
+          lat: center.lat, lng: center.lng, workId: query.workId, kinds: query.kinds,
+        });
+      }
+
+      return Response.json(buildMapResponse(query, rows, fictional, nearest), {
         headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
       });
     } catch (error) {
