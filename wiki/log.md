@@ -7,6 +7,30 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-25] update | Ratings (IMDb / RT / Metacritic) with source links; keys unblocked
+
+- PR #111 merged and deployed. **32 ratings across 12 works, every one linking back
+  to its source.** Verified on production: Skyfall → IMDb 7.8/10, RT 92%,
+  Metacritic 81/100, all three clickable.
+- Chain: work.wikidata_id → P345 (imdb id) + P1258 (RT path) + P1712 (Metacritic
+  path) → OMDb → ratings. OMDb is a licensed aggregator and returns all three
+  scores in one call, but NOT their URLs — hence the Wikidata paths.
+- Two rules in app/lib/work-ratings.mjs (pure, 12 tests):
+  * never restate a score in a scale its source did not use (IMDb "7.8/10" is not
+    shown as "78%"); scores normalise to 0..100 only for sorting;
+  * an unparseable score becomes null, never 0 — a missing rating and a rating of
+    zero are different claims. Same reason a place with no coordinate stays NULL.
+- Links are built only from validated identifiers, so a malformed path cannot make
+  a chip point somewhere unrelated.
+- **Owner supplied the two missing keys**: SUPABASE_SERVICE_ROLE_KEY (which
+  unblocked /api/enrich/*, /api/resolve and /api/import/letterboxd — all three had
+  been 503 in production) and an OMDb key, stored sensitive in Vercel.
+- Artwork enrichment now runs unattended too; it reports "3 checked, 0 enriched"
+  because only books remain, which have no TMDB entry.
+- vercel.json: github.silent — every push had made vercel[bot] comment on the PR,
+  and every comment became an email. Deployment status stays visible in checks.
+- 258/258 green.
+
 ## [2026-07-25] update | Real film covers from TMDB + neutral Login button
 
 - PR #109 merged, deployed, and the artwork pass run: **12 of 12 films/series now
