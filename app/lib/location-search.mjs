@@ -165,7 +165,7 @@ export function buildWikidataEntitiesUrl(ids) {
   return endpoint;
 }
 
-function entityClaimValues(entity, property) {
+export function entityClaimValues(entity, property) {
   return (entity?.claims?.[property] ?? [])
     .filter((claim) => claim.rank !== "deprecated")
     .map((claim) => claim.mainsnak?.datavalue?.value)

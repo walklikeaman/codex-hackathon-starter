@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import { graphFailureReason } from "../points/route.js";
 import { parseKindsParam } from "../../../lib/map-points.mjs";
+import { posterUrl, POSTER_SIZES } from "../../../lib/work-artwork.mjs";
 
 export const runtime = "nodejs";
 
@@ -56,6 +57,10 @@ export function createMapWorksHandler({
             title: row.title,
             kind: row.kind,
             place_count: row.place_count ?? 0,
+            // Two sizes from one stored path: a thumbnail for the picker, a larger
+            // one for a card. image.tmdb.org needs no key, so these are plain URLs.
+            poster_url: posterUrl(row.poster_path, POSTER_SIZES.card),
+            poster_thumb_url: posterUrl(row.poster_path, POSTER_SIZES.thumb),
           })),
         },
         { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=900" } },
