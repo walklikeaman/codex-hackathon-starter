@@ -7,6 +7,31 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-24] update | Step 3 slice 3c — layer filters + KNN nearest, #94 closed
+
+- PR #106 merged. The graph layer is now navigable, not just visible.
+- Migration: remote_points (KNN via the geography <-> operator — the FIRST thing
+  that actually uses the centroid GiST index, since the viewport filter
+  deliberately moved to lat/lng) and map_works (works that HAVE a mappable place).
+- /api/map/points returns `nearest` when and ONLY when the viewport is empty: a
+  blank map reads as "there is nothing", when the honest answer is "nothing HERE
+  — the nearest is 141 km that way". A populated viewport never pays for it.
+- GET /api/map/works: real options for the "this work" filter. A work whose only
+  places are fictional (The Lord of the Rings) is correctly absent — 14 of 15.
+- UI: kind chips + a work selector that CASCADES from the kind filter (changing
+  the kind clears a now-orphaned selection) + clickable nearest hints.
+- parseKindsParam extracted so both endpoints share one validation and the same
+  refusal to silently widen.
+- Verified live: works=14 (Skyfall 16, 28 Days Later 13, HP 10); kinds=book →
+  Mrs Dalloway + Oliver Twist; empty view near Manchester → Lake District 141 km;
+  Skyfall in London → 8 points incl. Pinewood; kinds=nope → 400. In the browser
+  the work list narrows 14 → 2 on the Book chip and the nearest hint renders.
+- Applied the overload lesson: verified each function has exactly ONE signature
+  after applying.
+- 239/239 green. **Open for the owner**: the Vercel PREVIEW env still returns 502
+  graph_query_failed for the graph endpoints; the DB is sound (RPCs return
+  correct data for both key types), so its NEXT_PUBLIC_SUPABASE_* point elsewhere.
+
 ## [2026-07-24] update | Step 3 slice 3b — grounded-places layer on the map
 
 - PR #105 merged. The content graph is now ON the map, not just in JSON.
