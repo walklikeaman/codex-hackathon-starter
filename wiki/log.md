@@ -7,6 +7,37 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-24] update | Step 3 slice 3a — map reads from the graph + first graph data
+
+- PR #104 merged. The map's READ path now serves the persistent graph, not live
+  SPARQL: a viewport is one indexed query. Client rendering is the next slice.
+- **The graph was empty**, so "read from the graph" would have blanked the map.
+  Ran the Step 2 resolver over 15 verified works → 70 places / 84 links / 154
+  evidence, seeded into the shared project. This is also the first real exercise
+  of the resolver's write path — persisted counts match its local plan exactly.
+- supabase/migrations/20260724000000_map_points_rpc.sql + ...010000_map_points_fixes.sql:
+  map_points_in_view / map_clusters_in_view / fictional_places / place_is_mappable.
+- app/lib/map-points.mjs (pure parseMapQuery / buildMapResponse / pointBadge) +
+  app/api/map/points/route.js (DI factory, anon client — the graph is public-read).
+  Points carry place_class, confidence, precision, shot_on_set and a badge
+  (exact / approximate / studio / narrative) so the UI can be honest.
+- Verified live in a browser: world z3 → 24 clusters over 63 points; London z13 →
+  28 points; Pinewood/Elstree/Leavesden badged studio; London & Esher badged
+  approximate; all six Tolkien realms in the fictional strip, never a pin.
+- **Bugs found (2 by tests, 11 by adversarial review, all fixed).** The critical
+  one: the viewport filtered on `places.centroid`, which NO write path fills —
+  the resolver's upsert sets only lat/lng, so any place written after the seed had
+  centroid NULL, and `NULL && box` is NULL, not false → a fully evidenced point
+  vanished behind a 200. centroid is now a GENERATED column and the bbox filters
+  on lat/lng. Also: no evidence requirement in SQL (now mirrors
+  grounding.isPublishable incl. agrees=false); least/greatest inverted an
+  antimeridian-crossing viewport into its complement; invalid workId/kinds failed
+  OPEN to the whole graph; bbox in geography space (a world envelope is
+  degenerate, st_area=0 → zoom-out showed zero points); and `Number(null) === 0`
+  coercing a missing bbox and a coordinate-less row to a valid 0,0.
+- 19 tests added, 222/222 green. Remaining in #94: canvas + supercluster client,
+  layers, fictional strip in the UI.
+
 ## [2026-07-24] update | Step 2 — Location Resolution Engine (Stage 0 + 1), #93 closed
 
 - PR #103 merged. The spine: an imported work now becomes map-ready places.
