@@ -8,6 +8,7 @@ import {
   MAX_MAP_POINTS,
   parseMapQuery,
   pointBadge,
+  viewportCenter,
 } from "../app/lib/map-points.mjs";
 
 const params = (object) => new URLSearchParams(object);
@@ -221,6 +222,62 @@ test("the fictional strip is filtered by the same query as the map", async () =>
   });
   await handler(mapRequest({ ...LONDON, z: "13", workId: uuid, kinds: "book" }));
   assert.deepEqual(fictionalArgs, { workId: uuid, kinds: ["book"] });
+});
+
+test("viewportCenter handles a window that crosses the antimeridian", () => {
+  assert.deepEqual(
+    viewportCenter({ west: -0.4, east: 0.2, south: 51, north: 52 }),
+    { lat: 51.5, lng: -0.1 },
+  );
+  // 170 → -170 spans the date line: the midpoint is 180, not the mean (0).
+  const crossing = viewportCenter({ west: 170, east: -170, south: -10, north: 10 });
+  assert.equal(crossing.lat, 0);
+  assert.equal(Math.abs(crossing.lng), 180);
+});
+
+test("an empty viewport says where the nearest place IS, not just that it is empty", async () => {
+  // A blank map reads as "there is nothing"; the honest answer is "nothing HERE".
+  let nearestArgs = null;
+  const handler = handlerWith({
+    reader: {
+      points: async () => [],
+      clusters: async () => [],
+      fictional: async () => [],
+      nearest: async (args) => {
+        nearestArgs = args;
+        return [{
+          place_id: "p1", wikidata_id: "Q1", name: "Lake District",
+          lat: 54.5, lng: -3.16, place_class: "real_exterior",
+          geocode_precision: "point", shot_on_set: false, distance_m: 128600,
+        }];
+      },
+    },
+  });
+  const body = await (await handler(mapRequest({ ...LONDON, z: "13" }))).json();
+
+  assert.equal(body.features.length, 0);
+  assert.deepEqual(body.nearest, [{
+    place_id: "p1", wikidata_id: "Q1", name: "Lake District",
+    lat: 54.5, lng: -3.16, place_class: "real_exterior",
+    badge: "exact", distance_km: 129,
+  }]);
+  // Searched from the middle of what the user is looking at.
+  assert.ok(Math.abs(nearestArgs.lat - 51.5) < 0.01);
+});
+
+test("a populated viewport never pays for the nearest query", async () => {
+  let calledNearest = false;
+  const handler = handlerWith({
+    reader: {
+      points: async () => [placeRow()],
+      clusters: async () => [],
+      fictional: async () => [],
+      nearest: async () => { calledNearest = true; return []; },
+    },
+  });
+  const body = await (await handler(mapRequest({ ...LONDON, z: "13" }))).json();
+  assert.equal(calledNearest, false);
+  assert.deepEqual(body.nearest, []);
 });
 
 test("a graph failure names its cause so a deployment can be diagnosed", async () => {
