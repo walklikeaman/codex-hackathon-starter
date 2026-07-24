@@ -7,6 +7,33 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-25] update | Real film covers from TMDB + neutral Login button
+
+- PR #109 merged, deployed, and the artwork pass run: **12 of 12 films/series now
+  carry a real poster**; the 3 books are correctly skipped (no TMDB entry).
+- **Source decision — TMDB, not an IMDb scraper.** The owner asked whether to pull
+  posters like IMDb has, via third-party GitHub scrapers if necessary. We don't:
+  IMDb's terms forbid extracting their content, the poster art is studio-licensed,
+  and a scraper repo breaks on the next markup change. TMDB is the licensed
+  official API, we already had a token and tmdb-images.mjs, and image.tmdb.org
+  serves files with NO key — so only the path is stored and the client picks the size.
+- Chain: work.wikidata_id → P4947 (film) / P4983 (series) → tmdb_id → poster_path.
+  All 12 works had a TMDB id in Wikidata (verified live).
+- app/lib/work-artwork.mjs (pure, 7 tests): kind picks the property so a movie id is
+  never read as a TV id; only canonical /path.jpg passes, so nothing malformed can
+  reach an img src; a failed lookup never nulls out existing artwork.
+- POST /api/enrich/artwork, idempotent (loads only works with poster_path null),
+  plus **?dry=1** which reports what would be written without touching the DB.
+- **Blocker found**: `SUPABASE_SERVICE_ROLE_KEY` is not set in Vercel at all, so every
+  service-role write route (/api/enrich/artwork, /api/resolve, /api/import/letterboxd)
+  fails with 503 in production. The dry-run path plus a direct MCP write was used to
+  land the posters; the key is still needed for these routes to work unattended.
+- Login button: now a neutral "Login" with a generic icon instead of
+  "Login with Google", which pinned one provider before the user chose. Full
+  provider picker is #108.
+- New issues: **#107** film stills + geolocation from a frame, **#108** login flow.
+- 246/246 green. Verified on production: 12 covers render, CDN serves them keyless.
+
 ## [2026-07-24] update | Production deployed with the graph layer; CI deploy path half-fixed
 
 - Production now runs the post-env-fix build. Verified on the live domain:
