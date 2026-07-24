@@ -15,6 +15,20 @@ function jsonError(message, status) {
   return Response.json({ error: message }, { status, headers: noStoreHeaders });
 }
 
+// Classify a graph failure for the response. Deliberately coarse — enough to point an
+// operator at the cause (credentials vs schema vs upstream), never enough to expose
+// the key, the SQL, or row data.
+export function graphFailureReason(error) {
+  const message = String(error?.message ?? "").toLowerCase();
+  if (message.includes("api key") || message.includes("jwt") || message.includes("unauthorized")) {
+    return "graph_auth_rejected";
+  }
+  if (message.includes("could not find") || message.includes("does not exist") || message.includes("schema cache")) {
+    return "graph_schema_mismatch";
+  }
+  return "graph_query_failed";
+}
+
 // Public read: the content graph is public-read under RLS, so the anon key is enough
 // and no user session is required to look at the map.
 function defaultCreateReader(env) {
@@ -80,7 +94,13 @@ export function createMapPointsHandler({
       });
     } catch (error) {
       logError("Map points request failed", { message: error?.message });
-      return jsonError("Could not load map points", 502);
+      // A bare "could not load" is undiagnosable in a deployed environment: a wrong
+      // anon key, a missing grant and a real outage all look identical. The reason
+      // code names the class of failure without leaking the key or the SQL.
+      return Response.json(
+        { error: "Could not load map points", reason: graphFailureReason(error) },
+        { status: 502, headers: noStoreHeaders },
+      );
     }
   };
 }
