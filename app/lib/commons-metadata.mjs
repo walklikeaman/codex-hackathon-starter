@@ -114,3 +114,74 @@ export async function fetchCommonsAttribution(urls, {
   }
   return byUrl;
 }
+
+// --- Geosearch: photos taken NEAR a point ------------------------------------
+// Commons knows where many of its photos were taken, which makes it a real
+// "the place today" source and not just a lookup for images we already have.
+
+export function buildCommonsGeosearchUrl({ lat, lng, radius = 120, limit = 10, width = 800 }) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error("Geosearch requires a valid coordinate");
+  }
+  const endpoint = new URL(COMMONS_API);
+  endpoint.searchParams.set("action", "query");
+  endpoint.searchParams.set("generator", "geosearch");
+  endpoint.searchParams.set("ggscoord", `${lat}|${lng}`);
+  endpoint.searchParams.set("ggsradius", String(Math.max(10, Math.min(Math.round(radius), 10000))));
+  endpoint.searchParams.set("ggslimit", String(Math.max(1, Math.min(Math.round(limit), 50))));
+  endpoint.searchParams.set("ggsnamespace", "6"); // File:
+  endpoint.searchParams.set("prop", "imageinfo");
+  endpoint.searchParams.set("iiprop", "url|extmetadata");
+  endpoint.searchParams.set("iiurlwidth", String(width));
+  endpoint.searchParams.set("format", "json");
+  endpoint.searchParams.set("origin", "*");
+  return endpoint;
+}
+
+// Parse geosearch results into place-photo candidates. A file whose author or licence
+// is missing is still returned — the cascade's fail-safe drops it, so the decision
+// lives in one place rather than two.
+export function parseCommonsGeosearch(payload) {
+  const pages = payload?.query?.pages;
+  if (!pages || typeof pages !== "object") return [];
+
+  const candidates = [];
+  for (const page of Object.values(pages)) {
+    const info = page?.imageinfo?.[0];
+    const url = info?.thumburl ?? info?.url;
+    if (!page?.title || typeof url !== "string") continue;
+
+    const meta = info.extmetadata ?? {};
+    candidates.push({
+      image_url: url,
+      page_url: info.descriptionurl ?? null,
+      // Geosearch does not report the distance, so the caller ranks by heading only;
+      // every result is already inside the requested radius.
+      distance_m: null,
+      compass_angle: null,
+      attribution: {
+        source: "wikimedia",
+        author: plainText(meta.Artist?.value),
+        license: plainText(meta.LicenseShortName?.value),
+        license_url: typeof meta.LicenseUrl?.value === "string" ? meta.LicenseUrl.value : null,
+        source_url: `https://commons.wikimedia.org/wiki/${encodeURIComponent(page.title)}`,
+      },
+    });
+  }
+  return candidates;
+}
+
+export async function fetchCommonsNearby({ lat, lng, radius, limit }, {
+  fetchImpl = (...args) => fetch(...args),
+  userAgent = "GloryMap/1.1 (https://codex-hackathon-starter.vercel.app/)",
+  signal,
+  revalidate = 86400,
+} = {}) {
+  const response = await fetchImpl(buildCommonsGeosearchUrl({ lat, lng, radius, limit }), {
+    headers: { Accept: "application/json", "User-Agent": userAgent },
+    signal,
+    next: { revalidate },
+  });
+  if (!response.ok) throw new Error(`Commons geosearch responded with ${response.status}`);
+  return parseCommonsGeosearch(await response.json());
+}
