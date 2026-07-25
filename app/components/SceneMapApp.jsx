@@ -645,6 +645,10 @@ export default function SceneMapApp() {
   const [liveLocations, setLiveLocations] = useState(null);
   // The graph layer is an additive overlay: the live Wikidata path stays the default
   // so searching any city still works, while the graph shows what we have grounded.
+  // On a phone the panel starts COLLAPSED: this is a map app, and a map you cannot
+  // see is not a map. Expanded it overlays the map, which is fine — the user asked
+  // for it. Desktop is unaffected (the class only does anything under 860px).
+  const [panelOpen, setPanelOpen] = useState(false);
   const [graphLayerOn, setGraphLayerOn] = useState(false);
   const [graphSummary, setGraphSummary] = useState(null);
   const [graphKinds, setGraphKinds] = useState([]);   // [] = every kind
@@ -1715,7 +1719,18 @@ export default function SceneMapApp() {
         </MapContainer>
       </section>
 
-      <aside className="command-panel" aria-label="Story selection">
+      <aside className={`command-panel${panelOpen ? " is-open" : ""}`} aria-label="Story selection">
+        <button
+          aria-controls="command-panel-body"
+          aria-expanded={panelOpen}
+          className="panel-handle"
+          onClick={() => setPanelOpen((open) => !open)}
+          type="button"
+        >
+          <span className="panel-handle-grip" aria-hidden="true" />
+          <span className="panel-handle-label">{panelOpen ? "Hide panel" : "Search & filters"}</span>
+        </button>
+
         <div className="brand-row">
           <div className="brand-mark">
             <Clapperboard size={22} />
