@@ -32,3 +32,30 @@ integrate, or isolate the work so every teammate's contribution is preserved.
 ## Guardrail: One Next.js writer per checkout
 Never run `next build` while `next dev` or another build uses the same checkout.
 They share `.next` and concurrent writers can corrupt the dev/runtime manifest.
+
+## Worktree falls back to its own branch — keep that branch on main
+
+The agent worktree (`.claude/worktrees/<name>`) is bound to a branch such as
+`claude/hackathon-prep-<id>`. Something in the environment periodically restores the
+worktree to that branch, which showed up in the reflog as:
+
+```
+checkout: moving from main to HEAD
+checkout: moving from <sha> to claude/hackathon-prep-27a66c
+```
+
+The effect is a silent time-machine: the tree jumps back to the commit the session
+started at, while `origin/main` is far ahead. Nothing is lost (all work is pushed),
+but edits made after a fallback land on stale files — once caught only because the
+test count dropped from 280 to 130.
+
+**Fix, applied 25.07:** keep the fallback branch pointing at main, so restoring it is
+a no-op rather than a rewind:
+
+```bash
+git fetch origin -q
+git branch -f claude/hackathon-prep-<id> origin/main
+```
+
+**Habit:** after any long tool run, check `git log --oneline -1` before editing. A
+sudden drop in the test count is the loudest symptom.
