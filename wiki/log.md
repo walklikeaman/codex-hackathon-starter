@@ -7,6 +7,37 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-25] update | Place-photo source cascade (#56 closed) + worktree fallback fixed
+
+- PR #116 merged and live. "The place today" now comes from a cascade whose ORDER
+  is a licensing decision: Mapillary (CC BY-SA, storable, reports compass_angle) →
+  Wikimedia Commons (per-file, storable) → Street View (NOT storable — Google's
+  terms forbid caching the imagery, so it is a live embed only and can never enter
+  a saved before/after composition). Sources are never mixed, so the credit shown
+  always matches where the image came from.
+- Ranking is distance PLUS a facing penalty capped at 90: a photo of the wrong wall
+  is not a photo of the place however close it was taken. That is the whole point
+  of compass_angle.
+- Mapillary preview URLs carry a TTL, so the module keeps the IMAGE ID, never the
+  URL — a stored URL silently stops resolving.
+- The #60 fail-safe now does real work: a Commons file with no author or licence
+  falls through to the next source instead of appearing uncredited.
+- Verified live: Trafalgar Square → "CGP Grey · CC BY 2.0", storable, 10 Commons
+  candidates; Mapillary degrades cleanly to 0 with no token.
+- **Third sighting of the same trap**: an ABSENT lat/lng became 0,0 because
+  Number(null) is 0, so a coordinate-less request would have searched the Gulf of
+  Guinea. Already fixed in the resolver and the map viewport parser; guarded here
+  and pinned by a test. Worth treating as a repo-wide rule: never Number() a query
+  parameter without rejecting absent values first.
+- MAPILLARY_TOKEN / GOOGLE_MAPS_EMBED_KEY are optional — those tiers are skipped
+  rather than failing when unset.
+- **Environment fix**: the agent worktree kept being restored to its own branch
+  (claude/hackathon-prep-<id>), silently rewinding the tree to the session's first
+  commit; once that meant editing stale files, caught only because the test count
+  fell from 280 to 130. That branch now points at main, so the restore is a no-op.
+  Recorded in .loops/guardrails.md.
+- 308/308 green.
+
 ## [2026-07-25] update | Image attribution — one credit component, fail-safe by default (#60 closed)
 
 - PR #115 merged and live. Became urgent with this week's TMDB posters and OMDb
