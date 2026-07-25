@@ -2565,3 +2565,42 @@ figcaption a {
   .command-panel.is-open { max-height: 88vh; }
   .location-sheet { max-height: 60vh; }
 }
+
+/* --- Image attribution (issue #60) ------------------------------------------ */
+
+.image-credit {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: rgba(244, 231, 200, 0.5);
+}
+
+.image-credit a { color: inherit; text-decoration: underline dotted; }
+.image-credit a:hover { color: #f7b733; }
+
+/* An image whose credit we cannot state is not shown — this stands in its place. */
+.image-unattributed {
+  display: grid;
+  place-items: center;
+  min-height: 88px;
+  padding: 10px;
+  border: 1px dashed rgba(244, 231, 200, 0.25);
+  border-radius: 8px;
+  font-size: 11px;
+  color: rgba(244, 231, 200, 0.5);
+  text-align: center;
+}
+
+.attributed-image { margin: 0; }
+.attributed-image img { display: block; width: 100%; border-radius: 8px; }
+
+.source-notices {
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: grid;
+  gap: 3px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(244, 231, 200, 0.42);
+}

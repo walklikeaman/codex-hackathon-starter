@@ -60,6 +60,8 @@ import {
 import VoiceGuide from "./VoiceGuide";
 import GraphLayer from "./GraphLayer";
 import WorkSearchBox from "./WorkSearchBox";
+import { ImageAttribution } from "./ImageAttribution";
+import { normalizeAttribution, requiredNotices } from "../lib/attribution.mjs";
 import { BADGE_STYLES } from "../lib/map-layer.mjs";
 import { RATING_LABELS } from "../lib/work-ratings.mjs";
 
@@ -649,6 +651,33 @@ export default function SceneMapApp() {
   // see is not a map. Expanded it overlays the map, which is fine — the user asked
   // for it. Desktop is unaffected (the class only does anything under 860px).
   const [panelOpen, setPanelOpen] = useState(false);
+  // Commons images are licensed PER FILE, so the credit has to be fetched before the
+  // photo may be shown at all (app/lib/attribution.mjs refuses it otherwise).
+  const [imageAttribution, setImageAttribution] = useState({});
+
+  useEffect(() => {
+    const url = activeLocation?.now;
+    if (!url || imageAttribution[url]) return undefined;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await fetch(`/api/attribution?url=${encodeURIComponent(url)}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const body = await response.json();
+        const found = body.attributions?.[url];
+        if (found) setImageAttribution((current) => ({ ...current, [url]: found }));
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          // Leaving it unattributed is the safe outcome: the credit line simply
+          // shows the source, and nothing claims an author we do not know.
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [activeLocation?.now, imageAttribution]);
+
   const [graphLayerOn, setGraphLayerOn] = useState(false);
   const [graphSummary, setGraphSummary] = useState(null);
   const [graphKinds, setGraphKinds] = useState([]);   // [] = every kind
@@ -2320,6 +2349,15 @@ export default function SceneMapApp() {
             )}
           </div>
         )}
+        <p className="source-notices">
+          {/* Terms-required wording, shown once however many images are on screen. */}
+          {requiredNotices([normalizeAttribution({ source: "tmdb" })]).map((notice) => (
+            <span key={notice}>{notice}</span>
+          ))}
+          <span>
+            Ratings via OMDb. IMDb, Rotten Tomatoes and Metacritic are their owners&rsquo; marks.
+          </span>
+        </p>
       </aside>
 
       {activeLocation && (
@@ -2413,7 +2451,14 @@ export default function SceneMapApp() {
                 ) : (
                   <div className="image-placeholder">Place photo unavailable</div>
                 )}
-                <figcaption>the place today</figcaption>
+                <figcaption>
+                  the place today
+                  {/* Commons files are licensed per FILE, so the credit belongs with
+                      the image itself, not in a page footer. */}
+                  {activeLocation.now && (
+                    <ImageAttribution attribution={imageAttribution[activeLocation.now] ?? { url: activeLocation.now }} />
+                  )}
+                </figcaption>
               </figure>
             </div>
             {activeFilmFrames.length > 1 && (
