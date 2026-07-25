@@ -2403,3 +2403,70 @@ figcaption a {
 .rating-chip.is-rotten_tomatoes .rating-score { color: #fa320a; } /* RT red */
 .rating-chip.is-metacritic .rating-score { color: #66cc33; }
 .rating-chip.is-tmdb .rating-score { color: #01b4e4; }
+
+/* --- Type-ahead search ------------------------------------------------------ */
+
+.work-search-box { position: relative; }
+
+.search-suggestions {
+  position: absolute;
+  z-index: 1200;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 340px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid rgba(247, 183, 51, 0.3);
+  border-radius: 12px;
+  background: rgba(16, 14, 9, 0.98);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+}
+
+.search-suggestion button {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 9px;
+  align-items: center;
+  width: 100%;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #f4e7c8;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-suggestion.is-active button { background: rgba(247, 183, 51, 0.16); }
+
+.search-suggestion img,
+.suggestion-poster-empty {
+  width: 34px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  display: block;
+}
+
+.suggestion-text { display: grid; gap: 1px; min-width: 0; }
+
+.suggestion-title {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The characters the user actually typed. */
+.suggestion-title mark {
+  background: transparent;
+  color: #f7b733;
+  font-weight: 700;
+}
+
+.search-suggestion small { font-size: 11px; color: rgba(244, 231, 200, 0.55); }

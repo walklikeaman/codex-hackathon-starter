@@ -59,6 +59,7 @@ import {
 } from "../lib/timed-tour.mjs";
 import VoiceGuide from "./VoiceGuide";
 import GraphLayer from "./GraphLayer";
+import WorkSearchBox from "./WorkSearchBox";
 import { BADGE_STYLES } from "../lib/map-layer.mjs";
 import { RATING_LABELS } from "../lib/work-ratings.mjs";
 
@@ -1939,7 +1940,19 @@ export default function SceneMapApp() {
         </div>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
-        <form className="work-search" onSubmit={searchWork}>
+        <WorkSearchBox
+          onChange={setWorkQuery}
+          onPick={(suggestion) => {
+            // A grounded work is already in the graph: show it on the map instead of
+            // re-searching Wikidata for something we have.
+            setWorkQuery(suggestion.title);
+            setGraphLayerOn(true);
+            setGraphWorkId(suggestion.work_id);
+            if (suggestion.kind && suggestion.kind !== workKind) changeWorkKind(suggestion.kind);
+          }}
+          onSubmit={searchWork}
+          value={workQuery}
+        >
           <select
             aria-label="Work type"
             value={workKind}
@@ -1949,17 +1962,7 @@ export default function SceneMapApp() {
             <option value="series">Series</option>
             <option value="book">Book</option>
           </select>
-          <input
-            aria-label="Film, series, or book title"
-            onChange={(event) => setWorkQuery(event.target.value)}
-            placeholder="Film, series, or book"
-            type="search"
-            value={workQuery}
-          />
-          <button aria-label="Find story locations" className="ghost-button" type="submit">
-            <Search size={17} />
-          </button>
-        </form>
+        </WorkSearchBox>
         {locationsStatus && <p className="location-search-status" role="status">{locationsStatus}</p>}
 
         <div className="nearby-card" aria-label="Nearby locations">
