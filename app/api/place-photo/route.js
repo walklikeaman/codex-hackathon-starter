@@ -1,5 +1,6 @@
 import { fetchCommonsNearby } from "../../lib/commons-metadata.mjs";
 import { fetchMapillaryNearby } from "../../lib/mapillary.mjs";
+import { inRangeOrNull } from "../../lib/numbers.mjs";
 import {
   choosePlacePhoto,
   clampRadius,
@@ -11,15 +12,8 @@ export const runtime = "nodejs";
 
 const noStoreHeaders = { "Cache-Control": "private, no-store" };
 
-// Number(null) and Number("") are both 0, so an ABSENT coordinate would sail through
-// as a valid 0,0 and we would go looking for photos in the Gulf of Guinea. Reject
-// missing values before converting — the same trap already fixed in the resolver and
-// in the map viewport parser.
-function coordinate(value, limit) {
-  if (value === null || value === undefined || String(value).trim() === "") return null;
-  const number = Number(value);
-  return Number.isFinite(number) && Math.abs(number) <= limit ? number : null;
-}
+// Absent coordinates must not become 0,0 — see app/lib/numbers.mjs for why this has
+// its own module.
 
 // GET /api/place-photo?lat&lng&radius&heading
 // "The place today", picked from a cascade ordered by what we may legally keep:
@@ -36,8 +30,8 @@ export function createPlacePhotoHandler({
 } = {}) {
   return async function GET(request) {
     const params = new URL(request.url).searchParams;
-    const lat = coordinate(params.get("lat"), 90);
-    const lng = coordinate(params.get("lng"), 180);
+    const lat = inRangeOrNull(params.get("lat"), { min: -90, max: 90 });
+    const lng = inRangeOrNull(params.get("lng"), { min: -180, max: 180 });
     if (lat === null || lng === null) {
       return Response.json(
         { error: "Provide a valid lat and lng" },
@@ -46,9 +40,7 @@ export function createPlacePhotoHandler({
     }
 
     const radius = clampRadius(params.get("radius") ?? DEFAULT_RADIUS_M);
-    const heading = Number.isFinite(Number(params.get("heading")))
-      ? Number(params.get("heading"))
-      : null;
+    const heading = inRangeOrNull(params.get("heading"), { min: -360, max: 360 });
 
     try {
       // Both free sources are queried together; the cascade decides which wins, and a
