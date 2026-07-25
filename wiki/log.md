@@ -7,6 +7,40 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-25] update | TTS cache (#66 closed) + walk mode foundations (#64)
+
+- PR #118 merged and live. Two halves of the same walk: the guide must be instant
+  and free to replay, and it must keep working while someone is actually walking.
+- **#66 TTS cache**: key = hash(text, voice, model) in a public-read Supabase
+  bucket, so a hit is served by the CDN and never touches the model. Invalidation
+  needs no purge step — editing a narration changes the hash, so the stale clip is
+  simply never requested again.
+  * Verified on production: first call 3.34s "miss" (generated, paid), second call
+    1.17s "hit" (free), byte-identical output.
+  * Losing the cache must never mean losing the feature: a storage read that throws,
+    or a deployment without the service-role key, falls through to generation. The
+    write is not awaited and its failure is logged, never surfaced.
+  * Path segments strip dots (traversal), and key parts are joined with a separator
+    that cannot appear in them, so ("ab","c") and ("a","bc") cannot collide.
+  * /api/narration converted to the DI-factory style used by the other routes; the
+    two existing narration tests still pass unchanged.
+- **#64 walk mode** (logic + hook; UI placement deferred): with the screen off,
+  browsers throttle watchPosition, so geo-triggers stop firing and the guide goes
+  silent exactly when needed.
+  * app/lib/walk-mode.mjs: stops are followed IN ORDER (nearest-first would march
+    the walker back and forth), arrival is a 35 m radius (GPS noise), and ETA rounds
+    to NEAREST with a one-minute floor — rounding up called an 80 m stroll "2 min",
+    and an ETA that is obviously wrong stops being read.
+  * useWakeLock: the browser RELEASES the lock whenever the page hides and does not
+    restore it, so the hook re-acquires on visibilitychange. Without that, walk mode
+    dies after the first glance at another app — the failure it exists to prevent.
+    A denied lock is reported, not thrown; support is detectable so the UI can say
+    the screen may dim.
+  * The banner and toggle are deliberately NOT in the side panel yet — per the rule
+    added after the mobile incident, nothing new goes there until its phone home is
+    decided (#114).
+- 351/351 green.
+
 ## [2026-07-25] update | Place-photo source cascade (#56 closed) + worktree fallback fixed
 
 - PR #116 merged and live. "The place today" now comes from a cascade whose ORDER
