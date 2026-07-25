@@ -7,6 +7,33 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-25] update | Image attribution — one credit component, fail-safe by default (#60 closed)
+
+- PR #115 merged and live. Became urgent with this week's TMDB posters and OMDb
+  ratings: both require a credit we were not showing.
+- **The rule**: an image whose attribution we cannot state is NOT shown — the same
+  principle as the map, where we never display what we cannot source.
+- app/lib/attribution.mjs (pure, 9 tests): one normalised shape per source
+  {source, author, license, license_url, source_url, notice}. isDisplayable() is
+  the gate — a PER-FILE licensed source (Commons, Mapillary) missing its author or
+  licence is refused, because republishing a photo without the credit its licence
+  requires is a breach, not a missing caption. An unknown host is refused too.
+- app/lib/commons-metadata.mjs (pure + injectable fetch, 10 tests): Commons
+  licences are per FILE, so knowing an image came from Commons is not permission to
+  publish it. Fetches author + licence from extmetadata and strips the HTML Commons
+  wraps them in. Missing fields come back missing, never invented.
+- GET /api/attribution returns an EMPTY map on failure, so the client keeps the
+  image hidden rather than showing it uncredited.
+- The two terms-required notices (TMDB non-endorsement; OMDb/IMDb/RT/Metacritic
+  marks) now render once per page.
+- **Bug only the real API could reveal**: the endpoint took a comma-separated
+  `urls` list, but Commons filenames routinely contain commas ("Trafalgar Square,
+  London 2 - Jun 2009.jpg"), so the URL was torn in half and the lookup silently
+  returned nothing — the photo would have stayed uncredited for an invisible
+  reason. Now repeated `url` params, with a regression test.
+- Verified on production: Diliff / CC BY-SA 3.0 with its licence link.
+- 290/290 green.
+
 ## [2026-07-25] incident | The map was invisible on a phone (32px on an iPhone 15 Pro)
 
 - Reported from a real device: "the map is covered by menus". Measured against a
