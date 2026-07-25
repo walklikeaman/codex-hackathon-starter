@@ -7,6 +7,35 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-25] incident | The map was invisible on a phone (32px on an iPhone 15 Pro)
+
+- Reported from a real device: "the map is covered by menus". Measured against a
+  393x852 viewport it was worse than it sounded — .command-panel 42vh (358px) plus
+  .location-sheet 50vh (426px) plus 36px of gaps left **32px** for the map, while
+  the panel's own content was 1268px tall.
+- **Cause is process, not CSS.** Every feature added lately (layer legend, cover
+  grid, work card, type-ahead) went into the same side panel. On a desktop the
+  column just grows downward and nobody notices; on a phone it eats the screen.
+- Fix (PR #113): on <=860px the panel is a BOTTOM sheet, collapsed to a handle by
+  default — ~796px of map instead of 32. Expanded it overlays at 78vh, which is
+  fine because the user asked for it. One CSS rule hides everything but the
+  handle, so no markup was restructured, and desktop is untouched.
+- **app/layout.jsx had NO viewport export at all**, so viewport-fit=cover was never
+  set and env(safe-area-inset-*) resolved to zero — the sheet sat under the home
+  indicator on a notched iPhone. Added with themeColor. Zoom deliberately NOT
+  blocked: preventing magnification on a map is an accessibility failure.
+- Also hit the repo's own guardrail while verifying: running `npm run build` while
+  `next dev` was live corrupted .next (they share it) and the dev server 500'd.
+  Fixed with rm -rf .next. The guardrail is in [[deployment-pipeline]] — worth
+  re-reading before reaching for a build during a browser check.
+- Systemic follow-up opened as **#114**: tablet and landscape layouts, 44px touch
+  targets, on-screen keyboard, and PWA/installable — plus the rule that nothing
+  new goes into the side panel until its phone home is decided.
+- Verification limit: the preview pane reports a 0x0 viewport, so rules and
+  behaviour were verified through the CSSOM, not pixels on a real screen.
+- 271/271 green; deployed and confirmed live (safe-area-inset, panel-handle and
+  viewport-fit=cover all present in the production bundle).
+
 ## [2026-07-25] update | IMDb-style type-ahead search over the graph
 
 - PR #112 merged and live. Typing two characters already puts the obvious answer
