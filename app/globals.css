@@ -2470,3 +2470,98 @@ figcaption a {
 }
 
 .search-suggestion small { font-size: 11px; color: rgba(244, 231, 200, 0.55); }
+
+/* --- Small screens: the map is the page ------------------------------------- */
+/* The panels used to claim 42vh + 50vh = 92vh, leaving an iPhone 15 Pro roughly
+   32px of actual map. On a phone the command panel is therefore collapsed to a
+   handle by default and overlays the map only when the user opens it. */
+
+.panel-handle { display: none; }
+
+@media (max-width: 860px) {
+  .command-panel {
+    /* Anchored to the BOTTOM: that is where a thumb is, and it keeps the map —
+       including the pin the user just tapped — in the upper half of the screen. */
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: 78vh;
+    border-radius: 16px 16px 0 0;
+    border-bottom: 0;
+    padding: 8px 14px calc(14px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .panel-handle {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 6px 0 10px;
+    border: 0;
+    background: transparent;
+    color: rgba(244, 231, 200, 0.75);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    /* Comfortable thumb target even though the grip itself is a thin line. */
+    min-height: 40px;
+  }
+
+  .panel-handle-grip {
+    width: 38px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(247, 183, 51, 0.5);
+  }
+
+  /* Collapsed: nothing but the handle, so the map owns the screen. */
+  .command-panel:not(.is-open) {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .command-panel:not(.is-open) > *:not(.panel-handle) {
+    display: none;
+  }
+
+  .command-panel.is-open {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* The detail sheet sits above the collapsed handle rather than fighting it, and
+     is capped so a long card can never swallow the map again. */
+  .location-sheet {
+    left: 0;
+    right: 0;
+    bottom: 56px;
+    width: auto;
+    max-height: 46vh;
+    overflow: auto;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Cover art and suggestions were sized for a desktop column. */
+  .work-posters { grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); }
+  .search-suggestions { max-height: 48vh; }
+}
+
+@media (max-width: 520px) {
+  .command-panel { padding-left: 12px; padding-right: 12px; }
+  .graph-legend { gap: 6px; }
+  .legend-hint { display: none; } /* the label already says it; the hint is desktop detail */
+  .work-card { grid-template-columns: 52px 1fr; }
+  .work-card-poster { width: 52px; }
+}
+
+/* Landscape phones are short, not narrow: cap by height, or an opened panel covers
+   everything. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .command-panel.is-open { max-height: 88vh; }
+  .location-sheet { max-height: 60vh; }
+}
