@@ -7,6 +7,37 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-25] update | IMDb-style type-ahead search over the graph
+
+- PR #112 merged and live. Typing two characters already puts the obvious answer
+  first, with the typed characters highlighted.
+- **Ranking, not matching, is the hard part.** Trigram similarity ALONE ranks badly
+  for short input — "sky" scores Sherlock and Skyfall almost alike, because
+  similarity is dominated by length. search_works() scores exact and prefix hits
+  explicitly ABOVE fuzzy ones (4.0 exact / 3.0 title-prefix / 2.0 word-prefix /
+  1.x similarity), so similarity only breaks ties.
+- Verified on production: sky→Skyfall, pot→Harry Potter, crown→The Crown, the typo
+  skyfal→Skyfall, and zzzqq→nothing rather than a wrong guess.
+- Matching runs on title_norm, backed by the GIN trigram index that already
+  existed. No LIKE pattern is built from user input: starts_with()/strpos() take
+  the query as a value, so a title containing % or _ cannot change the match.
+- app/lib/work-search.mjs (pure, 9 tests): the query is folded by the SAME
+  normalizeWorkTitle that produced title_norm, so "amelie" finds "Amélie".
+  **Bug the tests caught**: highlighting means mapping a match found in the folded
+  title back onto the original one. The first attempt re-normalised growing
+  prefixes to find the offset — wrong, because the normaliser trims and collapses
+  whitespace, so prefix lengths are not monotonic. It passed for "Skyfall" and
+  failed for "Harry Potter". Now a per-character index map; tests on "Amélie" and
+  "WALL·E" pin it.
+- GET /api/search answers from the persistent graph. An empty query returns an
+  empty list WITHOUT touching the database — still typing is not an error.
+- WorkSearchBox: debounced, AbortController per keystroke, arrows wrap, Enter picks
+  the highlighted row instead of submitting, Escape closes, combobox/listbox ARIA.
+- It WRAPS the old search rather than replacing it: picking a grounded work shows
+  it on the map, while submitting still runs the live Wikidata search, so titles
+  we have not grounded yet stay findable.
+- 271/271 green.
+
 ## [2026-07-25] update | Ratings (IMDb / RT / Metacritic) with source links; keys unblocked
 
 - PR #111 merged and deployed. **32 ratings across 12 works, every one linking back
