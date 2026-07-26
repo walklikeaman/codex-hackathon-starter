@@ -7,6 +7,47 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-25] update | Geo-triggered narration (#63) + story trail extraction (#71)
+
+- PR #119 merged and live. Together these make a tour something you WALK rather
+  than something you read.
+- **#63 geo-trigger**: three constraints drove the design.
+  * Autoplay is blocked until the user gestures, so playbackState has a
+    "needs-unlock" state and the UI asks for one tap up front. Without it the
+    walker reaches the first stop and hears silence — with nothing to tap, because
+    the promise is that no tapping is needed.
+  * Each stop speaks ONCE: fixes arrive constantly and GPS jitters across the radius
+    boundary, so without de-duplication the narration restarts every few seconds
+    while standing still.
+  * A fix with stated accuracy worse than 120 m fires nothing — a trigger is a claim
+    about where you are. An UNREPORTED accuracy is trusted, since some browsers omit
+    it and refusing those would break the feature.
+  * One narration at a time (the nearest): two guides talking over each other is
+    worse than a slightly late second one. A 12 m movement threshold stops jitter
+    from draining the battery.
+- **#71 story trail**: walking a work in STORY order rather than by geographic
+  convenience — stop 3 is what happens after stop 2 even if it means walking back
+  past stop 1.
+  * The extraction schema has NO coordinate field, so the model cannot invent a pin
+    even by accident; it proposes a place NAME and the resolver does the rest.
+  * sequence_index is explicit — array order survives neither a model response nor a
+    database insert. Duplicates are dropped and the trail RENUMBERED 1..N so gaps do
+    not become holes in the walk.
+  * A missing spoiler_tier defaults to the scene's own position: guessing "safe"
+    would show someone the ending.
+  * A fictional setting stays a scene but never gets a coordinate.
+  * POST /api/trail caches into the scenes table; an empty extraction is returned
+    honestly and NOT cached, since caching "nothing" would permanently mark a work
+    as having no story.
+- **Verified live end to end on Notting Hill**: first call extracted 6 scenes
+  (correctly flagging William's flat and Bella's house as fictional settings while
+  The Savoy and Hampstead Heath are real); second call returned cached in 0.8s with
+  no model call; and #72's protection then worked on REAL data — progress 0 revealed
+  0 of 6 with every beat hidden, progress 1 revealed all 6.
+- This closes the loop opened last round: the spoiler machinery finally has scenes
+  to protect.
+- 383/383 green. UI placement for both deferred to #114.
+
 ## [2026-07-25] update | TTS cache (#66 closed) + walk mode foundations (#64)
 
 - PR #118 merged and live. Two halves of the same walk: the guide must be instant
