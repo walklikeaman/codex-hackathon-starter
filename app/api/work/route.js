@@ -51,6 +51,16 @@ function defaultCreateStore(env) {
       if (error) throw new Error(`ratings load failed: ${error.message}`);
       return data ?? [];
     },
+    // Verdicts from /api/enrich/stills. Present means the gallery has been looked at;
+    // absent means it has not, and the caller must say so rather than imply it has.
+    async loadClassifiedImages(workId) {
+      const { data, error } = await client
+        .from("work_images")
+        .select("file_path, is_frame, width, height")
+        .eq("work_id", workId);
+      if (error) throw new Error(`images load failed: ${error.message}`);
+      return data ?? [];
+    },
     // The join that makes the studio distinction possible: place_class comes from the
     // resolver's P31 ancestry walk, relation_kind from the edge.
     async loadPlaces(workId) {
@@ -158,14 +168,16 @@ export function createWorkProfileHandler({
     let work = null;
     let ratings = [];
     let places = [];
+    let classified = [];
 
     if (store) {
       try {
         work = await store.loadWork(query);
         if (work) {
-          [ratings, places] = await Promise.all([
+          [ratings, places, classified] = await Promise.all([
             store.loadRatings(work.id),
             store.loadPlaces(work.id),
+            store.loadClassifiedImages(work.id),
           ]);
         }
       } catch (error) {
@@ -180,9 +192,27 @@ export function createWorkProfileHandler({
       kind: query.kind ?? work?.kind ?? null,
       tmdbId: query.tmdbId ?? work?.tmdb_id ?? null,
     };
-    const stills = stillsKey.tmdbId
-      ? await stillsFromTmdb(stillsKey, { env, fetchImpl, timeoutMs, logError })
-      : [];
+    // The switch is "has this gallery been looked at", NOT "did we find frames". A
+    // film judged to be entirely promotional shows nothing — falling back there would
+    // display the exact art the classifier just rejected and quietly undo the check we
+    // paid for. Only a film nobody has judged falls back to the raw list.
+    const verified = classified.filter((row) => row.is_frame);
+    const stills = classified.length > 0
+      ? verified
+        .map((row) => ({
+          url: tmdbImageUrl(row.file_path, "w780"),
+          full: tmdbImageUrl(row.file_path, "original"),
+          width: row.width ?? null,
+          height: row.height ?? null,
+        }))
+        .filter((still) => still.url)
+        .slice(0, MAX_PROFILE_STILLS)
+      : stillsKey.tmdbId
+        ? await stillsFromTmdb(stillsKey, { env, fetchImpl, timeoutMs, logError })
+        : [];
+
+    // The caption has to match which of those two happened.
+    const stillsVerified = classified.length > 0;
     const summarised = profilePlaces(places);
 
     return Response.json({
@@ -201,11 +231,13 @@ export function createWorkProfileHandler({
       places: summarised,
       tally: placeTally(summarised),
       stills,
-      // Two honest caveats, both load-bearing. These come from the film's own TMDB
-      // gallery, which mixes production stills with promotional art — so the caption
-      // does not promise "frames". And none of them is matched to a place: that
-      // claim needs the vision check, not a gallery.
-      stills_note: "From the film's image gallery — includes promotional art. Not matched to any location.",
+      stills_verified: stillsVerified,
+      // The caption states exactly which of the two cases this is. Promising verified
+      // frames when nothing has looked at them would be the same class of mistake as
+      // pinning an unmatched frame to a street.
+      stills_note: stillsVerified
+        ? "Frames from the film, checked one by one. Not matched to any location."
+        : "From the film's image gallery — includes promotional art. Not matched to any location.",
     }, { headers: cacheHeaders });
   };
 }

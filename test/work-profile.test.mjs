@@ -163,6 +163,7 @@ function handlerWith(overrides = {}) {
       loadWork: async () => ("work" in overrides ? overrides.work : WORK),
       loadRatings: async () => overrides.ratings ?? [],
       loadPlaces: async () => overrides.places ?? [],
+      loadClassifiedImages: async () => overrides.classified ?? [],
     })),
     fetchImpl: overrides.fetchImpl ?? (async (url) => {
       calls.tmdb.push(url);
@@ -294,4 +295,43 @@ test("the gallery caption does not promise frames it has not verified", async ()
   const body = await (await handler(request("film=509"))).json();
   assert.match(body.stills_note, /promotional art/i);
   assert.match(body.stills_note, /not matched to any location/i);
+});
+
+// --- verified frames beat a raw gallery ----------------------------------------
+
+test("once the classifier has looked, only real frames are shown", async () => {
+  const { handler, calls } = handlerWith({
+    classified: [
+      { file_path: "/frame.jpg", is_frame: true, width: 1920, height: 1080 },
+      { file_path: "/keyart.jpg", is_frame: false, width: 1920, height: 1080 },
+    ],
+  });
+  const body = await (await handler(request("film=509"))).json();
+
+  assert.equal(body.stills.length, 1);
+  assert.match(body.stills[0].url, /frame\.jpg$/);
+  assert.equal(body.stills_verified, true);
+  assert.match(body.stills_note, /checked one by one/i);
+  // No reason to pay TMDB for a gallery we have already judged.
+  assert.equal(calls.tmdb.length, 0);
+});
+
+test("an unclassified film still shows its gallery, and says it is unchecked", async () => {
+  const { handler } = handlerWith({ classified: [] });
+  const body = await (await handler(request("film=509"))).json();
+
+  assert.equal(body.stills_verified, false);
+  assert.match(body.stills_note, /includes promotional art/i);
+  assert.ok(body.stills.length > 0);
+});
+
+test("a film judged to have NO real frames shows none, rather than falling back", async () => {
+  // Falling back here would quietly undo the classification we paid for.
+  const { handler, calls } = handlerWith({
+    classified: [{ file_path: "/keyart.jpg", is_frame: false }],
+  });
+  const body = await (await handler(request("film=509"))).json();
+  assert.deepEqual(body.stills, []);
+  assert.equal(body.stills_verified, true);   // we DID look; the answer was "none"
+  assert.equal(calls.tmdb.length, 0);         // and we do not go fetch the rejects back
 });
