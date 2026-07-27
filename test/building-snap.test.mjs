@@ -7,6 +7,7 @@ import {
   DEFAULT_SEARCH_RADIUS_M,
   entranceFor,
   fetchBuildings,
+  isVaguePrecision,
   MAX_SEARCH_RADIUS_M,
   MAX_SNAP_DISTANCE_M,
   metresToRing,
@@ -162,7 +163,7 @@ test("a centroid that escapes a concave building is not used as the pin", () => 
 // --- the whole decision ------------------------------------------------------
 
 test("a street-centroid pin moves onto the building and earns the badge", () => {
-  const result = snapToBuilding({ lat: OUTSIDE.lat, lng: OUTSIDE.lng, buildings: [building()] });
+  const result = snapToBuilding({ lat: OUTSIDE.lat, lng: OUTSIDE.lng, precision: "street", buildings: [building()] });
   assert.equal(result.snapped, true);
   assert.equal(result.geocode_precision, "building");
   assert.equal(result.osm_building_id, "way/1");
@@ -194,7 +195,7 @@ test("a footprint covering a whole complex confirms the building but does not dr
   ];
   const nearACorner = { lat: BASE_LAT - 0.009, lng: BASE_LNG - 0.009 };
   const result = snapToBuilding({
-    lat: nearACorner.lat, lng: nearACorner.lng,
+    lat: nearACorner.lat, lng: nearACorner.lng, precision: "point",
     buildings: [building({ osm_id: "way/big", ring: huge })],
   });
 
@@ -215,11 +216,62 @@ test("a far snap on a building we are NOT inside is refused outright", () => {
     { lat: BASE_LAT + 0.02, lng: BASE_LNG - 0.01 },
   ];
   const result = snapToBuilding({
-    lat: BASE_LAT, lng: BASE_LNG, buildings: [building({ ring: huge })], radiusM: MAX_SEARCH_RADIUS_M,
+    lat: BASE_LAT, lng: BASE_LNG, precision: "point",
+    buildings: [building({ ring: huge })], radiusM: MAX_SEARCH_RADIUS_M,
   });
   assert.equal(result.snapped, false);
   assert.equal(result.reason, "snap_too_far");
   assert.ok(MAX_SNAP_DISTANCE_M > 0);
+});
+
+test("a CITY is not snapped to a building it happens to sit on top of", () => {
+  // Production did exactly this: Shanghai's centroid fell inside a tower and moved
+  // 16 m, turning "set in Shanghai" into "set at this address".
+  const result = snapToBuilding({
+    lat: INSIDE.lat, lng: INSIDE.lng, name: "Shanghai", precision: "city",
+    buildings: [building({ osm_id: "way/178801539", name: "Some Tower" })],
+  });
+  assert.equal(result.snapped, false);
+  assert.equal(result.reason, "area_not_a_building");
+  assert.equal(result.geocode_precision, null);
+});
+
+test("a vague place IS snapped when the building confirms it by name", () => {
+  // Gloucester Cathedral is stored at 'city' precision but is plainly a building, and
+  // OSM calls its footprint by the same name.
+  const result = snapToBuilding({
+    lat: INSIDE.lat, lng: INSIDE.lng, name: "Gloucester Cathedral", precision: "city",
+    buildings: [building({ name: "Gloucester Cathedral" })],
+  });
+  assert.equal(result.snapped, true);
+  assert.equal(result.geocode_precision, "building");
+});
+
+test("a country is never a building", () => {
+  const result = snapToBuilding({
+    lat: INSIDE.lat, lng: INSIDE.lng, name: "Japan", precision: "country",
+    buildings: [building({ name: "Japan Post Office" })],
+  });
+  assert.equal(result.snapped, false);
+  assert.equal(result.reason, "area_not_a_building");
+});
+
+test("a place already known to a point does not need the name to agree", () => {
+  // A street-level geocode is already a claim about a spot; the building is a
+  // refinement of it, and buildings are often unnamed in OSM.
+  const result = snapToBuilding({
+    lat: INSIDE.lat, lng: INSIDE.lng, name: "Somewhere", precision: "point",
+    buildings: [building({ name: null })],
+  });
+  assert.equal(result.snapped, true);
+});
+
+test("isVaguePrecision knows an area from a spot", () => {
+  assert.equal(isVaguePrecision("city"), true);
+  assert.equal(isVaguePrecision("Country"), true);
+  assert.equal(isVaguePrecision(null), true); // unknown precision is treated as vague
+  assert.equal(isVaguePrecision("point"), false);
+  assert.equal(isVaguePrecision("building"), false);
 });
 
 test("a missing coordinate never becomes 0,0", () => {
@@ -305,7 +357,7 @@ test("an Overpass outage degrades to no snap, never to a failure", async () => {
 
 test("a live-shaped response resolves end to end", async () => {
   const result = await resolveBuildingSnap({
-    lat: OUTSIDE.lat, lng: OUTSIDE.lng,
+    lat: OUTSIDE.lat, lng: OUTSIDE.lng, precision: "point",
     fetchImpl: async () => ({ ok: true, json: async () => overpassResponse }),
   });
   assert.equal(result.snapped, true);

@@ -137,7 +137,12 @@ export function createSnapHandler({
 
       let snap;
       try {
-        snap = await resolveSnap({ lat: place.lat, lng: place.lng, radiusM });
+        snap = await resolveSnap({
+          lat: place.lat, lng: place.lng, radiusM,
+          // Both are needed to judge the match: a city-precision place may only snap
+          // to a building that confirms it by name.
+          name: place.name, precision: place.geocode_precision,
+        });
       } catch (error) {
         logError(`snap: overpass failed for ${place.id}`, error);
         results.push({ place_id: place.id, name: place.name, snapped: false, reason: "overpass_failed" });

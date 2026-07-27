@@ -20,6 +20,18 @@
 
 import { haversineMeters } from "./geo.mjs";
 import { coordinateOrNull, finiteOrNull } from "./numbers.mjs";
+import { namesMatch } from "./place-dedup.mjs";
+
+// Precisions that describe an AREA, not a spot. Their coordinate is a centroid that
+// happens to land somewhere — in Shanghai's case, inside a building, which production
+// duly snapped it to before this rule existed. A city centroid falling inside a
+// footprint is a coincidence, and treating it as evidence turns "set in Shanghai" into
+// "set at this specific address".
+const VAGUE_PRECISIONS = new Set(["city", "country", "region", "state", "none"]);
+
+export function isVaguePrecision(precision) {
+  return VAGUE_PRECISIONS.has(String(precision ?? "none").toLowerCase());
+}
 
 export const OSM_ATTRIBUTION = Object.freeze({
   label: "OpenStreetMap contributors",
@@ -245,7 +257,7 @@ export function snapPosition(point, building, entrances = []) {
 
 // The whole decision, as data. Never throws, never invents a coordinate, and always
 // returns something the caller can store.
-export function snapToBuilding({ lat, lng, buildings, entrances = [], radiusM } = {}) {
+export function snapToBuilding({ lat, lng, buildings, entrances = [], radiusM, name = null, precision = null } = {}) {
   const point = coordinateOrNull(lat, lng);
   const unchanged = (reason) => ({
     snapped: false, reason, lat: point?.lat ?? null, lng: point?.lng ?? null,
@@ -257,6 +269,13 @@ export function snapToBuilding({ lat, lng, buildings, entrances = [], radiusM } 
 
   const { building, reason } = chooseBuilding(point, buildings, { radiusM });
   if (!building) return unchanged(reason);
+
+  // A place that is only known to its city or country needs the building itself to
+  // confirm the match by name. "Gloucester Cathedral" inside a building OSM also calls
+  // "Gloucester Cathedral" is evidence; "Shanghai" inside an unrelated tower is not.
+  if (isVaguePrecision(precision) && !namesMatch(name, building.name)) {
+    return unchanged("area_not_a_building");
+  }
 
   const snap = snapPosition(point, building, entrances);
   if (!snap) return unchanged("no_usable_position");
@@ -319,7 +338,7 @@ export async function fetchBuildings({ lat, lng, radiusM, fetchImpl = fetch, end
 }
 
 // Resolve and decide in one call.
-export async function resolveBuildingSnap({ lat, lng, radiusM, ...rest } = {}) {
+export async function resolveBuildingSnap({ lat, lng, radiusM, name, precision, ...rest } = {}) {
   const found = await fetchBuildings({ lat, lng, radiusM, ...rest });
   if (!found || !found.buildings) {
     return {
@@ -333,5 +352,5 @@ export async function resolveBuildingSnap({ lat, lng, radiusM, ...rest } = {}) {
       footprint: null, attribution: OSM_ATTRIBUTION,
     };
   }
-  return snapToBuilding({ lat, lng, radiusM, ...found });
+  return snapToBuilding({ lat, lng, radiusM, name, precision, ...found });
 }
