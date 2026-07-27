@@ -81,7 +81,7 @@ Ranked within tier; each notes the step that enables it.
 |---|---|---|---|---|
 | ★★★ | 44 | Precision badge (city/street/building + source) | Step 2/3 | The trust signal — the whole "grounded" promise made visible |
 | ★★★ | 48 | Vision-verify AI/community locations | Step 2 | The anti-hallucination gate; keeps the map honest |
-| ★★★ | 46 | Dedup one place ↔ many works | Step 0/2 | Largely absorbed by `work_place_links`; makes "5 films in one block" work |
+| ✅ | ~~46~~ | Dedup one place ↔ many works — **shipped**; verified 63 places → 63 groups, 0 false merges | Step 0/2 | Largely absorbed by `work_place_links`; the helper now guards places created without a QID |
 | ✅ | ~~56~~ | Source cascade for "place now" — **shipped** | Step 3 | The wow imagery, legally clean, no Street-View lock |
 | ★★★ | 50 | ShotSync live-camera ghost overlay | — | The signature feature, web-first; standalone |
 | 🟡 | 63 | Scene-nearby GPS narration — **logic shipped**, UI pending #114 | Step 5 | The audio-guide core loop |
@@ -89,7 +89,7 @@ Ranked within tier; each notes the step that enables it.
 | ✅ | ~~66~~ | TTS cache by content hash — **shipped**, replay verified free | — | Cheap; makes replays free — cost control before scaling audio |
 | 🟡 | 71 | Story-trail mode — **extraction shipped**, polyline pending #114 | Step 6 | The differentiator; needs `scenes` first |
 | ✅ | ~~72~~ | Spoiler shield — **shipped**, enforced in SQL | Step 6 | No competitor has it; small once trails exist |
-| ★★★ | 45 | OSM building-footprint snap | Step 2 | House-level precision |
+| ✅ | ~~45~~ | OSM building-footprint snap — **shipped**, live on production | Step 2 | House-level precision |
 | ★★★ | 47 | Wikipedia-prose AI enrichment (spike) | Step 1/2 | Big coverage expansion; `size-L` spike |
 
 ---

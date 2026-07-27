@@ -7,6 +7,57 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-27] update | Building-footprint snap (#45) + place dedup (#46)
+
+- Both shipped to production. Both were reshaped by checking real data before
+  writing the feature, and in both cases the naive version would have destroyed
+  information rather than added it.
+- **#46 dedup**: the brief asked to group places by proximity + name. Queried the
+  live graph first: the six closest pairs we hold are all DIFFERENT places — the
+  National Gallery stands *on* Trafalgar Square (95 m), Aldwych station *on* the
+  Strand (227 m), and "London" is a CITY centroid that lands 100 m from Trafalgar
+  Square. A "within N metres" rule merges all six. The London pair is the
+  dangerous one: it converts a source that said only *"London"* into one claiming
+  Trafalgar Square.
+  * So three rules, all required: distinct Wikidata entities stay distinct
+    (Wikidata already decided they are different things), precision buckets never
+    mix (a city centroid is a different KIND of claim from a building), and names
+    must agree. Verified on production: **63 places → 63 groups, 0 merges.**
+  * Merging is deliberately non-transitive — a candidate joins a group only if it
+    matches every member, or a chain of 40 m hops would swallow a whole street.
+  * Places needed their own name normaliser: `normalizeWorkTitle` folds to
+    `a-z0-9`, which empties "Красная площадь" and "東京タワー" entirely and would
+    have silently disabled dedup for most of the world.
+- **#45 footprint snap**: containment decides before proximity. A point inside
+  exactly one footprint identifies that building, which is what makes this work in
+  a dense street — Selfridges had **six** candidates within 60 m. Only when nothing
+  contains the point does a lone nearby building count; anything else is ambiguous,
+  and an ambiguous snap is not a snap.
+- Four things only production could teach:
+  * **Shanghai snapped `city` → `building`** and moved 16 m, because a city
+    centroid happens to fall inside a tower. That is the exact fabrication this
+    project exists to refuse. Fix: a place known only to its city or country must
+    be confirmed by the building's NAME. Gloucester Cathedral inside a footprint
+    OSM also calls "Gloucester Cathedral" is evidence; Shanghai inside an unrelated
+    tower is a coincidence. The bad row was reverted from `pre_snap_*` — which is
+    why those columns exist.
+  * Overpass **429s the request straight after a successful one**. A 1.5 s pause
+    lost 3 of 6 places, so the base pause is 5 s (measured, not guessed) and a 429
+    now doubles it for the rest of the run instead of being logged and forgotten.
+  * The area centroid had to be computed against a local origin: cross products of
+    raw degrees resolve a 40 m building to ~1e-8 and lose it to floating-point
+    cancellation.
+  * A centroid can fall OUTSIDE its own footprint — a U-shaped building's centre is
+    in the courtyard — so it is rejected when it does, and a snap that would drag
+    the pin >100 m (an airport, a campus) is refused outright.
+- Live results: Gloucester Cathedral `city`→`building` on `way/88313379`,
+  Leadenhall Market (4 m), London Zoo (14 m), Harrow School (57 m). Correct
+  refusals: London and Istanbul (cities), Alnwick Castle and Goathland station
+  (multi-building complexes), Glen Nevis and Japan (no buildings at all),
+  Trafalgar Square (a square, not a building).
+- The pre-snap coordinate is always kept, so every moved pin stays provable and
+  reversible. OSM is ODbL — attribution ships with every snapped coordinate.
+
 ## [2026-07-25] update | Geo-triggered narration (#63) + story trail extraction (#71)
 
 - PR #119 merged and live. Together these make a tour something you WALK rather
