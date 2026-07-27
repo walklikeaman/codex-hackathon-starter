@@ -292,9 +292,14 @@ export function snapToBuilding({ lat, lng, buildings, entrances = [], radiusM } 
 
 // --- fetching ----------------------------------------------------------------
 
-// One Overpass call, bounded and identified. Returns null rather than throwing so a
-// slow or rate-limited Overpass degrades to "no snap" instead of failing the request
-// that asked for it.
+// Overpass says "slow down" with 429, and with 504 when its slots are full. Both mean
+// back off rather than retry; anything else is a genuine failure.
+export const RATE_LIMIT_STATUSES = Object.freeze([429, 504]);
+
+// One Overpass call, bounded and identified. Returns a failure object rather than
+// throwing so a busy Overpass degrades to "no snap" instead of failing the request
+// that asked for it — and says WHICH kind of failure, so the caller can back off
+// instead of hammering a service that has just asked it not to.
 export async function fetchBuildings({ lat, lng, radiusM, fetchImpl = fetch, endpoint = OVERPASS_ENDPOINT, signal } = {}) {
   const query = overpassQuery(lat, lng, radiusM);
   if (!query) return null;
@@ -305,7 +310,9 @@ export async function fetchBuildings({ lat, lng, radiusM, fetchImpl = fetch, end
     body: new URLSearchParams({ data: query }).toString(),
     signal,
   });
-  if (!response?.ok) return null;
+  if (!response?.ok) {
+    return { rateLimited: RATE_LIMIT_STATUSES.includes(response?.status), status: response?.status ?? null };
+  }
 
   const payload = await response.json();
   return { buildings: parseBuildings(payload), entrances: parseEntrances(payload) };
@@ -314,10 +321,17 @@ export async function fetchBuildings({ lat, lng, radiusM, fetchImpl = fetch, end
 // Resolve and decide in one call.
 export async function resolveBuildingSnap({ lat, lng, radiusM, ...rest } = {}) {
   const found = await fetchBuildings({ lat, lng, radiusM, ...rest });
-  if (!found) {
-    return { snapped: false, reason: "overpass_unavailable", lat: finiteOrNull(lat), lng: finiteOrNull(lng),
+  if (!found || !found.buildings) {
+    return {
+      snapped: false,
+      reason: "overpass_unavailable",
+      // Surfaced so a caller pacing a batch can slow down rather than keep going at
+      // the rate that just got it throttled.
+      rate_limited: Boolean(found?.rateLimited),
+      lat: finiteOrNull(lat), lng: finiteOrNull(lng),
       geocode_precision: null, osm_building_id: null, building_name: null, moved_m: 0,
-      footprint: null, attribution: OSM_ATTRIBUTION };
+      footprint: null, attribution: OSM_ATTRIBUTION,
+    };
   }
   return snapToBuilding({ lat, lng, radiusM, ...found });
 }

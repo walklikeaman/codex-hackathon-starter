@@ -22,7 +22,12 @@ const noStoreHeaders = { "Cache-Control": "private, no-store" };
 // deadline here — places get snapped over many runs rather than in one burst.
 export const DEFAULT_BATCH = 5;
 export const MAX_BATCH = 25;
-export const PAUSE_BETWEEN_CALLS_MS = 1500;
+
+// Measured, not guessed: a 1.5 s pause got 3 of 6 places rate-limited in production.
+export const PAUSE_BETWEEN_CALLS_MS = 5000;
+// When Overpass does say "slow down", the pause doubles for the rest of the run and
+// stays there. Returning to the old rate is how a client gets blocked outright.
+export const MAX_PAUSE_MS = 40000;
 
 function jsonError(message, status) {
   return Response.json({ error: message }, { status, headers: noStoreHeaders });
@@ -124,10 +129,11 @@ export function createSnapHandler({
     }
 
     const results = [];
+    let pause = pauseMs;
     for (const [index, place] of places.entries()) {
       // Serial, with a pause: parallel Overpass calls are exactly what gets a client
       // blocked, and there is nothing here worth being blocked for.
-      if (index > 0) await wait(pauseMs);
+      if (index > 0) await wait(pause);
 
       let snap;
       try {
@@ -137,6 +143,10 @@ export function createSnapHandler({
         results.push({ place_id: place.id, name: place.name, snapped: false, reason: "overpass_failed" });
         continue;
       }
+
+      // Being throttled is the one signal Overpass gives us about our own pace, so we
+      // act on it for the rest of the run rather than reading it as a fact about the place.
+      if (snap.rate_limited) pause = Math.min(pause * 2, MAX_PAUSE_MS);
 
       if (!snap.snapped) {
         // Nothing is written. A place that could not be resolved today stays in the

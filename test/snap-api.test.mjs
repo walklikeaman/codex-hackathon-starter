@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createSnapHandler, DEFAULT_BATCH, MAX_BATCH } from "../app/api/snap/route.js";
+import { createSnapHandler, DEFAULT_BATCH, MAX_BATCH, MAX_PAUSE_MS } from "../app/api/snap/route.js";
 
 const PLACE = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -88,6 +88,39 @@ test("Overpass is called one place at a time, with a pause between", async () =>
   assert.equal(calls.resolved.length, 3);
   assert.equal(calls.waited.length, 2); // a pause between each pair, not before the first
   assert.ok(calls.waited.every((ms) => ms > 0));
+});
+
+test("being throttled slows the rest of the run down", async () => {
+  // Production rate-limited 3 of 6 places at a fixed pace. A 429 is the only signal
+  // Overpass gives us about our own rate, so it has to change behaviour.
+  const places = [PLACE, { ...PLACE, id: "b" }, { ...PLACE, id: "c" }];
+  const { handler, calls } = handlerWith({
+    places,
+    snap: { snapped: false, reason: "overpass_unavailable", rate_limited: true },
+  });
+  await handler(snapRequest({}));
+
+  assert.equal(calls.waited.length, 2);
+  assert.ok(calls.waited[1] > calls.waited[0]); // backs off rather than keeping pace
+});
+
+test("the backoff is capped so a batch cannot stall forever", async () => {
+  const places = Array.from({ length: 12 }, (_, i) => ({ ...PLACE, id: `p${i}` }));
+  const { handler, calls } = handlerWith({
+    places,
+    snap: { snapped: false, reason: "overpass_unavailable", rate_limited: true },
+  });
+  await handler(snapRequest({ limit: 12 }));
+  assert.ok(calls.waited.every((ms) => ms <= MAX_PAUSE_MS));
+  assert.equal(calls.waited.at(-1), MAX_PAUSE_MS);
+});
+
+test("an ordinary refusal does not slow the run down", async () => {
+  // "This is a square, not a building" says nothing about our request rate.
+  const places = [PLACE, { ...PLACE, id: "b" }, { ...PLACE, id: "c" }];
+  const { handler, calls } = handlerWith({ places, snap: { snapped: false, reason: "ambiguous_neighbours" } });
+  await handler(snapRequest({}));
+  assert.equal(calls.waited[0], calls.waited[1]);
 });
 
 test("one failing place does not abandon the rest of the batch", async () => {
