@@ -44,27 +44,56 @@ function defaultCreateStore(env) {
   };
 }
 
-async function posterFromTmdb({ kind, tmdbId }, { env, fetchImpl, logError }) {
-  const token = env.TMDB_API_READ_ACCESS_TOKEN;
-  const apiKey = env.TMDB_API_KEY;
-  if (!token && !apiKey) return { entry: null, reason: "no_credentials" };
-
-  const url = tmdbDetailUrl(kind, tmdbId, { apiKey: token ? null : apiKey });
-  if (!url) return { entry: null, reason: "bad_id" };
-
-  const response = await fetchImpl(url, {
-    headers: token
-      ? { Accept: "application/json", Authorization: `Bearer ${token}` }
-      : { Accept: "application/json" },
-  });
-  if (!response?.ok) {
-    // Logged with its status: a silent null here made a 401 look identical to a film
-    // that genuinely has no poster, which cost a full deploy cycle to tell apart.
-    logError(`artwork: tmdb ${kind}/${tmdbId} responded ${response?.status}`);
-    return { entry: null, reason: `http_${response?.status ?? "unknown"}` };
+// TMDB has two credential schemes: a v3 `api_key` query parameter and a v4 bearer
+// token. They are NOT interchangeable, and the two env vars are easy to fill in
+// crosswise — production held a value that 401s as a bearer token. So both are tried,
+// bearer first, rather than trusting one and reporting the title as art-less.
+async function requestTmdb(kind, tmdbId, { env, fetchImpl }) {
+  const attempts = [];
+  if (env.TMDB_API_READ_ACCESS_TOKEN) {
+    attempts.push({
+      scheme: "bearer",
+      url: tmdbDetailUrl(kind, tmdbId),
+      headers: { Accept: "application/json", Authorization: `Bearer ${env.TMDB_API_READ_ACCESS_TOKEN}` },
+    });
+  }
+  if (env.TMDB_API_KEY) {
+    attempts.push({
+      scheme: "api_key",
+      url: tmdbDetailUrl(kind, tmdbId, { apiKey: env.TMDB_API_KEY }),
+      headers: { Accept: "application/json" },
+    });
   }
 
-  const { poster_path: posterPath } = artworkFromTmdb(await response.json());
+  let last = null;
+  for (const attempt of attempts) {
+    if (!attempt.url) continue;
+    const response = await fetchImpl(attempt.url, { headers: attempt.headers });
+    if (response?.ok) return { response, scheme: attempt.scheme };
+    last = { response, scheme: attempt.scheme };
+    // 401/403 means THIS credential is wrong; another scheme may still work. Any other
+    // status is about the title or the service, so stop rather than retry pointlessly.
+    if (response?.status !== 401 && response?.status !== 403) break;
+  }
+  return last;
+}
+
+async function posterFromTmdb({ kind, tmdbId }, { env, fetchImpl, logError }) {
+  if (!env.TMDB_API_READ_ACCESS_TOKEN && !env.TMDB_API_KEY) {
+    return { entry: null, reason: "no_credentials" };
+  }
+
+  const attempt = await requestTmdb(kind, tmdbId, { env, fetchImpl });
+  if (!attempt) return { entry: null, reason: "bad_id" };
+
+  if (!attempt.response?.ok) {
+    // Logged with its status: a silent null here made a 401 look identical to a film
+    // that genuinely has no poster, which cost a full deploy cycle to tell apart.
+    logError(`artwork: tmdb ${kind}/${tmdbId} responded ${attempt.response?.status} (${attempt.scheme})`);
+    return { entry: null, reason: `http_${attempt.response?.status ?? "unknown"}` };
+  }
+
+  const { poster_path: posterPath } = artworkFromTmdb(await attempt.response.json());
   return { entry: posterEntry(posterPath), reason: posterPath ? "ok" : "no_poster" };
 }
 

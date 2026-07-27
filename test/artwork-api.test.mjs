@@ -156,6 +156,38 @@ test("missing credentials say so rather than looking like missing art", async ()
   assert.equal(body.unresolved.no_credentials, 1);
 });
 
+test("a rejected bearer token falls back to the api_key scheme", async () => {
+  // Production held a value that 401s as a bearer token while an api_key was also
+  // configured; trusting the first credential reported every film as art-less.
+  const seen = [];
+  const { handler } = handlerWith({
+    rows: [],
+    env: { TMDB_API_READ_ACCESS_TOKEN: "wrong", TMDB_API_KEY: "right" },
+    fetchImpl: async (url, init) => {
+      seen.push(url);
+      if (init.headers.Authorization) return { ok: false, status: 401 };
+      return { ok: true, json: async () => ({ poster_path: "/viakey.jpg" }) };
+    },
+  });
+  const body = await (await handler(request("film=170"))).json();
+
+  assert.match(body.posters["film:170"].thumb, /\/viakey\.jpg$/);
+  assert.equal(seen.length, 2);
+  assert.match(seen[1], /api_key=right/);
+});
+
+test("a non-auth failure is not retried with the other credential", async () => {
+  // A 404 is about the title, not the key; trying again just doubles the traffic.
+  let calls = 0;
+  const { handler } = handlerWith({
+    rows: [],
+    env: { TMDB_API_READ_ACCESS_TOKEN: "t", TMDB_API_KEY: "k" },
+    fetchImpl: async () => { calls += 1; return { ok: false, status: 404 }; },
+  });
+  await handler(request("film=170"));
+  assert.equal(calls, 1);
+});
+
 test("TMDB being down loses the poster, never the response", async () => {
   const { handler } = handlerWith({ rows: [], fetchImpl: async () => ({ ok: false, status: 503 }) });
   const response = await handler(request("film=170"));
