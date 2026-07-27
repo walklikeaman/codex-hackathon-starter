@@ -655,29 +655,6 @@ export default function SceneMapApp() {
   // photo may be shown at all (app/lib/attribution.mjs refuses it otherwise).
   const [imageAttribution, setImageAttribution] = useState({});
 
-  useEffect(() => {
-    const url = activeLocation?.now;
-    if (!url || imageAttribution[url]) return undefined;
-    const controller = new AbortController();
-    (async () => {
-      try {
-        const response = await fetch(`/api/attribution?url=${encodeURIComponent(url)}`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) return;
-        const body = await response.json();
-        const found = body.attributions?.[url];
-        if (found) setImageAttribution((current) => ({ ...current, [url]: found }));
-      } catch (error) {
-        if (error?.name !== "AbortError") {
-          // Leaving it unattributed is the safe outcome: the credit line simply
-          // shows the source, and nothing claims an author we do not know.
-        }
-      }
-    })();
-    return () => controller.abort();
-  }, [activeLocation?.now, imageAttribution]);
-
   const [graphLayerOn, setGraphLayerOn] = useState(false);
   const [graphSummary, setGraphSummary] = useState(null);
   const [graphKinds, setGraphKinds] = useState([]);   // [] = every kind
@@ -732,6 +709,38 @@ export default function SceneMapApp() {
   // directly: mutating React-managed nodes in onError crashes the whole SPA when
   // reconciliation later touches a detached node (there is no error boundary).
   const [brokenImages, setBrokenImages] = useState(() => new Set());
+
+  // Commons images are licensed PER FILE, so the credit has to be fetched before the
+  // photo may be shown at all (app/lib/attribution.mjs refuses it otherwise).
+  //
+  // This effect MUST stay below `activeLocation`. A dependency array is evaluated
+  // during render, at the point the useEffect call appears — so reading
+  // `activeLocation?.now` above the useState that declares it threw
+  // "Cannot access 'activeLocation' before initialization" and took the whole map
+  // into the error boundary. Optional chaining does not help: the temporal dead zone
+  // rejects touching the binding at all, not just reading a property off it.
+  useEffect(() => {
+    const url = activeLocation?.now;
+    if (!url || imageAttribution[url]) return undefined;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await fetch(`/api/attribution?url=${encodeURIComponent(url)}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const body = await response.json();
+        const found = body.attributions?.[url];
+        if (found) setImageAttribution((current) => ({ ...current, [url]: found }));
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          // Leaving it unattributed is the safe outcome: the credit line simply
+          // shows the source, and nothing claims an author we do not know.
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [activeLocation?.now, imageAttribution]);
   const markImageBroken = (url) => {
     if (!url) return;
     setBrokenImages((current) => (current.has(url) ? current : new Set(current).add(url)));
