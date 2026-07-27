@@ -204,12 +204,12 @@ test("a film we do NOT hold still gets a profile instead of an empty page", asyn
 });
 
 test("stills are labelled as belonging to the film, not to a place", async () => {
-  // Tier B of the stills policy: real frames, unverified location. Pinning them to a
+  // Tier B of the stills policy: film images, unverified location. Pinning them to a
   // street would be an invention.
   const { handler } = handlerWith();
   const body = await (await handler(request("film=509"))).json();
 
-  assert.match(body.stills_note, /not matched to a location/i);
+  assert.match(body.stills_note, /not matched to any location/i);
   assert.match(body.stills[0].url, /image\.tmdb\.org/);
   assert.equal(body.stills[0].place_id, undefined);
 });
@@ -258,10 +258,10 @@ test("a request without an id is rejected before any work is done", async () => 
 
 // --- promo art is not a frame from the film ------------------------------------
 
-test("title treatments and key art are kept out of the frames gallery", () => {
-  // The first production run was about half promo art — gun-barrel silhouettes and
-  // a "SKYFALL 007" title card. A gallery captioned "frames from the film" filled
-  // with poster art is simply a false caption.
+test("images with text baked in are dropped", () => {
+  // Helps, but does not separate promo art from stills — Skyfall's gun-barrel key art
+  // is textless too and survives this. The caption is honest about that; only the
+  // vision check can actually tell a frame from a poster.
   const filtered = textlessBackdrops([
     { file_path: "/still.jpg", iso_639_1: null },
     { file_path: "/titlecard.jpg", iso_639_1: "en" },
@@ -287,4 +287,11 @@ test("the gallery drops promo art end to end", async () => {
   const body = await (await handler(request("film=509"))).json();
   assert.equal(body.stills.length, 1);
   assert.match(body.stills[0].url, /frame\.jpg$/);
+});
+
+test("the gallery caption does not promise frames it has not verified", async () => {
+  const { handler } = handlerWith();
+  const body = await (await handler(request("film=509"))).json();
+  assert.match(body.stills_note, /promotional art/i);
+  assert.match(body.stills_note, /not matched to any location/i);
 });

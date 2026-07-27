@@ -69,14 +69,18 @@ function defaultCreateStore(env) {
 }
 
 // TMDB's "backdrops" mix two different things: photographic frames from the film and
-// promotional key art — gun-barrel silhouettes, title treatments, cast montages. A
-// gallery captioned "frames from the film" filled with poster art is simply wrong, and
-// the first production run of this gallery was about half key art.
+// promotional key art — gun-barrel silhouettes, title treatments, cast montages.
 //
-// TMDB marks the language of any text baked into an image; a textless production still
-// has `iso_639_1: null`. That single field removes most of the promo art for free. If
-// a title has nothing textless at all, the unfiltered set is better than an empty
-// gallery, so it falls back rather than showing nothing.
+// This drops images with text baked in, which TMDB marks with a language code. It
+// helps, but it is NOT the separation we want, and Skyfall proves it: its gun-barrel
+// art and its title card both come back with `iso_639_1: null` and survive untouched.
+// A silhouette genuinely has no text — it is simply not a frame from the film. That
+// is a semantic distinction, and no metadata field carries it.
+//
+// The real separation is the vision check the scene matcher already performs
+// (`isPhotographicFrame` / `hasProminentTitleOrLogo` in scene-image-match.mjs). Until
+// that runs here, the caption says what these images actually are rather than
+// promising frames we have not verified.
 export function textlessBackdrops(backdrops) {
   const all = Array.isArray(backdrops) ? backdrops : [];
   const textless = all.filter((image) => !image?.iso_639_1);
@@ -197,9 +201,11 @@ export function createWorkProfileHandler({
       places: summarised,
       tally: placeTally(summarised),
       stills,
-      // Stated rather than implied: these frames are from the film, and none of them
-      // is a claim about a specific place.
-      stills_note: "Frames from the film. Not matched to a location.",
+      // Two honest caveats, both load-bearing. These come from the film's own TMDB
+      // gallery, which mixes production stills with promotional art — so the caption
+      // does not promise "frames". And none of them is matched to a place: that
+      // claim needs the vision check, not a gallery.
+      stills_note: "From the film's image gallery — includes promotional art. Not matched to any location.",
     }, { headers: cacheHeaders });
   };
 }

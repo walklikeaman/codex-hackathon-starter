@@ -9,9 +9,11 @@
 // the street the scene portrays, and blurring those two would be the one thing this
 // project refuses to do.
 //
-// The stills gallery is deliberately captioned "not matched to a location". They are
-// real frames from the film; nothing has verified WHICH place any of them shows, so
-// they are offered as film context and never as evidence about a place.
+// The gallery is captioned for what it actually holds. TMDB's gallery mixes real
+// production stills with promotional key art, and no metadata field separates them —
+// tested on Skyfall, whose gun-barrel art carries the same "textless" marking as a
+// genuine still. So it does not promise "frames", and it says outright that nothing
+// here is matched to a place: that claim needs the vision check, not a gallery.
 
 import { useEffect, useState } from "react";
 import { ExternalLink, MapPin, X } from "lucide-react";
@@ -161,7 +163,7 @@ export default function WorkProfile({ film, onClose, onSelectPlace }) {
 
           {data?.stills?.length > 0 && (
             <section className="work-profile-section">
-              <h3>Frames from the film <span className="work-profile-count">{data.stills.length}</span></h3>
+              <h3>Images from the film <span className="work-profile-count">{data.stills.length}</span></h3>
               {/* Stated, not implied: none of these is a claim about a place. */}
               <p className="work-profile-note">{data.stills_note}</p>
               <ul className="work-profile-stills">
