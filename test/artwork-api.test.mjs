@@ -136,6 +136,24 @@ test("a title with no poster is absent, not an error", async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(body.posters, {});
+  assert.equal(body.unresolved.no_poster, 1);
+});
+
+test("a systemic failure is distinguishable from a title with no art", async () => {
+  // Both return no poster. Only one of them means the credentials are wrong, and
+  // telling them apart otherwise costs a whole deploy cycle.
+  const { handler } = handlerWith({ rows: [], fetchImpl: async () => ({ ok: false, status: 401 }) });
+  const body = await (await handler(request("film=170&series=19885"))).json();
+  assert.deepEqual(body.posters, {});
+  assert.equal(body.unresolved.http_401, 2);
+});
+
+test("missing credentials say so rather than looking like missing art", async () => {
+  const { handler } = handlerWith({
+    rows: [], env: { TMDB_API_READ_ACCESS_TOKEN: undefined, TMDB_API_KEY: undefined },
+  });
+  const body = await (await handler(request("film=170"))).json();
+  assert.equal(body.unresolved.no_credentials, 1);
 });
 
 test("TMDB being down loses the poster, never the response", async () => {

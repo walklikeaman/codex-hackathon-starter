@@ -44,23 +44,28 @@ function defaultCreateStore(env) {
   };
 }
 
-async function posterFromTmdb({ kind, tmdbId }, { env, fetchImpl }) {
+async function posterFromTmdb({ kind, tmdbId }, { env, fetchImpl, logError }) {
   const token = env.TMDB_API_READ_ACCESS_TOKEN;
   const apiKey = env.TMDB_API_KEY;
-  if (!token && !apiKey) return null;
+  if (!token && !apiKey) return { entry: null, reason: "no_credentials" };
 
   const url = tmdbDetailUrl(kind, tmdbId, { apiKey: token ? null : apiKey });
-  if (!url) return null;
+  if (!url) return { entry: null, reason: "bad_id" };
 
   const response = await fetchImpl(url, {
     headers: token
       ? { Accept: "application/json", Authorization: `Bearer ${token}` }
       : { Accept: "application/json" },
   });
-  if (!response?.ok) return null;
+  if (!response?.ok) {
+    // Logged with its status: a silent null here made a 401 look identical to a film
+    // that genuinely has no poster, which cost a full deploy cycle to tell apart.
+    logError(`artwork: tmdb ${kind}/${tmdbId} responded ${response?.status}`);
+    return { entry: null, reason: `http_${response?.status ?? "unknown"}` };
+  }
 
   const { poster_path: posterPath } = artworkFromTmdb(await response.json());
-  return posterEntry(posterPath);
+  return { entry: posterEntry(posterPath), reason: posterPath ? "ok" : "no_poster" };
 }
 
 export function createArtworkHandler({
@@ -89,22 +94,28 @@ export function createArtworkHandler({
     }
 
     const missing = wanted.filter((item) => !posters[item.key]);
+    const reasons = {};
     const fetched = await Promise.all(missing.map(async (item) => {
       try {
-        return [item.key, await posterFromTmdb(item, { env, fetchImpl })];
+        return [item.key, await posterFromTmdb(item, { env, fetchImpl, logError })];
       } catch (error) {
         logError(`artwork: tmdb lookup failed for ${item.key}`, error);
-        return [item.key, null];
+        return [item.key, { entry: null, reason: "threw" }];
       }
     }));
-    for (const [key, entry] of fetched) {
-      if (entry) posters[key] = entry;
+    for (const [key, result] of fetched) {
+      if (result?.entry) posters[key] = result.entry;
+      else reasons[result?.reason ?? "unknown"] = (reasons[result?.reason ?? "unknown"] ?? 0) + 1;
     }
 
     // Keys with no poster are simply absent — the client keeps its initials tile, and
-    // an empty object is a valid, cacheable answer rather than an error.
-    return Response.json({ posters, requested: wanted.length, limit: MAX_POSTER_LOOKUPS },
-      { headers: cacheHeaders });
+    // an empty object is a valid, cacheable answer rather than an error. `unresolved`
+    // counts WHY, with no ids or credentials in it, so a systemic failure (an expired
+    // token) is distinguishable from titles TMDB simply has no art for.
+    return Response.json(
+      { posters, requested: wanted.length, limit: MAX_POSTER_LOOKUPS, unresolved: reasons },
+      { headers: cacheHeaders },
+    );
   };
 }
 
