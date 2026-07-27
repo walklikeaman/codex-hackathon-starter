@@ -7,6 +7,38 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-27] incident | The map was dead in production for every visitor
+
+- Reported from an iPhone screenshot: the whole app showed "Something went wrong".
+  Not a regression from that day's work — the identical error and the identical
+  chunk hash were reproduced on a deployment predating it, so it had been live
+  for some time. The `/api/map/points` endpoint was healthy the entire time;
+  the crash was purely client-side.
+- Cause: `SceneMapApp` threw `Cannot access 'activeLocation' before
+  initialization` on render, and the error boundary swallowed the entire app.
+  The image-attribution effect (#60) sat ~60 lines ABOVE the `useState` that
+  declares `activeLocation`, and **a dependency array is evaluated during render,
+  at the point its hook call appears** — so `[activeLocation?.now]` touched the
+  binding while it was still in the temporal dead zone.
+- The trap: **optional chaining does not protect against TDZ.** `activeLocation?.now`
+  reads as if it guards the access, but the dead zone rejects touching the binding
+  at all, not just reading a property off it. The code looks defensive and is not.
+- Three gaps let it ship and kept it hidden:
+  * `next build` compiles it happily — this is a runtime error, so a green build
+    proves nothing about it.
+  * The repo has **no linter at all** (which is why every build carries
+    `--no-lint`); `no-use-before-define` would have caught it instantly.
+  * Minified, the message is `Cannot access 'tf' before initialization` in a
+    vendor chunk — unreadable, and it points nowhere near the real file. Running
+    `next dev` and reading the console gave the exact file and line in seconds.
+- Guard: `test/hook-order.test.mjs` walks every `use…()` call to its final
+  argument and fails when a dependency array names a binding declared further
+  down the file. It handles inline and multi-line arrays and skips strings and
+  comments so brackets cannot be miscounted. Verified by reverting the fix — it
+  reproduces the exact finding — and it found no other instances.
+- Worth remembering: a screenshot of a broken UI is a better bug report than any
+  green test suite. 453 tests passed while the app was completely unusable.
+
 ## [2026-07-27] update | Building-footprint snap (#45) + place dedup (#46)
 
 - Both shipped to production. Both were reshaped by checking real data before
