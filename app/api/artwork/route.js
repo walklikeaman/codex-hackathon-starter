@@ -22,6 +22,11 @@ export const runtime = "nodejs";
 // removes almost all TMDB traffic. Public, because no part of this is user-specific.
 const cacheHeaders = { "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800" };
 
+// The whole response waits for the slowest lookup, so one unresponsive TMDB call would
+// hold up posters already sitting in our own table. Past this, the title keeps its
+// initials tile and the next request (usually a CDN hit) picks it up.
+export const TMDB_TIMEOUT_MS = 2500;
+
 function defaultCreateStore(env) {
   const url = env.NEXT_PUBLIC_SUPABASE_URL;
   const key = env.SUPABASE_SERVICE_ROLE_KEY ?? env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -48,7 +53,7 @@ function defaultCreateStore(env) {
 // token. They are NOT interchangeable, and the two env vars are easy to fill in
 // crosswise — production held a value that 401s as a bearer token. So both are tried,
 // bearer first, rather than trusting one and reporting the title as art-less.
-async function requestTmdb(kind, tmdbId, { env, fetchImpl }) {
+async function requestTmdb(kind, tmdbId, { env, fetchImpl, timeoutMs }) {
   const attempts = [];
   if (env.TMDB_API_READ_ACCESS_TOKEN) {
     attempts.push({
@@ -70,7 +75,10 @@ async function requestTmdb(kind, tmdbId, { env, fetchImpl }) {
   for (const attempt of attempts) {
     if (!attempt.url) continue;
     tried.push(attempt.scheme);
-    const response = await fetchImpl(attempt.url, { headers: attempt.headers });
+    const response = await fetchImpl(attempt.url, {
+      headers: attempt.headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
     if (response?.ok) return { response, scheme: attempt.scheme, tried };
     last = { response, scheme: attempt.scheme, tried };
     // 401/403 means THIS credential is wrong; another scheme may still work. Any other
@@ -80,12 +88,12 @@ async function requestTmdb(kind, tmdbId, { env, fetchImpl }) {
   return last;
 }
 
-async function posterFromTmdb({ kind, tmdbId }, { env, fetchImpl, logError }) {
+async function posterFromTmdb({ kind, tmdbId }, { env, fetchImpl, logError, timeoutMs }) {
   if (!env.TMDB_API_READ_ACCESS_TOKEN && !env.TMDB_API_KEY) {
     return { entry: null, reason: "no_credentials" };
   }
 
-  const attempt = await requestTmdb(kind, tmdbId, { env, fetchImpl });
+  const attempt = await requestTmdb(kind, tmdbId, { env, fetchImpl, timeoutMs });
   if (!attempt) return { entry: null, reason: "bad_id" };
 
   if (!attempt.response?.ok) {
@@ -109,6 +117,7 @@ export function createArtworkHandler({
   env = process.env,
   createStore = defaultCreateStore,
   fetchImpl = fetch,
+  timeoutMs = TMDB_TIMEOUT_MS,
   logError = console.error,
 } = {}) {
   return async function GET(request) {
@@ -134,10 +143,11 @@ export function createArtworkHandler({
     const reasons = {};
     const fetched = await Promise.all(missing.map(async (item) => {
       try {
-        return [item.key, await posterFromTmdb(item, { env, fetchImpl, logError })];
+        return [item.key, await posterFromTmdb(item, { env, fetchImpl, logError, timeoutMs })];
       } catch (error) {
+        const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
         logError(`artwork: tmdb lookup failed for ${item.key}`, error);
-        return [item.key, { entry: null, reason: "threw" }];
+        return [item.key, { entry: null, reason: timedOut ? "timeout" : "threw" }];
       }
     }));
     for (const [key, result] of fetched) {

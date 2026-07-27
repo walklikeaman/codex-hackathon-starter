@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createArtworkHandler } from "../app/api/artwork/route.js";
+import { createArtworkHandler, TMDB_TIMEOUT_MS } from "../app/api/artwork/route.js";
 import {
   MAX_POSTER_LOOKUPS,
   parsePosterQuery,
@@ -98,6 +98,7 @@ function handlerWith(overrides = {}) {
       calls.tmdb.push(url);
       return { ok: true, json: async () => ({ poster_path: "/fetched.jpg" }) };
     }),
+    timeoutMs: overrides.timeoutMs ?? TMDB_TIMEOUT_MS,
     logError: () => {},
   });
   return { handler, calls };
@@ -234,4 +235,38 @@ test("films and series are looked up together in one request", async () => {
   assert.equal(calls.tmdb.length, 2);
   assert.ok(calls.tmdb.some((url) => /\/movie\/170/.test(url)));
   assert.ok(calls.tmdb.some((url) => /\/tv\/19885/.test(url)));
+});
+
+test("one slow lookup cannot hold back posters we already have", async () => {
+  // The response waits for the slowest title, so an unresponsive TMDB would delay
+  // artwork sitting in our own table. The slow one loses its poster, not everyone.
+  const { handler } = handlerWith({
+    rows: [{ kind: "film", tmdb_id: "509", poster_path: "/instant.jpg" }],
+    timeoutMs: 20,
+    fetchImpl: (url, init) => new Promise((_, reject) => {
+      init.signal.addEventListener("abort", () => {
+        const error = new Error("timed out");
+        error.name = "TimeoutError";
+        reject(error);
+      });
+    }),
+  });
+  const body = await (await handler(request("film=509,10528"))).json();
+
+  assert.match(body.posters["film:509"].thumb, /\/instant\.jpg$/);
+  assert.equal(body.posters["film:10528"], undefined);
+  assert.equal(body.unresolved.timeout, 1);
+});
+
+test("every TMDB request carries an abort signal", async () => {
+  let seen = null;
+  const { handler } = handlerWith({
+    rows: [],
+    fetchImpl: async (url, init) => {
+      seen = init.signal;
+      return { ok: true, json: async () => ({ poster_path: "/x.jpg" }) };
+    },
+  });
+  await handler(request("film=170"));
+  assert.ok(seen, "expected a signal so a hung request cannot pin the response open");
 });

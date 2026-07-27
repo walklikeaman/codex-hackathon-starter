@@ -84,36 +84,50 @@ const kindLabels = {
   book: "Book",
 };
 
+// The opening set, shown before /api/locations answers. Their TMDB ids are part of the
+// data for the same reason the titles are: without one a chip CANNOT have a poster, so
+// these five sat on their initials for the whole ~5 s the locations request took, and
+// only then did artwork appear. With the id here the poster request goes out on first
+// paint, in parallel — and four of the five are in our own works table, so it is a
+// single fast query rather than a TMDB round-trip.
+//
+// Ids verified against Wikidata (P4947), not memory. Note Sherlock Holmes is the 2009
+// film (10528), not the series (19885) we hold under a similar name.
 const fallbackFilms = [
   {
     id: "notting-hill",
     title: "Notting Hill",
     year: 1999,
     code: "NH",
+    tmdbId: "509",
   },
   {
     id: "skyfall",
     title: "Skyfall",
     year: 2012,
     code: "007",
+    tmdbId: "37724",
   },
   {
     id: "harry-potter",
     title: "Harry Potter",
     year: 2001,
     code: "HP",
+    tmdbId: "671",
   },
   {
     id: "sherlock",
     title: "Sherlock Holmes",
     year: 2009,
     code: "SH",
+    tmdbId: "10528",
   },
   {
     id: "love-actually",
     title: "Love Actually",
     year: 2003,
     code: "LA",
+    tmdbId: "508",
   },
 ].map((work) => ({ ...work, kind: "film" }));
 
