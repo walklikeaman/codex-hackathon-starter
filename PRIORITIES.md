@@ -1,5 +1,12 @@
 # ⭐ Priorities — what to do now, and why
 
+> **Status 25.07.2026** — backbone Steps 0, 2, 3 are **done**; Step 1 is partial
+> (connectors remain). Shipped since: image attribution (#60), place-photo cascade
+> (#56), spoiler shield (#72), TTS cache (#66), plus the logic layers for walk mode
+> (#64), geo-triggered narration (#63) and story trails (#71) — those three wait on
+> **#114** for their place in the mobile layout, by the rule that nothing new enters
+> the side panel until its phone home is decided. 20 issues closed, 49 open.
+
 > This is a **ranking, not a flat list.** It orders every open issue by real
 > importance: what unblocks the most, what's a genuine bug, what's polish. The
 > star tier is also on every issue as a label chip (`P1 ★★★` / `P2 ★★` / `P3 ★`),
@@ -25,24 +32,27 @@ the true "now" is the backbone, not the features on top of it.
 
 This is the critical path. Nothing downstream is trustworthy until it exists.
 
-1. **★★★★★ #91 · Step 0** — apply `content_graph` + `grounding.mjs`
+1. ~~**#91 · Step 0**~~ ✅ **DONE** — `content_graph` + `grounding.mjs` applied
    ([PR #89](https://github.com/walklikeaman/codex-hackathon-starter/pull/89) is
    ready). *Why first: it's the schema + the "never invent a place" invariant every
    other issue relies on. Blocks all of Phase F.*
-2. **★★★★★ #92 · Step 1** — import connectors + ID cross-walk → graph.
+2. **★★★★★ #92 · Step 1** — 🟡 **PARTIAL**: Letterboxd RSS core, import route and
+   the tmdb/imdb/isbn/mbid → wikidata cross-walk shipped. Remaining: Trakt,
+   Kinopoisk, Goodreads, Open Library, Last.fm connectors.
    *Why: the funnel floor. The resolver can't anchor a work without a `wikidata_id`;
    nothing has content without import. No code exists yet.*
-3. **★★★★★ #93 · Step 2** — Location Resolution Engine MVP (Wikidata + P31
+3. ~~**#93 · Step 2**~~ ✅ **DONE** — Location Resolution Engine MVP (Wikidata + P31
    classification). *Why: this is what actually produces classified, grounded,
    deduped places — the thing every map/tour/audio feature reads.*
-4. **★★★★ #94 · Step 3** — map reads from the graph (PostGIS clusters, canvas).
+4. ~~**#94 · Step 3**~~ ✅ **DONE** — map reads from the graph (PostGIS clusters, canvas).
    *Why: makes the graph visible and handles thousands of points; unblocks the
    "zoom out, see my whole library" experience.*
 5. **★★★ #95 · Step 4** — gated web_search + one GeoCLIP+grounding module.
    *Why: growth — extends coverage and adds frame→GPS. Gated, so it comes after the
    free canonical layer works.*
 6. **★★★ #96 · Step 5** — ambient audio reads `place_class` from the graph.
-7. **★ #97 · Step 6** — Story Trails (needs first-class `scenes`; comes last).
+7. **★★ #97 · Step 6** — Story Trails. 🟡 Extraction and the spoiler shield exist
+   (#71/#72), so this is no longer blocked — the numbered polyline is what remains.
 
 *(#90 is the tracking epic for this sequence.)*
 
@@ -72,13 +82,13 @@ Ranked within tier; each notes the step that enables it.
 | ★★★ | 44 | Precision badge (city/street/building + source) | Step 2/3 | The trust signal — the whole "grounded" promise made visible |
 | ★★★ | 48 | Vision-verify AI/community locations | Step 2 | The anti-hallucination gate; keeps the map honest |
 | ★★★ | 46 | Dedup one place ↔ many works | Step 0/2 | Largely absorbed by `work_place_links`; makes "5 films in one block" work |
-| ★★★ | 56 | Source cascade for "place now" | Step 3 | The wow imagery, legally clean, no Street-View lock |
+| ✅ | ~~56~~ | Source cascade for "place now" — **shipped** | Step 3 | The wow imagery, legally clean, no Street-View lock |
 | ★★★ | 50 | ShotSync live-camera ghost overlay | — | The signature feature, web-first; standalone |
-| ★★★ | 63 | Scene-nearby GPS narration | Step 5 | The audio-guide core loop |
-| ★★★ | 64 | Walk mode (Wake Lock) | — | Cheap enabler that makes geo-triggers actually work |
-| ★★★ | 66 | TTS cache by content hash | — | Cheap; makes replays free — cost control before scaling audio |
-| ★★★ | 71 | Story-trail mode | Step 6 | The differentiator; needs `scenes` first |
-| ★★★ | 72 | Spoiler shield | Step 6 | No competitor has it; small once trails exist |
+| 🟡 | 63 | Scene-nearby GPS narration — **logic shipped**, UI pending #114 | Step 5 | The audio-guide core loop |
+| 🟡 | 64 | Walk mode (Wake Lock) — **logic + hook shipped**, UI pending #114 | — | Cheap enabler that makes geo-triggers actually work |
+| ✅ | ~~66~~ | TTS cache by content hash — **shipped**, replay verified free | — | Cheap; makes replays free — cost control before scaling audio |
+| 🟡 | 71 | Story-trail mode — **extraction shipped**, polyline pending #114 | Step 6 | The differentiator; needs `scenes` first |
+| ✅ | ~~72~~ | Spoiler shield — **shipped**, enforced in SQL | Step 6 | No competitor has it; small once trails exist |
 | ★★★ | 45 | OSM building-footprint snap | Step 2 | House-level precision |
 | ★★★ | 47 | Wikipedia-prose AI enrichment (spike) | Step 1/2 | Big coverage expansion; `size-L` spike |
 

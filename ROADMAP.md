@@ -1,5 +1,13 @@
 # 🗺️ GloryMap Roadmap
 
+> **Where we are (25.07.2026).** The backbone is walkable end to end: a work can be
+> imported, cross-walked to Wikidata, resolved into grounded places, drawn on the map
+> from the graph, given cover art and ratings, found by type-ahead, photographed
+> ("the place today"), credited, extracted into a story trail, and protected from
+> spoilers. What is *not* yet placed is the UI for walk mode, geo-triggered narration
+> and the trail polyline — held for **#114** (responsive layout), after the map turned
+> out to be 32px tall on an iPhone.
+
 > **Where we're going and why.** This is the roadmap — themed milestones over
 > time. The concrete, pick-up-able tasks live as
 > [GitHub issues](https://github.com/walklikeaman/codex-hackathon-starter/issues),
@@ -38,13 +46,13 @@ street / fiction are distinguished at the schema level.
 
 Build order (each step unblocks the next):
 
-- **Step 0** — `content_graph` migration + `grounding.mjs` *(in [PR #89](https://github.com/walklikeaman/codex-hackathon-starter/pull/89))*
-- **Step 1** — import connectors + ID cross-walk (tmdb/imdb/isbn/mbid → wikidata) + `user_library_items`
-- **Step 2** — Location Resolution Engine MVP (Wikidata Stage 0 + P31 classification, persist/dedup)
-- **Step 3** — map reads from the graph: `place_class`+confidence inline, PostGIS bbox/cluster RPC, canvas markers
+- ~~**Step 0**~~ ✅ `content_graph` migration + `grounding.mjs`
+- 🟡 **Step 1** — Letterboxd RSS + import route + ID cross-walk **done**; Trakt / Kinopoisk / Goodreads / Open Library / Last.fm remain
+- ~~**Step 2**~~ ✅ Location Resolution Engine MVP (Wikidata Stage 0 + P31 classification, persist/dedup)
+- ~~**Step 3**~~ ✅ map reads from the graph: `place_class`+confidence inline, PostGIS bbox/cluster RPC, canvas markers
 - **Step 4** — growth (gated): budgeted web_search + one deferred GeoCLIP + Mapillary/Commons grounding module
-- **Step 5** — ambient audio reads `place_class` from the graph + TTS cache/offline
-- **Step 6** — Story Trails on first-class `scenes` + `narrative_order`
+- 🟡 **Step 5** — TTS cache **done**; geo-trigger logic **done**; ambient audio reading `place_class` still to wire
+- 🟡 **Step 6** — trail extraction + spoiler shield **done**; the numbered narrative polyline remains
 
 *Why first:* the current phases below assume trustworthy, deduped, classified
 places. Phase F is the schema and grounding that guarantees them. The thematic
