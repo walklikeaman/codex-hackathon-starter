@@ -320,6 +320,12 @@ function locationsFromApi(records) {
     });
 }
 
+// The same key the artwork API returns. A film id and a series id can be the same
+// integer on TMDB, so the kind is part of the key.
+function posterCacheKey(film) {
+  return film?.tmdbId ? `${film.kind ?? "film"}:${film.tmdbId}` : "";
+}
+
 function worksFromLocations(sourceLocations) {
   return [...new Map(sourceLocations.map((location) => [
     location.filmId,
@@ -328,6 +334,9 @@ function worksFromLocations(sourceLocations) {
       title: location.film,
       year: location.year,
       kind: location.kind ?? "film",
+      // Carried through so the chip can ask for a poster. The initials stay as the
+      // fallback: books have no TMDB entry at all, and a poster may simply not arrive.
+      tmdbId: location.filmTmdbId ?? null,
       code: location.film.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase(),
     },
   ])).values()];
@@ -709,6 +718,11 @@ export default function SceneMapApp() {
   // directly: mutating React-managed nodes in onError crashes the whole SPA when
   // reconciliation later touches a detached node (there is no error boundary).
   const [brokenImages, setBrokenImages] = useState(() => new Set());
+  // Poster URLs keyed "film:170" / "series:19885", filled in after the pins land.
+  const [filmPosters, setFilmPosters] = useState({});
+  // A ref, not state: recording that we already asked must not itself trigger a
+  // render, or it would re-run the very effect it exists to stop.
+  const posterAttempts = useRef(new Set());
 
   // Commons images are licensed PER FILE, so the credit has to be fetched before the
   // photo may be shown at all (app/lib/attribution.mjs refuses it otherwise).
@@ -1064,6 +1078,48 @@ export default function SceneMapApp() {
       setTourFilmId(mapFilms[0]?.id ?? "");
     }
   }, [mapFilms, tourFilmId]);
+
+  // Posters arrive AFTER the pins, never with them: artwork is decoration and the map
+  // is the product, so nothing here is allowed to delay a location.
+  //
+  // This effect must stay below `mapFilms` — a dependency array is evaluated during
+  // render at the point its hook appears, so reading it above its own declaration
+  // throws (see test/hook-order.test.mjs).
+  useEffect(() => {
+    // Asked-for, not answered: a title TMDB has no poster for would otherwise be
+    // requested again every time any OTHER poster arrives and changes this state.
+    const wanted = mapFilms.filter((film) => {
+      const key = posterCacheKey(film);
+      return key && !filmPosters[key] && !posterAttempts.current.has(key);
+    });
+    if (wanted.length === 0) return undefined;
+    for (const film of wanted) posterAttempts.current.add(posterCacheKey(film));
+
+    const byKind = new Map();
+    for (const film of wanted) {
+      if (!byKind.has(film.kind)) byKind.set(film.kind, new Set());
+      byKind.get(film.kind).add(String(film.tmdbId));
+    }
+    const query = [...byKind]
+      .map(([kind, ids]) => `${encodeURIComponent(kind)}=${[...ids].join(",")}`)
+      .join("&");
+
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await fetch(`/api/artwork?${query}`, { signal: controller.signal });
+        if (!response.ok) return;
+        const body = await response.json();
+        if (body.posters && Object.keys(body.posters).length > 0) {
+          setFilmPosters((current) => ({ ...current, ...body.posters }));
+        }
+      } catch (error) {
+        // No poster is a cosmetic outcome — the initials tile is already on screen.
+        if (error?.name !== "AbortError") { /* keep the tile */ }
+      }
+    })();
+    return () => controller.abort();
+  }, [mapFilms, filmPosters]);
 
   const visibleLocations = useMemo(
     () => sourceLocations.filter((location) =>
@@ -2094,6 +2150,7 @@ export default function SceneMapApp() {
         <div className="film-grid" aria-label="Selected stories">
           {mapFilms.map((film) => {
             const selected = selectedFilms.includes(film.id);
+            const poster = filmPosters[posterCacheKey(film)];
 
             return (
               <button
@@ -2103,7 +2160,21 @@ export default function SceneMapApp() {
                 type="button"
                 aria-pressed={selected}
               >
-                <span className="poster-tile" aria-hidden="true">{film.code}</span>
+                {/* The initials tile is the fallback, not the default: books have no
+                    TMDB poster, and a lookup can fail. A broken <img> would be worse
+                    than the tile, so a load error falls back to it too. */}
+                {poster && !brokenImages.has(poster.thumb) ? (
+                  <img
+                    alt=""
+                    aria-hidden="true"
+                    className="poster-tile poster-tile-art"
+                    loading="lazy"
+                    src={poster.thumb}
+                    onError={() => setBrokenImages((current) => new Set(current).add(poster.thumb))}
+                  />
+                ) : (
+                  <span className="poster-tile" aria-hidden="true">{film.code}</span>
+                )}
                 <span>
                   <strong>{film.title}</strong>
                   <small>

@@ -583,6 +583,16 @@ h2 {
   border: 1px solid rgba(255, 255, 255, 0.24);
 }
 
+/* A real poster replaces the initials tile. It keeps the tile's footprint so the chip
+   list does not reflow when artwork arrives after the pins, and drops the gold
+   gradient — that background exists to make two letters look deliberate, and behind a
+   poster it would only bleed through the transparent edges of the artwork. */
+.poster-tile-art {
+  background: #100d08;
+  object-fit: cover;
+  padding: 0;
+}
+
 .film-chip strong,
 .film-chip small {
   display: block;
