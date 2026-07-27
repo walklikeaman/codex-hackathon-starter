@@ -66,11 +66,13 @@ async function requestTmdb(kind, tmdbId, { env, fetchImpl }) {
   }
 
   let last = null;
+  const tried = [];
   for (const attempt of attempts) {
     if (!attempt.url) continue;
+    tried.push(attempt.scheme);
     const response = await fetchImpl(attempt.url, { headers: attempt.headers });
-    if (response?.ok) return { response, scheme: attempt.scheme };
-    last = { response, scheme: attempt.scheme };
+    if (response?.ok) return { response, scheme: attempt.scheme, tried };
+    last = { response, scheme: attempt.scheme, tried };
     // 401/403 means THIS credential is wrong; another scheme may still work. Any other
     // status is about the title or the service, so stop rather than retry pointlessly.
     if (response?.status !== 401 && response?.status !== 403) break;
@@ -90,7 +92,13 @@ async function posterFromTmdb({ kind, tmdbId }, { env, fetchImpl, logError }) {
     // Logged with its status: a silent null here made a 401 look identical to a film
     // that genuinely has no poster, which cost a full deploy cycle to tell apart.
     logError(`artwork: tmdb ${kind}/${tmdbId} responded ${attempt.response?.status} (${attempt.scheme})`);
-    return { entry: null, reason: `http_${attempt.response?.status ?? "unknown"}` };
+    // The scheme is part of the reason. "Both credentials are dead" and "the bearer
+    // token is dead and the api_key never reached the runtime" look identical
+    // otherwise, and they need different fixes.
+    return {
+      entry: null,
+      reason: `http_${attempt.response?.status ?? "unknown"}_${attempt.tried.join("+")}`,
+    };
   }
 
   const { poster_path: posterPath } = artworkFromTmdb(await attempt.response.json());

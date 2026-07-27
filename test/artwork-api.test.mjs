@@ -145,7 +145,7 @@ test("a systemic failure is distinguishable from a title with no art", async () 
   const { handler } = handlerWith({ rows: [], fetchImpl: async () => ({ ok: false, status: 401 }) });
   const body = await (await handler(request("film=170&series=19885"))).json();
   assert.deepEqual(body.posters, {});
-  assert.equal(body.unresolved.http_401, 2);
+  assert.equal(body.unresolved.http_401_bearer, 2);
 });
 
 test("missing credentials say so rather than looking like missing art", async () => {
