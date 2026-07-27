@@ -20,6 +20,7 @@ import {
   Crosshair,
   ExternalLink,
   Film,
+  Info,
   Link2,
   LoaderCircle,
   LocateFixed,
@@ -44,6 +45,7 @@ import {
   mapSearchRadiusKm,
   zoomForRadius,
 } from "../lib/nearby.mjs";
+import WorkProfile from "./WorkProfile.jsx";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
 import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { createCoalescingRunner } from "../lib/coalesce.mjs";
@@ -732,6 +734,8 @@ export default function SceneMapApp() {
   // directly: mutating React-managed nodes in onError crashes the whole SPA when
   // reconciliation later touches a detached node (there is no error boundary).
   const [brokenImages, setBrokenImages] = useState(() => new Set());
+  // The film whose profile is open, or null. Opened from a chip's info button.
+  const [profileFilm, setProfileFilm] = useState(null);
   // Poster URLs keyed "film:170" / "series:19885", filled in after the pins land.
   const [filmPosters, setFilmPosters] = useState({});
   // A ref, not state: recording that we already asked must not itself trigger a
@@ -1919,7 +1923,7 @@ export default function SceneMapApp() {
                 {graphWorks.some((work) => work.poster_thumb_url) && (
                   <ul className="work-posters" aria-label="Works with cover art">
                     {graphWorks.filter((work) => work.poster_thumb_url).slice(0, 12).map((work) => (
-                      <li key={work.work_id}>
+                      <li className="cover-cell" key={work.work_id}>
                         <button
                           type="button"
                           aria-pressed={graphWorkId === work.work_id}
@@ -1931,6 +1935,18 @@ export default function SceneMapApp() {
                         >
                           <img alt="" loading="lazy" src={work.poster_thumb_url} />
                           <span className="cover-caption">{work.title}</span>
+                        </button>
+                        {/* These are the works we know MOST about — the profile has to
+                            be reachable from here, not only from the live chips. */}
+                        <button
+                          aria-label={`About ${work.title}`}
+                          className="film-chip-open cover-open"
+                          onClick={() => setProfileFilm({
+                            workId: work.work_id, title: work.title, kind: work.kind,
+                          })}
+                          type="button"
+                        >
+                          <Info size={14} />
                         </button>
                       </li>
                     ))}
@@ -2167,36 +2183,52 @@ export default function SceneMapApp() {
             const poster = filmPosters[posterCacheKey(film)];
 
             return (
-              <button
-                className={`film-chip${selected ? " is-selected" : ""}`}
-                key={film.id}
-                onClick={() => toggleFilm(film.id)}
-                type="button"
-                aria-pressed={selected}
-              >
-                {/* The initials tile is the fallback, not the default: books have no
-                    TMDB poster, and a lookup can fail. A broken <img> would be worse
-                    than the tile, so a load error falls back to it too. */}
-                {poster && !brokenImages.has(poster.thumb) ? (
-                  <img
-                    alt=""
-                    aria-hidden="true"
-                    className="poster-tile poster-tile-art"
-                    loading="lazy"
-                    src={poster.thumb}
-                    onError={() => setBrokenImages((current) => new Set(current).add(poster.thumb))}
-                  />
-                ) : (
-                  <span className="poster-tile" aria-hidden="true">{film.code}</span>
+              // Two actions live here — filter the map, and open the film — so the
+              // chip is a container rather than one button. Nesting a button inside a
+              // button is invalid HTML and the inner click never arrives reliably.
+              <div className={`film-chip${selected ? " is-selected" : ""}`} key={film.id}>
+                <button
+                  className="film-chip-toggle"
+                  onClick={() => toggleFilm(film.id)}
+                  type="button"
+                  aria-pressed={selected}
+                >
+                  {/* The initials tile is the fallback, not the default: books have no
+                      TMDB poster, and a lookup can fail. A broken <img> would be worse
+                      than the tile, so a load error falls back to it too. */}
+                  {poster && !brokenImages.has(poster.thumb) ? (
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="poster-tile poster-tile-art"
+                      loading="lazy"
+                      src={poster.thumb}
+                      onError={() => setBrokenImages((current) => new Set(current).add(poster.thumb))}
+                    />
+                  ) : (
+                    <span className="poster-tile" aria-hidden="true">{film.code}</span>
+                  )}
+                  <span>
+                    <strong>{film.title}</strong>
+                    <small>
+                      <span className={`work-kind kind-${film.kind}`}>{kindLabel(film.kind)}</span>
+                      {film.year ? ` · ${film.year}` : ""}
+                    </small>
+                  </span>
+                </button>
+                {/* Only works with a TMDB id have a profile to open; a book chip would
+                    lead to an empty page, so it simply has no button. */}
+                {film.tmdbId && (
+                  <button
+                    aria-label={`About ${film.title}`}
+                    className="film-chip-open"
+                    onClick={() => setProfileFilm(film)}
+                    type="button"
+                  >
+                    <Info size={15} />
+                  </button>
                 )}
-                <span>
-                  <strong>{film.title}</strong>
-                  <small>
-                    <span className={`work-kind kind-${film.kind}`}>{kindLabel(film.kind)}</span>
-                    {film.year ? ` · ${film.year}` : ""}
-                  </small>
-                </span>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -2734,6 +2766,20 @@ export default function SceneMapApp() {
 
       {recreateLocation && (
         <RecreateShot location={recreateLocation} onClose={() => setRecreateLocation(null)} />
+      )}
+
+      {profileFilm && (
+        <WorkProfile
+          film={profileFilm}
+          onClose={() => setProfileFilm(null)}
+          // Picking a place from the profile moves the map to it and closes the
+          // overlay: the profile is a way INTO the map, not a replacement for it.
+          onSelectPlace={(place) => {
+            if (place.lat === null || place.lng === null) return;
+            setProfileFilm(null);
+            setMapCenter([place.lat, place.lng]);
+          }}
+        />
       )}
     </main>
   );

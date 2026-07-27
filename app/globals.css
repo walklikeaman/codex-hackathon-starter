@@ -554,10 +554,10 @@ h2 {
 }
 
 .film-chip {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
+  /* A container now, not the button itself — the toggle inside lays out the poster
+     and title, and the info button is positioned against this box. */
+  position: relative;
+  display: block;
   min-height: 68px;
   padding: 8px;
   border: 1px solid var(--line);
@@ -565,7 +565,6 @@ h2 {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text);
   text-align: left;
-  cursor: pointer;
 }
 
 .poster-tile {
@@ -591,6 +590,55 @@ h2 {
   background: #100d08;
   object-fit: cover;
   padding: 0;
+}
+
+/* The chip holds two actions: filtering the map and opening the film. The toggle
+   takes all the room it can so the hit target stays large on a phone, and the info
+   button is pinned to the corner rather than sitting in the flow, where it would
+   squeeze the title. */
+.film-chip-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.film-chip-open {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(10, 10, 10, 0.55);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+/* Revealed on hover for a mouse, but ALWAYS visible on touch: a hover-only control
+   is invisible on a phone, and this is the only way into the film. */
+.film-chip:hover .film-chip-open,
+.film-chip-open:focus-visible {
+  opacity: 1;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+@media (hover: none) {
+  .film-chip-open { opacity: 1; }
 }
 
 .film-chip strong,
@@ -2614,3 +2662,163 @@ figcaption a {
   line-height: 1.35;
   color: rgba(244, 231, 200, 0.42);
 }
+
+/* --- film profile -------------------------------------------------------- */
+
+.work-profile {
+  width: min(860px, 100%);
+}
+
+.work-profile-head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.work-profile-poster {
+  width: 76px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+/* Each score links to the page it was read from — the number is only as good as the
+   source a reader can go and check. */
+.work-profile-ratings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.work-profile-ratings a {
+  display: grid;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.work-profile-ratings a:hover { border-color: var(--accent); }
+.work-profile-ratings small { color: var(--muted); font-size: 0.66rem; text-transform: capitalize; }
+
+.work-profile-body { padding: 16px; display: grid; gap: 20px; }
+
+.work-profile-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.work-profile-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+
+.work-profile-links a:hover { border-color: var(--accent); color: var(--accent); }
+
+.work-profile-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+}
+
+.work-profile-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.work-profile-note { margin: 0 0 10px; color: var(--muted); font-size: 0.8rem; }
+.work-profile-credit { margin: 8px 0 0; color: var(--muted); font-size: 0.7rem; }
+
+.work-profile-places { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+
+.work-profile-places button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.work-profile-places button:hover { border-color: var(--accent); }
+.work-profile-places span { display: grid; min-width: 0; flex: 1; }
+.work-profile-places strong { font-size: 0.86rem; }
+.work-profile-places small { color: var(--muted); font-size: 0.72rem; }
+
+/* Studios and story settings are real information, but they are not "we found the
+   street", so they read quieter than the finds above them. */
+.work-profile-places.is-secondary button { background: none; }
+
+.precision-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.66rem;
+  font-style: normal;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Building precision is the strongest thing we can say, so it is the only badge that
+   gets the accent. "City only" deliberately looks like a caveat. */
+.precision-badge.precision-building { color: var(--accent); border-color: var(--accent); }
+.precision-badge.precision-city,
+.precision-badge.precision-region,
+.precision-badge.precision-unknown { opacity: 0.7; }
+
+.precision-badge.is-studio {
+  color: #f0c27a;
+  border-color: rgba(240, 194, 122, 0.5);
+}
+
+.work-profile-stills {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.work-profile-stills img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+@media (max-width: 860px) {
+  .work-profile-poster { width: 56px; }
+  .work-profile-stills { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
+
+/* The cover tile needs a positioning context for its profile button, the same way a
+   film chip does. */
+.cover-cell { position: relative; }
+.cover-open { top: 2px; right: 2px; }
