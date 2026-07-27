@@ -4,8 +4,8 @@ Read this FIRST each session. The wiki is the agent's compounding memory —
 decisions, gotchas, and domain knowledge live here so the next session (and the
 next teammate) starts smarter, not from zero.
 
-Full rebuild on 22.07.2026 after reading through all the code (89 tests, main
-after PR #41). Open the repository as an Obsidian vault — the `[[links]]` form a graph.
+Full rebuild on 22.07.2026 after reading through all the code; kept current since
+(453 tests, main). Open the repository as an Obsidian vault — the `[[links]]` form a graph.
 
 ## Overview
 
@@ -31,6 +31,7 @@ after PR #41). Open the repository as an Obsidian vault — the `[[links]]` form
 - [film-imagery](concepts/film-imagery.md) — HMAC token → vision → only high confidence
 - [tours-and-voice](concepts/tours-and-voice.md) — route, timed tour, AI tour, TTS
 - [nearby-geolocation](concepts/nearby-geolocation.md) — "what's nearby", radii, demo fallback
+- [place-precision](concepts/place-precision.md) — when a pin may move, when two pins are one place
 - [testing-conventions](concepts/testing-conventions.md) — node:test, zero network, DI pattern
 
 ## Sources (external knowledge)
