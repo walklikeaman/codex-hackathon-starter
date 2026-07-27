@@ -68,6 +68,21 @@ function defaultCreateStore(env) {
   };
 }
 
+// TMDB's "backdrops" mix two different things: photographic frames from the film and
+// promotional key art — gun-barrel silhouettes, title treatments, cast montages. A
+// gallery captioned "frames from the film" filled with poster art is simply wrong, and
+// the first production run of this gallery was about half key art.
+//
+// TMDB marks the language of any text baked into an image; a textless production still
+// has `iso_639_1: null`. That single field removes most of the promo art for free. If
+// a title has nothing textless at all, the unfiltered set is better than an empty
+// gallery, so it falls back rather than showing nothing.
+export function textlessBackdrops(backdrops) {
+  const all = Array.isArray(backdrops) ? backdrops : [];
+  const textless = all.filter((image) => !image?.iso_639_1);
+  return textless.length > 0 ? textless : all;
+}
+
 // Frames from the film. Tier B in the stills policy: these are real production
 // images, but nothing has verified WHICH place any of them shows, so they are
 // presented as belonging to the film and never pinned to a location.
@@ -99,7 +114,7 @@ async function stillsFromTmdb({ kind, tmdbId }, { env, fetchImpl, timeoutMs, log
       });
       if (response?.ok) {
         const payload = await response.json();
-        return selectTmdbBackdrops(payload?.backdrops, MAX_PROFILE_STILLS)
+        return selectTmdbBackdrops(textlessBackdrops(payload?.backdrops), MAX_PROFILE_STILLS)
           .map((image) => ({
             url: tmdbImageUrl(image.file_path, "w780"),
             full: tmdbImageUrl(image.file_path, "original"),

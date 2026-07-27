@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createWorkProfileHandler } from "../app/api/work/route.js";
+import { createWorkProfileHandler, textlessBackdrops } from "../app/api/work/route.js";
 import {
   MAX_PROFILE_PLACES,
   parseProfileQuery,
@@ -254,4 +254,37 @@ test("a request without an id is rejected before any work is done", async () => 
   const { handler, calls } = handlerWith();
   assert.equal((await handler(request(""))).status, 400);
   assert.equal(calls.tmdb.length, 0);
+});
+
+// --- promo art is not a frame from the film ------------------------------------
+
+test("title treatments and key art are kept out of the frames gallery", () => {
+  // The first production run was about half promo art — gun-barrel silhouettes and
+  // a "SKYFALL 007" title card. A gallery captioned "frames from the film" filled
+  // with poster art is simply a false caption.
+  const filtered = textlessBackdrops([
+    { file_path: "/still.jpg", iso_639_1: null },
+    { file_path: "/titlecard.jpg", iso_639_1: "en" },
+    { file_path: "/another.jpg", iso_639_1: null },
+  ]);
+  assert.deepEqual(filtered.map((i) => i.file_path), ["/still.jpg", "/another.jpg"]);
+});
+
+test("a film with no textless art shows what it has rather than nothing", () => {
+  const only = [{ file_path: "/a.jpg", iso_639_1: "en" }];
+  assert.deepEqual(textlessBackdrops(only), only);
+  assert.deepEqual(textlessBackdrops([]), []);
+  assert.deepEqual(textlessBackdrops(null), []);
+});
+
+test("the gallery drops promo art end to end", async () => {
+  const { handler } = handlerWith({
+    fetchImpl: async () => ({ ok: true, json: async () => ({ backdrops: [
+      { file_path: "/frame.jpg", iso_639_1: null, vote_count: 5 },
+      { file_path: "/keyart.jpg", iso_639_1: "en", vote_count: 99 },
+    ] }) }),
+  });
+  const body = await (await handler(request("film=509"))).json();
+  assert.equal(body.stills.length, 1);
+  assert.match(body.stills[0].url, /frame\.jpg$/);
 });
