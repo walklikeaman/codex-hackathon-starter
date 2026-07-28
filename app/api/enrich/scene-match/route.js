@@ -13,7 +13,11 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { createClient } from "@supabase/supabase-js";
 
 import {
+  buildEvidenceCheckContent,
   buildMatchContent,
+  evidenceCheckInstructions,
+  evidenceCheckSchema,
+  evidenceHolds,
   isMatchablePlace,
   matchInstructions,
   matchRow,
@@ -195,6 +199,43 @@ export function createSceneMatchHandler({
         // "No frame shows this place" is the expected outcome and a perfectly good
         // answer. It is not stored: a later run with more frames may find one.
         results.push({ place: pair.place.name, work: pair.work.title, reason: "no_match" });
+        continue;
+      }
+
+      // The refutation pass: the same claim, re-examined with ONLY the frame in view.
+      // Production matched a misty Scottish road to a Surrey heath and justified it
+      // with "sandy dirt road, sparse trees, white surveying posts" — none of which is
+      // in that frame. With no reference image alongside it, there is nothing to
+      // borrow those details from.
+      try {
+        const check = await openai.responses.parse({
+          model: env.OPENAI_VISION_MODEL || "gpt-5-nano",
+          store: false,
+          max_output_tokens: 2000,
+          reasoning: { effort: "low" },
+          instructions: evidenceCheckInstructions(),
+          input: [{
+            role: "user",
+            content: buildEvidenceCheckContent({
+              frameUrl: tmdbImageUrl(row.file_path, "w780"),
+              evidence: row.evidence,
+            }),
+          }],
+          text: { format: zodTextFormat(evidenceCheckSchema, "evidence_check") },
+        }, { timeout: 60_000 });
+
+        if (check.status !== "completed" || !evidenceHolds(check.output_parsed)) {
+          results.push({
+            place: pair.place.name, work: pair.work.title, reason: "evidence_refuted",
+            claimed: row.evidence,
+            not_visible: check.output_parsed?.featuresNotVisible ?? null,
+          });
+          continue;
+        }
+      } catch (error) {
+        // A check that could not run is not a pass. Nothing is stored.
+        logError(`scene-match: evidence check failed for ${pair.place.id}`, error);
+        results.push({ place: pair.place.name, work: pair.work.title, reason: "check_failed" });
         continue;
       }
 

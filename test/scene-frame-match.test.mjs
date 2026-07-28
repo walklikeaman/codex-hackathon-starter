@@ -9,6 +9,9 @@ import {
 } from "../app/api/enrich/scene-match/route.js";
 import {
   acceptedFrameMatch,
+  buildEvidenceCheckContent,
+  evidenceCheckInstructions,
+  evidenceHolds,
   buildMatchContent,
   isMatchablePlace,
   matchInstructions,
@@ -145,8 +148,17 @@ function handlerWith(overrides = {}) {
     })),
     createOpenAIClient: () => ({
       responses: {
-        parse: async () => {
+        parse: async (params) => {
           calls.vision += 1;
+          // The second call is the refutation pass: one image, no reference.
+          const isCheck = /ONE image/.test(params.instructions ?? "");
+          if (isCheck) {
+            calls.checks = (calls.checks ?? 0) + 1;
+            return overrides.checkResponse ?? {
+              status: "completed",
+              output_parsed: { featuresNotVisible: [], allFeaturesVisible: true },
+            };
+          }
           return overrides.response ?? { status: "completed", output_parsed: { match: goodMatch } };
         },
       },
@@ -241,4 +253,56 @@ test("nothing left to match is a clean answer", async () => {
   const body = await (await handler(request({}))).json();
   assert.deepEqual(body, { matched: 0, checked: 0, results: [] });
   assert.equal(calls.vision, 0);
+});
+
+// --- the refutation pass -------------------------------------------------------
+
+test("evidence only holds when every claimed feature is cleared", () => {
+  assert.equal(evidenceHolds({ featuresNotVisible: [], allFeaturesVisible: true }), true);
+  assert.equal(evidenceHolds({ featuresNotVisible: ["white posts"], allFeaturesVisible: true }), false);
+  assert.equal(evidenceHolds({ featuresNotVisible: [], allFeaturesVisible: false }), false);
+  assert.equal(evidenceHolds({}), false);
+  assert.equal(evidenceHolds(null), false);
+});
+
+test("the check sees the frame alone, with no reference to borrow details from", () => {
+  // The production failure was the model describing the REFERENCE photo and asserting
+  // those features were in the frame. One image in view makes that impossible.
+  const content = buildEvidenceCheckContent({ frameUrl: "https://frame", evidence: "a paved road" });
+  assert.equal(content.filter((part) => part.type === "input_image").length, 1);
+  assert.equal(content[0].image_url, "https://frame");
+  assert.match(evidenceCheckInstructions(), /no reference photograph here/i);
+  assert.match(evidenceCheckInstructions(), /merely plausible/i);
+});
+
+test("a match whose evidence is refuted is NOT stored", async () => {
+  // Exactly the Hankley Common case: fluent evidence, none of it in the picture.
+  const { handler, calls } = handlerWith({
+    checkResponse: {
+      status: "completed",
+      output_parsed: { featuresNotVisible: ["sparse trees", "white surveying posts"], allFeaturesVisible: false },
+    },
+  });
+  const body = await (await handler(request({}))).json();
+
+  assert.equal(body.matched, 0);
+  assert.equal(calls.saved.length, 0);
+  assert.equal(body.results[0].reason, "evidence_refuted");
+  assert.deepEqual(body.results[0].not_visible, ["sparse trees", "white surveying posts"]);
+});
+
+test("a check that could not run is not a pass", async () => {
+  const { handler, calls } = handlerWith({
+    checkResponse: { status: "incomplete", output_parsed: null },
+  });
+  const body = await (await handler(request({}))).json();
+  assert.equal(calls.saved.length, 0);
+  assert.equal(body.results[0].reason, "evidence_refuted");
+});
+
+test("a confirmed match costs two calls: the claim and its refutation", async () => {
+  const { handler, calls } = handlerWith();
+  await handler(request({}));
+  assert.equal(calls.checks, 1);
+  assert.equal(calls.saved.length, 1);
 });
