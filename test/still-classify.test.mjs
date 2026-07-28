@@ -6,7 +6,9 @@ import {
   acceptedStillIndexes,
   buildClassificationContent,
   classificationInstructions,
+  imageBatches,
   MAX_IMAGES_PER_CALL,
+  MAX_IMAGES_PER_WORK,
   stillClassificationSchema,
   verdictRows,
 } from "../app/lib/still-classify.mjs";
@@ -242,5 +244,61 @@ test("the response reports how many images existed, not just how many were judge
   const { handler } = handlerWith({ backdrops: many });
   const body = await (await handler(request({}))).json();
   assert.equal(body.works[0].available, 40);
-  assert.ok(body.works[0].judged <= MAX_IMAGES_PER_CALL);
+  assert.ok(body.works[0].judged <= MAX_IMAGES_PER_WORK);
+});
+
+test("a gallery is judged in batches, going deeper than one call allows", () => {
+  // Twelve was far too shallow. Skyfall has 98 images and the top twelve by votes are
+  // posters and cast hero shots; the wide establishing shots that show a LOCATION sit
+  // further down, so scene matching was never offered anything to match.
+  const many = Array.from({ length: 98 }, (_, i) => ({ file_path: `/i${i}.jpg` }));
+  const batches = imageBatches(many);
+  assert.equal(batches.length, MAX_IMAGES_PER_WORK / MAX_IMAGES_PER_CALL);
+  assert.equal(batches.flat().length, MAX_IMAGES_PER_WORK);
+  assert.ok(batches.every((batch) => batch.length <= MAX_IMAGES_PER_CALL));
+});
+
+test("indices stay local to their batch, so a verdict maps to the right image", () => {
+  // verdictRows is given ONE batch and the model numbered from 0 within it; handing it
+  // the whole gallery would attribute batch 2's verdicts to batch 1's images.
+  const many = Array.from({ length: 20 }, (_, i) => ({ file_path: `/i${i}.jpg` }));
+  const [, second] = imageBatches(many);
+  assert.equal(second[0].file_path, "/i12.jpg");
+});
+
+test("a short gallery still produces one batch", () => {
+  assert.equal(imageBatches([{ file_path: "/a.jpg" }]).length, 1);
+  assert.deepEqual(imageBatches([]), []);
+  assert.deepEqual(imageBatches(null), []);
+});
+
+test("one failed batch loses its own images, not the whole gallery", async () => {
+  const many = Array.from({ length: 24 }, (_, i) => ({ file_path: `/i${i}.jpg`, vote_count: 24 - i }));
+  let call = 0;
+  const { handler, calls } = handlerWith({
+    backdrops: many,
+    createOpenAIClient: undefined,
+  });
+  // Rebuild with a client that fails the first batch only.
+  const handler2 = createStillsEnrichHandler({
+    env: { OPENAI_API_KEY: "k", NEXT_PUBLIC_SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "s", TMDB_API_KEY: "t" },
+    createStore: () => ({
+      pendingWorks: async () => [WORK],
+      loadWork: async () => WORK,
+      saveVerdicts: async (rows) => { calls.saved.push(...rows); return rows.length; },
+    }),
+    createOpenAIClient: () => ({
+      responses: {
+        parse: async () => {
+          call += 1;
+          if (call === 1) throw new Error("batch down");
+          return { status: "completed", output_parsed: { verdicts: [frame(0)] } };
+        },
+      },
+    }),
+    fetchImpl: async () => ({ ok: true, json: async () => ({ backdrops: many }) }),
+    logError: () => {},
+  });
+  const body = await (await handler2(request({}))).json();
+  assert.ok(body.works[0].judged >= 1, "the surviving batch still contributes");
 });

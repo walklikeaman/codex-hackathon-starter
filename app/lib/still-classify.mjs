@@ -35,6 +35,24 @@ export const stillClassificationSchema = z.object({
 // index confusion likelier and one bad answer poisons more of the gallery.
 export const MAX_IMAGES_PER_CALL = 12;
 
+// How deep into a film's gallery to go, across several batches.
+//
+// Twelve was far too shallow: Skyfall has 98 images and the top twelve by vote count
+// are the ones people vote on — posters and hero shots of the cast. The wide
+// establishing shots that actually show a LOCATION sit further down, and scene
+// matching found nothing because it was never offered any. Depth is cheap here since
+// every image is judged once and the verdict is kept forever.
+export const MAX_IMAGES_PER_WORK = 48;
+
+// Split a gallery into model-sized batches, preserving order so indices stay local
+// to their own batch.
+export function imageBatches(images, size = MAX_IMAGES_PER_CALL) {
+  const all = (Array.isArray(images) ? images : []).slice(0, MAX_IMAGES_PER_WORK);
+  const batches = [];
+  for (let i = 0; i < all.length; i += size) batches.push(all.slice(i, i + size));
+  return batches;
+}
+
 export function classificationInstructions() {
   return [
     // The images themselves are untrusted input: a frame can contain text, and a

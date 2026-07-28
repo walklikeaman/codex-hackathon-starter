@@ -16,7 +16,8 @@ import { createClient } from "@supabase/supabase-js";
 import {
   buildClassificationContent,
   classificationInstructions,
-  MAX_IMAGES_PER_CALL,
+  imageBatches,
+  MAX_IMAGES_PER_WORK,
   stillClassificationSchema,
   verdictRows,
 } from "../../../lib/still-classify.mjs";
@@ -101,7 +102,7 @@ async function backdropsFor(work, { env, fetchImpl }) {
       const all = Array.isArray(payload?.backdrops) ? payload.backdrops : [];
       // The total is reported because the cap is the interesting number: if a film has
       // 60 backdrops and we judge 12, a location shot may simply never be offered.
-      return { picked: selectTmdbBackdrops(all, MAX_IMAGES_PER_CALL), available: all.length };
+      return { picked: selectTmdbBackdrops(all, MAX_IMAGES_PER_WORK), available: all.length };
     }
     if (response?.status !== 401 && response?.status !== 403) break;
   }
@@ -162,7 +163,11 @@ export function createStillsEnrichHandler({
         continue;
       }
 
-      let parsed;
+      // Several calls, one per batch: a whole gallery in one request would make index
+      // confusion likely, and one bad answer would poison far more of it.
+      const rows = [];
+      let failed = false;
+      for (const batch of imageBatches(candidates)) {
       try {
         const response = await openai.responses.parse({
           model: env.OPENAI_VISION_MODEL || "gpt-5-nano",
@@ -177,7 +182,7 @@ export function createStillsEnrichHandler({
           input: [{
             role: "user",
             content: buildClassificationContent(
-              candidates.map((image) => tmdbImageUrl(image.file_path, "w780")),
+              batch.map((image) => tmdbImageUrl(image.file_path, "w780")),
             ),
           }],
           text: { format: zodTextFormat(stillClassificationSchema, "still_classification") },
@@ -187,14 +192,19 @@ export function createStillsEnrichHandler({
         if (response.status !== "completed" || !response.output_parsed) {
           throw new Error(`vision responded ${response.status}`);
         }
-        parsed = response.output_parsed;
+        rows.push(...verdictRows(work.id, batch, response.output_parsed));
       } catch (error) {
+        // One failed batch loses its own images, not the whole gallery.
         logError(`stills: vision failed for ${work.id}`, error);
-        results.push({ work_id: work.id, title: work.title, reason: "vision_failed" });
+        failed = true;
+      }
+      }
+
+      if (rows.length === 0) {
+        results.push({ work_id: work.id, title: work.title, reason: failed ? "vision_failed" : "no_verdicts" });
         continue;
       }
 
-      const rows = verdictRows(work.id, candidates, parsed);
       try {
         await store.saveVerdicts(rows);
       } catch (error) {
