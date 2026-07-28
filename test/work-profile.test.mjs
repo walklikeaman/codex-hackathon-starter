@@ -164,6 +164,7 @@ function handlerWith(overrides = {}) {
       loadRatings: async () => overrides.ratings ?? [],
       loadPlaces: async () => overrides.places ?? [],
       loadClassifiedImages: async () => overrides.classified ?? [],
+      loadPlaceFrames: async () => overrides.placeFrames ?? [],
     })),
     fetchImpl: overrides.fetchImpl ?? (async (url) => {
       calls.tmdb.push(url);
@@ -334,4 +335,28 @@ test("a film judged to have NO real frames shows none, rather than falling back"
   assert.deepEqual(body.stills, []);
   assert.equal(body.stills_verified, true);   // we DID look; the answer was "none"
   assert.equal(calls.tmdb.length, 0);         // and we do not go fetch the rejects back
+});
+
+// --- tier A: a frame matched to a place ----------------------------------------
+
+test("a matched frame is attached to its PLACE, not to the gallery", async () => {
+  // This is the one context where a frame is a claim about where something happened,
+  // so it travels with the place and carries the evidence that justified it.
+  const { handler } = handlerWith({
+    places: [place({ id: "p1" }), place({ id: "p2", name: "Christ Church" })],
+    placeFrames: [{ place_id: "p1", file_path: "/matched.jpg", evidence: "The iron arcade matches." }],
+  });
+  const body = await (await handler(request("film=509"))).json();
+
+  const matched = body.places.find((p) => p.id === "p1");
+  const unmatched = body.places.find((p) => p.id === "p2");
+  assert.match(matched.scene_frame.url, /matched\.jpg$/);
+  assert.match(matched.scene_frame.evidence, /iron arcade/);
+  assert.equal(unmatched.scene_frame, undefined);
+});
+
+test("a place with no matched frame simply has none", async () => {
+  const { handler } = handlerWith({ places: [place()], placeFrames: [] });
+  const body = await (await handler(request("film=509"))).json();
+  assert.equal(body.places[0].scene_frame, undefined);
 });

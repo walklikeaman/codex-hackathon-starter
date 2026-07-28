@@ -2822,3 +2822,26 @@ figcaption a {
    film chip does. */
 .cover-cell { position: relative; }
 .cover-open { top: 2px; right: 2px; }
+
+/* A frame standing where the map pin usually is: this place is not just listed, it is
+   shown. Only a verified match earns it. */
+.place-scene-frame {
+  flex-shrink: 0;
+  width: 84px;
+  height: 47px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid rgba(247, 183, 51, 0.45);
+}
+
+.work-profile-count.is-matched {
+  background: rgba(247, 183, 51, 0.16);
+  color: var(--accent);
+}
+
+/* The evidence line is longer than a city name and must not push the badge around. */
+.work-profile-places small { overflow-wrap: anywhere; }
+
+@media (max-width: 860px) {
+  .place-scene-frame { width: 64px; height: 36px; }
+}

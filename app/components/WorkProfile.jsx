@@ -59,7 +59,11 @@ export default function WorkProfile({ film, onClose, onSelectPlace }) {
 
   const data = state.data;
   const places = data?.places ?? [];
-  const found = places.filter((place) => place.role === "on_location");
+  // Places with a verified frame lead: "here is the spot, and here is the shot" is
+  // the strongest thing the product can say, so it should not be buried mid-list.
+  const found = places
+    .filter((place) => place.role === "on_location")
+    .sort((a, b) => Number(Boolean(b.scene_frame)) - Number(Boolean(a.scene_frame)));
   const elsewhere = places.filter((place) => place.role !== "on_location");
 
   return (
@@ -121,15 +125,33 @@ export default function WorkProfile({ film, onClose, onSelectPlace }) {
 
           {found.length > 0 && (
             <section className="work-profile-section">
-              <h3>Filmed on location <span className="work-profile-count">{found.length}</span></h3>
+              <h3>
+                Filmed on location <span className="work-profile-count">{found.length}</span>
+                {found.some((place) => place.scene_frame) && (
+                  <span className="work-profile-count is-matched">
+                    {found.filter((place) => place.scene_frame).length} with a matched frame
+                  </span>
+                )}
+              </h3>
               <ul className="work-profile-places">
                 {found.map((place) => (
                   <li key={place.id}>
                     <button type="button" onClick={() => onSelectPlace?.(place)}>
-                      <MapPin size={14} />
+                      {/* A frame here is not decoration — it is the evidence that this
+                          place is the answer. Only a place with a verified match has
+                          one, so its presence is itself the strongest badge. */}
+                      {place.scene_frame ? (
+                        <img alt="" className="place-scene-frame" loading="lazy" src={place.scene_frame.url} />
+                      ) : (
+                        <MapPin size={14} />
+                      )}
                       <span>
                         <strong>{place.name}</strong>
-                        <small>{[place.city, place.country].filter(Boolean).join(", ")}</small>
+                        <small>
+                          {place.scene_frame
+                            ? place.scene_frame.evidence
+                            : [place.city, place.country].filter(Boolean).join(", ")}
+                        </small>
                       </span>
                       <em className={`precision-badge precision-${place.precision.split(" ")[0].toLowerCase()}`}>
                         {place.precision}

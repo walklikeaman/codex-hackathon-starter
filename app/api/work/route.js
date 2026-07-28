@@ -61,6 +61,16 @@ function defaultCreateStore(env) {
       if (error) throw new Error(`images load failed: ${error.message}`);
       return data ?? [];
     },
+    // Tier A: frames matched to a specific place, each carrying the evidence that
+    // justified the claim.
+    async loadPlaceFrames(workId) {
+      const { data, error } = await client
+        .from("place_frames")
+        .select("place_id, file_path, evidence")
+        .eq("work_id", workId);
+      if (error) throw new Error(`place frames load failed: ${error.message}`);
+      return data ?? [];
+    },
     // The join that makes the studio distinction possible: place_class comes from the
     // resolver's P31 ancestry walk, relation_kind from the edge.
     async loadPlaces(workId) {
@@ -169,15 +179,17 @@ export function createWorkProfileHandler({
     let ratings = [];
     let places = [];
     let classified = [];
+    let placeFrames = [];
 
     if (store) {
       try {
         work = await store.loadWork(query);
         if (work) {
-          [ratings, places, classified] = await Promise.all([
+          [ratings, places, classified, placeFrames] = await Promise.all([
             store.loadRatings(work.id),
             store.loadPlaces(work.id),
             store.loadClassifiedImages(work.id),
+            store.loadPlaceFrames(work.id),
           ]);
         }
       } catch (error) {
@@ -213,7 +225,22 @@ export function createWorkProfileHandler({
 
     // The caption has to match which of those two happened.
     const stillsVerified = classified.length > 0;
-    const summarised = profilePlaces(places);
+    // A matched frame belongs to its place, not to the gallery: this is the one
+    // context where a frame IS a claim about where something happened.
+    const frameByPlace = new Map(placeFrames.map((row) => [row.place_id, row]));
+    const summarised = profilePlaces(places).map((place) => {
+      const frame = frameByPlace.get(place.id);
+      return frame
+        ? {
+          ...place,
+          scene_frame: {
+            url: tmdbImageUrl(frame.file_path, "w780"),
+            full: tmdbImageUrl(frame.file_path, "original"),
+            evidence: frame.evidence,
+          },
+        }
+        : place;
+    });
 
     return Response.json({
       work: {
