@@ -1,4 +1,4 @@
-# Testing conventions — 453 tests, node:test, zero network
+# Testing conventions — 559 tests, node:test, zero network
 
 Run: `npm test` (`node --test test/*.test.mjs`). No jest/vitest and no
 configuration; assert from node:assert/strict. Next.js is not involved in the tests —

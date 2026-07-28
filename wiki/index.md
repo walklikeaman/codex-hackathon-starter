@@ -5,7 +5,7 @@ decisions, gotchas, and domain knowledge live here so the next session (and the
 next teammate) starts smarter, not from zero.
 
 Full rebuild on 22.07.2026 after reading through all the code; kept current since
-(453 tests, main). Open the repository as an Obsidian vault — the `[[links]]` form a graph.
+(559 tests, main). Open the repository as an Obsidian vault — the `[[links]]` form a graph.
 
 ## Overview
 
@@ -28,6 +28,7 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [demo-path](concepts/demo-path.md) — the one sacred scenario
 - [personal-library](concepts/personal-library.md) — Letterboxd ZIP/CSV, privacy
 - [location-discovery](concepts/location-discovery.md) — Wikidata + web research with a citation gate
+- [film-frames](concepts/film-frames.md) — three tiers of frame, and what each may claim
 - [film-imagery](concepts/film-imagery.md) — HMAC token → vision → only high confidence
 - [tours-and-voice](concepts/tours-and-voice.md) — route, timed tour, AI tour, TTS
 - [nearby-geolocation](concepts/nearby-geolocation.md) — "what's nearby", radii, demo fallback

@@ -7,6 +7,77 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-28] update | Film profile, verified frames, and a fabricated match
+
+- The film profile (#107, #110) shipped: poster, scores that link back to the page
+  they were read from, every place we hold with its precision badge, and the film's
+  images. Reachable from the live chips AND from the graph layer — the latter
+  matters more, since the graph holds the works with the most places and the
+  profile could not reach them at first.
+- **Two features turned out to be built but wired into the wrong panel.** Posters
+  and then ratings both existed and worked, but rendered only inside the "Grounded
+  places" layer, so nobody looking at a film ever saw them. Third occurrence of
+  the same shape — worth watching for: work lands in the graph layer and never
+  reaches the live path people actually use.
+- **The studio test was a regex on the place NAME** (`/studio/i`), which calls the
+  "Studio Ghibli Museum" a soundstage and misses any lot without the word. The
+  resolver had already derived `place_class` from P31 ancestry; the profile uses
+  that. Direct violation of the project's own rule, sitting one join away from the
+  right answer.
+
+### Frames: three tiers, and what each is allowed to claim
+
+- **Tier B — "from the film"**: TMDB files production stills and promotional key
+  art under one `backdrops` list. My first fix filtered on the language marker and
+  I shipped it as solving the problem. **It does not.** Verified on production:
+  Skyfall's stills list was byte-for-byte identical before and after, because its
+  gun-barrel art is textless too — a silhouette honestly contains no text. It is
+  simply not a frame from the film, and no metadata field carries that.
+  * The real answer is to look at the picture. A deliberately narrow question —
+    "is this a photographic frame?" with no place involved — so it is cheap and
+    **permanently cacheable**: every image is paid for once, ever. Rejections are
+    stored too; without a negative row the same poster is re-judged every visit.
+  * Result across 12 films: 144 images judged, **69 real frames — 48%**. So more
+    than half of what the gallery had been showing was marketing.
+  * The Crown scored 0/12. Checked by eye before accepting it: three-panel cast
+    composites and posed press photography under a portrait of the Queen. Correct.
+- **Tier A — "shot HERE"**: this is the product's central claim and the easiest
+  thing to get wrong, because a model asked "does this match?" finds a way to
+  agree. The design assumes NO: only places precise enough for the question to
+  mean anything, only with a reference photograph, never a studio, only high
+  confidence, and the evidence is a NOT NULL column.
+- **It still fabricated one.** First production run matched a misty Scottish road
+  to Hankley Common, a sandy Surrey heath, justified by *"sandy dirt road leading
+  uphill, sparse trees and white surveying posts"*. That frame has a PAVED road,
+  no trees and no posts — it had described the REFERENCE photo and asserted those
+  features were in the frame. Because the sentence was fluent and specific, every
+  gate passed it. **Demanding evidence is not the same as checking it.**
+  * Fixed by re-examining the claim with **only the frame in view**. With nothing
+    to conflate it with, "is this visible here?" becomes answerable. Phrased to
+    refute, lists what it cannot see BEFORE the verdict, and told that merely
+    plausible is not visible. It immediately caught 4 fabrications including that
+    one, naming exactly what I had seen was absent.
+
+### Why tier A currently yields nothing
+
+- Zero matches across 12 places, and the honest reading is that the SOURCE is
+  wrong, not the matcher: in 8 of 12 the first pass itself declined.
+- The pool was also starved by my own cap. Skyfall has **98 images on TMDB and I
+  judged 12** — and the top twelve by vote count are the worst twelve, because
+  posters and cast hero shots are what people vote on. Harry Potter's four
+  verified frames were character close-ups: three children in a train doorway,
+  no location in shot at all.
+- Raised to 48 per film in batches of 12 (indices are how a verdict finds its
+  image, so each batch is numbered locally). Skyfall went 4 → 18 frames, Harry
+  Potter 4 → 9. Re-ran the matcher: **still zero.**
+- Conclusion to carry forward: a film's TMDB gallery is a marketing asset chosen
+  to sell the film through its actors, not a location survey. Tier A is sound and
+  refuses correctly; it needs a different source of frames. Deliberately did NOT
+  loosen the thresholds to manufacture a positive — that would reinstate exactly
+  the failure just removed.
+- No false match exists in production; the one bad row was deleted from
+  `pre_snap`-style provenance columns' sibling, `place_frames`.
+
 ## [2026-07-27] incident | The map was dead in production for every visitor
 
 - Reported from an iPhone screenshot: the whole app showed "Something went wrong".

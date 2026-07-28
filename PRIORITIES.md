@@ -79,7 +79,7 @@ Ranked within tier; each notes the step that enables it.
 
 | ★ | # | Feature | Enabled by | Why it's high |
 |---|---|---|---|---|
-| ★★★ | 44 | Precision badge (city/street/building + source) | Step 2/3 | The trust signal — the whole "grounded" promise made visible |
+| ✅ | ~~44~~ | Precision badge — **shipped** in the film profile (City / Street / Building, Building wins on an OSM snap) | Step 2/3 | The trust signal — the whole "grounded" promise made visible |
 | ★★★ | 48 | Vision-verify AI/community locations | Step 2 | The anti-hallucination gate; keeps the map honest |
 | ✅ | ~~46~~ | Dedup one place ↔ many works — **shipped**; verified 63 places → 63 groups, 0 false merges | Step 0/2 | Largely absorbed by `work_place_links`; the helper now guards places created without a QID |
 | ✅ | ~~56~~ | Source cascade for "place now" — **shipped** | Step 3 | The wow imagery, legally clean, no Street-View lock |
