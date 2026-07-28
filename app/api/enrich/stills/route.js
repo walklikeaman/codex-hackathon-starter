@@ -98,11 +98,14 @@ async function backdropsFor(work, { env, fetchImpl }) {
     const response = await fetchImpl(attempt.url, { headers: attempt.headers });
     if (response?.ok) {
       const payload = await response.json();
-      return selectTmdbBackdrops(payload?.backdrops, MAX_IMAGES_PER_CALL);
+      const all = Array.isArray(payload?.backdrops) ? payload.backdrops : [];
+      // The total is reported because the cap is the interesting number: if a film has
+      // 60 backdrops and we judge 12, a location shot may simply never be offered.
+      return { picked: selectTmdbBackdrops(all, MAX_IMAGES_PER_CALL), available: all.length };
     }
     if (response?.status !== 401 && response?.status !== 403) break;
   }
-  return [];
+  return { picked: [], available: 0 };
 }
 
 export function createStillsEnrichHandler({
@@ -148,8 +151,9 @@ export function createStillsEnrichHandler({
 
     for (const work of works) {
       let candidates = [];
+      let available = 0;
       try {
-        candidates = await backdropsFor(work, { env, fetchImpl });
+        ({ picked: candidates, available } = await backdropsFor(work, { env, fetchImpl }));
       } catch (error) {
         logError(`stills: tmdb failed for ${work.id}`, error);
       }
@@ -203,6 +207,7 @@ export function createStillsEnrichHandler({
         work_id: work.id,
         title: work.title,
         judged: rows.length,
+        available,
         frames: rows.filter((row) => row.is_frame).length,
         rejected: rows.filter((row) => !row.is_frame).length,
       });

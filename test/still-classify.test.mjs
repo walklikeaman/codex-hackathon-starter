@@ -151,7 +151,7 @@ function handlerWith(overrides = {}) {
     }),
     fetchImpl: overrides.fetchImpl ?? (async () => ({
       ok: true,
-      json: async () => ({ backdrops: [
+      json: async () => ({ backdrops: overrides.backdrops ?? [
         { file_path: "/frame.jpg", vote_count: 9 },
         { file_path: "/poster.jpg", vote_count: 40 },
       ] }),
@@ -233,4 +233,14 @@ test("nothing left to classify is a clean answer", async () => {
   const body = await (await handler(request({}))).json();
   assert.deepEqual(body, { classified: 0, works: [] });
   assert.equal(calls.vision, 0);
+});
+
+test("the response reports how many images existed, not just how many were judged", async () => {
+  // The cap is the interesting number: a film with 60 backdrops judged 12 deep may
+  // never be offered the wide location shot that a match needs.
+  const many = Array.from({ length: 40 }, (_, i) => ({ file_path: `/i${i}.jpg`, vote_count: i }));
+  const { handler } = handlerWith({ backdrops: many });
+  const body = await (await handler(request({}))).json();
+  assert.equal(body.works[0].available, 40);
+  assert.ok(body.works[0].judged <= MAX_IMAGES_PER_CALL);
 });
