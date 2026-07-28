@@ -80,7 +80,7 @@ Ranked within tier; each notes the step that enables it.
 | ★ | # | Feature | Enabled by | Why it's high |
 |---|---|---|---|---|
 | ✅ | ~~44~~ | Precision badge — **shipped** in the film profile (City / Street / Building, Building wins on an OSM snap) | Step 2/3 | The trust signal — the whole "grounded" promise made visible |
-| ★★★ | 48 | Vision-verify AI/community locations | Step 2 | The anti-hallucination gate; keeps the map honest |
+| 🟡 | 48 | Vision-verify AI/community locations — **status gate shipped** (pending/verified/rejected, only verified drawn); needs a submission path to gate | Step 2 | The anti-hallucination gate; keeps the map honest |
 | ✅ | ~~46~~ | Dedup one place ↔ many works — **shipped**; verified 63 places → 63 groups, 0 false merges | Step 0/2 | Largely absorbed by `work_place_links`; the helper now guards places created without a QID |
 | ✅ | ~~56~~ | Source cascade for "place now" — **shipped** | Step 3 | The wow imagery, legally clean, no Street-View lock |
 | ★★★ | 50 | ShotSync live-camera ghost overlay | — | The signature feature, web-first; standalone |
@@ -91,6 +91,8 @@ Ranked within tier; each notes the step that enables it.
 | ✅ | ~~72~~ | Spoiler shield — **shipped**, enforced in SQL | Step 6 | No competitor has it; small once trails exist |
 | ✅ | ~~45~~ | OSM building-footprint snap — **shipped**, live on production | Step 2 | House-level precision |
 | ★★★ | 47 | Wikipedia-prose AI enrichment (spike) | Step 1/2 | Big coverage expansion; `size-L` spike |
+| ★★★ | 120 | **Close the unauthenticated enrich/snap/trail routes** — they write to the DB and spend money on vision | — | Must land before the map is shown to anyone outside the team |
+| ★★★ | 114 | Adaptive layout — **the keystone**: unblocks #63, #64, #71, whose logic is already shipped and invisible | — | Three built features currently ship nothing a user can see |
 
 ---
 
