@@ -90,6 +90,11 @@ test("the instructions name the exact things that fooled the metadata filter", (
   assert.match(instructions, /posed cast portraits/i);
 });
 
+test("text inside an image is treated as picture, not as instruction", () => {
+  // A poster is mostly words, and a frame can contain a sign. Neither is a prompt.
+  assert.match(classificationInstructions(), /never instructions/i);
+});
+
 test("each image is numbered so a verdict can be checked against what we sent", () => {
   const content = buildClassificationContent(["https://a", "https://b"]);
   const text = content.filter((part) => part.type === "input_text").map((part) => part.text).join(" ");

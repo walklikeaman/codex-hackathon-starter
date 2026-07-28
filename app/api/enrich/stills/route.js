@@ -162,7 +162,13 @@ export function createStillsEnrichHandler({
       try {
         const response = await openai.responses.parse({
           model: env.OPENAI_VISION_MODEL || "gpt-5-nano",
-          max_output_tokens: 1200,
+          store: false,
+          // A verdict per image is small, but this is a reasoning model and reasoning
+          // tokens count against the same budget. 1200 produced `incomplete` on a
+          // 12-image gallery and wrote nothing at all; low effort plus real headroom
+          // is what makes a full batch fit.
+          max_output_tokens: 4000,
+          reasoning: { effort: "low" },
           instructions: classificationInstructions(),
           input: [{
             role: "user",
@@ -171,7 +177,7 @@ export function createStillsEnrichHandler({
             ),
           }],
           text: { format: zodTextFormat(stillClassificationSchema, "still_classification") },
-        });
+        }, { timeout: 60_000 });
         // A refused or truncated response must not be written: storing its silence
         // would permanently mark real frames as rejected.
         if (response.status !== "completed" || !response.output_parsed) {
