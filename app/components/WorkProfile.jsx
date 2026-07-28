@@ -161,6 +161,19 @@ export default function WorkProfile({ film, onClose, onSelectPlace }) {
             </section>
           )}
 
+          {/* Checked and found to hold nothing but promotional art. Rendering nothing
+              at all would read as a bug; saying so is the same courtesy the places
+              list gets when a film has none. */}
+          {state.status === "ready" && data?.stills_verified && data.stills.length === 0 && (
+            <section className="work-profile-section">
+              <h3>Images from the film</h3>
+              <p className="work-profile-note">
+                This title&apos;s gallery holds only promotional art — posters, key art and
+                posed press shots. No frames from the film to show.
+              </p>
+            </section>
+          )}
+
           {data?.stills?.length > 0 && (
             <section className="work-profile-section">
               <h3>Images from the film <span className="work-profile-count">{data.stills.length}</span></h3>
