@@ -84,15 +84,15 @@ Ranked within tier; each notes the step that enables it.
 | ✅ | ~~46~~ | Dedup one place ↔ many works — **shipped**; verified 63 places → 63 groups, 0 false merges | Step 0/2 | Largely absorbed by `work_place_links`; the helper now guards places created without a QID |
 | ✅ | ~~56~~ | Source cascade for "place now" — **shipped** | Step 3 | The wow imagery, legally clean, no Street-View lock |
 | ★★★ | 50 | ShotSync live-camera ghost overlay | — | The signature feature, web-first; standalone |
-| 🟡 | 63 | Scene-nearby GPS narration — **logic shipped**, UI pending #114 | Step 5 | The audio-guide core loop |
-| 🟡 | 64 | Walk mode (Wake Lock) — **logic + hook shipped**, UI pending #114 | — | Cheap enabler that makes geo-triggers actually work |
+| ✅ | ~~63~~ | Scene-nearby GPS narration — **shipped and visible**: triggers wired to the on-map walk control | Step 5 | The audio-guide core loop |
+| ✅ | ~~64~~ | Walk mode (Wake Lock) — **shipped and visible** on the map, walking the work's real locations | — | Cheap enabler that makes geo-triggers actually work |
 | ✅ | ~~66~~ | TTS cache by content hash — **shipped**, replay verified free | — | Cheap; makes replays free — cost control before scaling audio |
-| 🟡 | 71 | Story-trail mode — **extraction shipped**, polyline pending #114 | Step 6 | The differentiator; needs `scenes` first |
+| 🟡 | 71 | Story-trail mode — **extraction + polyline shipped**; blocked on resolving scene place names to known places | Step 6 | The differentiator; needs `scenes` first |
 | ✅ | ~~72~~ | Spoiler shield — **shipped**, enforced in SQL | Step 6 | No competitor has it; small once trails exist |
 | ✅ | ~~45~~ | OSM building-footprint snap — **shipped**, live on production | Step 2 | House-level precision |
 | ★★★ | 47 | Wikipedia-prose AI enrichment (spike) | Step 1/2 | Big coverage expansion; `size-L` spike |
-| ★★★ | 120 | **Close the unauthenticated enrich/snap/trail routes** — they write to the DB and spend money on vision | — | Must land before the map is shown to anyone outside the team |
-| ★★★ | 114 | Adaptive layout — **the keystone**: unblocks #63, #64, #71, whose logic is already shipped and invisible | — | Three built features currently ship nothing a user can see |
+| ✅ | ~~120~~ | Enrich/snap/trail routes closed behind a token — fail-closed, constant-time, verified on production | — | Was required before the map is shown to anyone outside the team |
+| 🟡 | 114 | Adaptive layout — **the rule is set** (outdoor features live on the map, not the panel), which unblocked #63/#64/#71; tablet, landscape, ≤360px and PWA still open | — | The pattern that kept burying finished work |
 
 ---
 
