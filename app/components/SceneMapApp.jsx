@@ -45,7 +45,11 @@ import {
   mapSearchRadiusKm,
   zoomForRadius,
 } from "../lib/nearby.mjs";
+import StoryTrail from "./StoryTrail.jsx";
+import WalkControls from "./WalkControls.jsx";
 import WorkProfile from "./WorkProfile.jsx";
+import { trailStops } from "../lib/story-trail.mjs";
+import { normalizePlaceName } from "../lib/place-dedup.mjs";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
 import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { createCoalescingRunner } from "../lib/coalesce.mjs";
@@ -1139,6 +1143,12 @@ export default function SceneMapApp() {
     return () => controller.abort();
   }, [mapFilms, filmPosters]);
 
+  // The story trail for whichever single work is selected. Only one: a numbered path
+  // is a claim about ONE story's order, and overlaying two would be meaningless.
+  const [trailScenes, setTrailScenes] = useState([]);
+  const [trailPlaces, setTrailPlaces] = useState([]);
+  const [nextStopId, setNextStopId] = useState(null);
+
   const visibleLocations = useMemo(
     () => sourceLocations.filter((location) =>
       selectedFilms.includes(location.filmId)
@@ -1163,6 +1173,72 @@ export default function SceneMapApp() {
   }, [library, libraryQuery]);
 
   const routePositions = routeResult?.positions ?? [];
+  // Stops are built from places ALREADY on the map, keyed by normalised name — the
+  // trail extractor is forbidden from emitting coordinates, so a scene only becomes a
+  // stop when it matches a place we independently hold.
+  const trailStopList = useMemo(() => {
+    if (trailScenes.length === 0) return [];
+    const byNorm = new Map(
+      trailPlaces.map((place) => [normalizePlaceName(place.name), {
+        id: place.id, name: place.name, lat: place.lat, lng: place.lng,
+      }]),
+    );
+    return trailStops(
+      trailScenes.map((scene) => ({ ...scene, place_norm: normalizePlaceName(scene.place_name) })),
+      byNorm,
+    );
+  }, [trailScenes, trailPlaces]);
+
+  // What walk mode actually walks. The story trail is the richer answer — stops in
+  // PLOT order — but it needs every scene resolved to a place we hold, which is not
+  // true yet for any work. Walking between a film's real locations is useful on its
+  // own, so that is the fallback rather than showing nothing: the feature works today
+  // and gets better when the trail fills in.
+  const walkStops = useMemo(() => {
+    if (trailStopList.length > 0) return trailStopList;
+    return trailPlaces
+      .filter((place) => place.role === "on_location")
+      .map((place, index) => ({
+        id: place.id,
+        sequence_index: index + 1,
+        place: place.name,
+        position: [place.lat, place.lng],
+      }));
+  }, [trailStopList, trailPlaces]);
+
+  // One selected work, one trail — and it keys off the GRAPH layer's work id, not the
+  // live chips. Only a grounded work has scenes and a uuid; a live chip carries a
+  // Wikidata id or a synthetic slug, which /api/trail rightly refuses.
+  useEffect(() => {
+    if (!graphWorkId) { setTrailScenes([]); setTrailPlaces([]); return undefined; }
+
+    const controller = new AbortController();
+    (async () => {
+      try {
+        // The scenes give the story ORDER; the profile gives the places their
+        // coordinates. Neither invents one: the extractor has no coordinate field at
+        // all, so a scene becomes a stop only by matching a place we already hold.
+        // READS the scenes, never triggers extraction. /api/trail runs a model call
+        // and now requires the enrichment token, which a browser must never hold —
+        // the guard caught this the moment it went in. /api/scenes is the read side,
+        // and it is spoiler-safe by default: a withheld scene arrives with no
+        // coordinates at all, so it simply cannot become a stop.
+        const [trail, profile] = await Promise.all([
+          fetch(`/api/scenes?workId=${encodeURIComponent(graphWorkId)}`, { signal: controller.signal }),
+          fetch(`/api/work?id=${encodeURIComponent(graphWorkId)}`, { signal: controller.signal }),
+        ]);
+        const scenes = trail.ok ? (await trail.json()).scenes ?? [] : [];
+        const places = profile.ok ? (await profile.json()).places ?? [] : [];
+        setTrailScenes(Array.isArray(scenes) ? scenes : []);
+        setTrailPlaces(places.filter((place) => place.lat !== null && place.lng !== null));
+      } catch (error) {
+        // Most works have no trail extracted yet; that is an ordinary outcome.
+        if (error?.name !== "AbortError") { setTrailScenes([]); setTrailPlaces([]); }
+      }
+    })();
+    return () => controller.abort();
+  }, [graphWorkId]);
+
   const activeFilmFrames = activeLocation?.backdrop && activeLocation?.backdropVerified
     ? [{
         url: activeLocation.backdrop,
@@ -1828,7 +1904,20 @@ export default function SceneMapApp() {
               }}
             />
           )}
+          <StoryTrail
+            stops={trailStopList}
+            nextStopId={nextStopId}
+            onSelect={(stop) => setMapCenter(stop.position)}
+          />
         </MapContainer>
+
+        {/* Over the map, not inside the panel: a control you need while walking must
+            not live in a sheet you have to open first. */}
+        <WalkControls
+          stops={walkStops}
+          onNextStopChange={setNextStopId}
+          onNarrate={(stop) => setMapCenter(stop.position)}
+        />
       </section>
 
       <aside className={`command-panel${panelOpen ? " is-open" : ""}`} aria-label="Story selection">

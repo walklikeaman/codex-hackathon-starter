@@ -2845,3 +2845,128 @@ figcaption a {
 @media (max-width: 860px) {
   .place-scene-frame { width: 64px; height: 36px; }
 }
+
+/* --- walk mode + story trail ---------------------------------------------- */
+
+/* Over the map, never in the panel. Anchored to the bottom-left so it clears the
+   location sheet on the right and the panel handle below. */
+/* Centred over the map, because both sides are taken: the command panel owns the left
+   and the location sheet the right. Bottom-left put it underneath the panel. */
+.walk-controls {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  z-index: 1000;
+  max-width: min(340px, calc(100vw - 28px));
+}
+
+.walk-start,
+.walk-active {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-solid);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  color: var(--text);
+}
+
+.walk-start {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 44px minimum: this is tapped outdoors, one-handed, while moving. */
+  min-height: 44px;
+  padding: 0 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.walk-start:hover { border-color: var(--accent); color: var(--accent); }
+
+.walk-active { display: grid; gap: 6px; padding: 12px 14px; }
+.walk-active small { color: var(--muted); font-size: 0.76rem; }
+
+.walk-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.walk-stop {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.walk-stop:hover { color: var(--text); border-color: var(--accent); }
+
+/* The unlock prompt is a real button, sized to be hit while walking — it is the one
+   tap the whole hands-free promise depends on. */
+.walk-unlock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(247, 183, 51, 0.12);
+  color: var(--accent);
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.walk-armed { display: flex; align-items: center; gap: 6px; color: var(--accent) !important; }
+.walk-warning { color: #f0a05a !important; }
+.walk-safety { opacity: 0.75; }
+
+/* A numbered stop, not a pin. The number IS the information — position in the story —
+   and another pin shape would just repeat what the map already shows. */
+.trail-stop {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid #7cc4ff;
+  background: rgba(10, 16, 24, 0.92);
+  color: #cfe8ff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.trail-stop.is-next {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #1b1306;
+}
+
+@media (max-width: 860px) {
+  /* Above the collapsed sheet, which owns the bottom of a phone screen. */
+  /* On a phone the BOTTOM is contested by two things — the location sheet and the
+     collapsed command panel — and a floating control there lands on top of whichever
+     is open. The top of the map is the only free edge, so that is where it goes. */
+  .walk-controls {
+    top: calc(12px + env(safe-area-inset-top));
+    bottom: auto;
+    left: 12px;
+    right: 12px;
+    transform: none;
+    max-width: none;
+  }
+}
+
+/* Map fly-overs are motion; someone who asked for less should not get swooped. */
+@media (prefers-reduced-motion: reduce) {
+  .leaflet-fade-anim .leaflet-tile,
+  .leaflet-zoom-anim .leaflet-zoom-animated { transition: none !important; }
+}
