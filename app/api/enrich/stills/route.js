@@ -22,6 +22,7 @@ import {
   verdictRows,
 } from "../../../lib/still-classify.mjs";
 import { selectTmdbBackdrops, tmdbImageUrl } from "../../../lib/tmdb-images.mjs";
+import { enrichGuard } from "../../../lib/enrich-auth.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -117,6 +118,10 @@ export function createStillsEnrichHandler({
   logError = console.error,
 } = {}) {
   return async function POST(request) {
+    // Before anything is read, parsed, or paid for.
+    const refusal = enrichGuard(request, env);
+    if (refusal) return refusal;
+
     let body;
     try {
       body = await request.json();

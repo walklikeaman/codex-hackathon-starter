@@ -7,6 +7,7 @@ import {
   artworkUpdates,
   tmdbIdFromEntity,
 } from "../../../lib/work-artwork.mjs";
+import { enrichGuard } from "../../../lib/enrich-auth.mjs";
 
 export const runtime = "nodejs";
 
@@ -89,6 +90,10 @@ export function createArtworkEnrichHandler({
   const makeWriter = createWriter ?? (() => defaultCreateWriter(env));
 
   return async function POST(request) {
+    // Before anything is read, parsed, or paid for.
+    const refusal = enrichGuard(request, env);
+    if (refusal) return refusal;
+
     const tmdbToken = env.TMDB_API_READ_ACCESS_TOKEN;
     const tmdbKey = env.TMDB_API_KEY;
     if (!tmdbToken && !tmdbKey) return jsonError("TMDB is not configured", 503);

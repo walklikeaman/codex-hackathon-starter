@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { buildWikidataEntitiesUrl, isWikidataId } from "../../../lib/location-search.mjs";
 import { externalIdsFromEntity } from "../../../lib/work-artwork.mjs";
 import { ratingRows, ratingsFromOmdb } from "../../../lib/work-ratings.mjs";
+import { enrichGuard } from "../../../lib/enrich-auth.mjs";
 
 export const runtime = "nodejs";
 
@@ -87,6 +88,10 @@ export function createRatingsEnrichHandler({
   const makeWriter = createWriter ?? (() => defaultCreateWriter(env));
 
   return async function POST(request) {
+    // Before anything is read, parsed, or paid for.
+    const refusal = enrichGuard(request, env);
+    if (refusal) return refusal;
+
     const omdbKey = env.OMDB_API_KEY;
     if (!omdbKey) return jsonError("OMDb is not configured", 503);
 

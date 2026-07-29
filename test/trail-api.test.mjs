@@ -23,7 +23,7 @@ const parsedTrail = {
 function handlerWith(overrides = {}) {
   const calls = { generated: 0, saved: null };
   const handler = createTrailHandler({
-    env: { OPENAI_API_KEY: "k", ...overrides.env },
+    env: { ENRICH_TOKEN: "test-token", OPENAI_API_KEY: "k", ...overrides.env },
     createOpenAIClient: () => ({
       responses: {
         parse: async () => {
@@ -49,7 +49,7 @@ function handlerWith(overrides = {}) {
 const trailRequest = (body) =>
   new Request("http://localhost/api/trail", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-enrich-token": "test-token" },
     body: JSON.stringify(body),
   });
 

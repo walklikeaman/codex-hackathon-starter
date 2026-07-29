@@ -138,7 +138,7 @@ const PAIR = {
 function handlerWith(overrides = {}) {
   const calls = { saved: [], vision: 0 };
   const handler = createSceneMatchHandler({
-    env: { OPENAI_API_KEY: "k", NEXT_PUBLIC_SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "s", ...overrides.env },
+    env: { ENRICH_TOKEN: "test-token", OPENAI_API_KEY: "k", NEXT_PUBLIC_SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "s", ...overrides.env },
     createStore: overrides.createStore ?? (() => ({
       pendingPairs: async (limit) => { calls.limit = limit; return overrides.pairs ?? [PAIR]; },
       saveMatch: async (row) => {
@@ -175,7 +175,7 @@ function handlerWith(overrides = {}) {
 }
 
 const request = (body) => new Request("http://localhost/api/enrich/scene-match", {
-  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  method: "POST", headers: { "Content-Type": "application/json", "x-enrich-token": "test-token" }, body: JSON.stringify(body),
 });
 
 test("a confident match is stored with its evidence", async () => {

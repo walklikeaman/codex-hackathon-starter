@@ -11,6 +11,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 import { MAX_SEARCH_RADIUS_M, resolveBuildingSnap } from "../../lib/building-snap.mjs";
+import { enrichGuard } from "../../lib/enrich-auth.mjs";
 
 export const runtime = "nodejs";
 // Overpass calls are paced, so a batch takes real time.
@@ -100,6 +101,10 @@ export function createSnapHandler({
   logError = console.error,
 } = {}) {
   return async function POST(request) {
+    // Before anything is read, parsed, or paid for.
+    const refusal = enrichGuard(request, env);
+    if (refusal) return refusal;
+
     let body;
     try {
       body = await request.json();

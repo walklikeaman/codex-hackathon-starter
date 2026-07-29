@@ -7,6 +7,7 @@ import {
   storyTrailInstructions,
   storyTrailSchema,
 } from "../../lib/story-trail.mjs";
+import { enrichGuard } from "../../lib/enrich-auth.mjs";
 
 export const runtime = "nodejs";
 
@@ -78,6 +79,10 @@ export function createTrailHandler({
   const makeStore = createStore ?? (() => defaultCreateStore(env));
 
   return async function POST(request) {
+    // Before anything is read, parsed, or paid for.
+    const refusal = enrichGuard(request, env);
+    if (refusal) return refusal;
+
     const body = await request.json().catch(() => null);
     const workId = body?.work_id;
     if (!workId || !UUID.test(workId)) return jsonError("Provide a work_id", 400);

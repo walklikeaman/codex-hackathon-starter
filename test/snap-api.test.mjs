@@ -21,7 +21,7 @@ const SNAPPED = {
 function handlerWith(overrides = {}) {
   const calls = { resolved: [], saved: [], waited: [] };
   const handler = createSnapHandler({
-    env: { NEXT_PUBLIC_SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "k" },
+    env: { ENRICH_TOKEN: "test-token", NEXT_PUBLIC_SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "k" },
     createStore: overrides.createStore ?? (() => ({
       unsnapped: async (limit) => { calls.limit = limit; return overrides.places ?? [PLACE]; },
       loadPlace: async (id) => ("place" in overrides ? overrides.place : { ...PLACE, id }),
@@ -42,7 +42,7 @@ function handlerWith(overrides = {}) {
 
 const snapRequest = (body) =>
   new Request("http://localhost/api/snap", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    method: "POST", headers: { "Content-Type": "application/json", "x-enrich-token": "test-token" }, body: JSON.stringify(body),
   });
 
 test("a snapped place keeps the coordinate it came from", async () => {
@@ -194,7 +194,9 @@ test("without the service role the route says so instead of half-working", async
 
 test("a malformed body falls back to a default batch rather than failing", async () => {
   const { handler, calls } = handlerWith();
-  const request = new Request("http://localhost/api/snap", { method: "POST", body: "not json" });
+  const request = new Request("http://localhost/api/snap", {
+    method: "POST", headers: { "x-enrich-token": "test-token" }, body: "not json",
+  });
   assert.equal((await handler(request)).status, 200);
   assert.equal(calls.limit, DEFAULT_BATCH);
 });

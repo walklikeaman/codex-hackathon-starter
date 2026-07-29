@@ -126,7 +126,7 @@ const WORK = { id: "w1", title: "Skyfall", kind: "film", tmdb_id: "37724" };
 function handlerWith(overrides = {}) {
   const calls = { saved: [], vision: 0 };
   const handler = createStillsEnrichHandler({
-    env: { OPENAI_API_KEY: "k", NEXT_PUBLIC_SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "s",
+    env: { ENRICH_TOKEN: "test-token", OPENAI_API_KEY: "k", NEXT_PUBLIC_SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "s",
       TMDB_API_READ_ACCESS_TOKEN: "t", ...overrides.env },
     createStore: overrides.createStore ?? (() => ({
       pendingWorks: async (limit) => { calls.limit = limit; return overrides.works ?? [WORK]; },
@@ -164,7 +164,7 @@ function handlerWith(overrides = {}) {
 }
 
 const request = (body) => new Request("http://localhost/api/enrich/stills", {
-  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  method: "POST", headers: { "Content-Type": "application/json", "x-enrich-token": "test-token" }, body: JSON.stringify(body),
 });
 
 test("a gallery is judged once and both verdicts are kept", async () => {
@@ -281,7 +281,7 @@ test("one failed batch loses its own images, not the whole gallery", async () =>
   });
   // Rebuild with a client that fails the first batch only.
   const handler2 = createStillsEnrichHandler({
-    env: { OPENAI_API_KEY: "k", NEXT_PUBLIC_SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "s", TMDB_API_KEY: "t" },
+    env: { ENRICH_TOKEN: "test-token", OPENAI_API_KEY: "k", NEXT_PUBLIC_SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "s", TMDB_API_KEY: "t" },
     createStore: () => ({
       pendingWorks: async () => [WORK],
       loadWork: async () => WORK,
