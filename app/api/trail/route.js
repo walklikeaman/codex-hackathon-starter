@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import {
   normalizeTrail,
+  normalizeTrailPlace,
   storyTrailInstructions,
   storyTrailSchema,
 } from "../../lib/story-trail.mjs";
@@ -34,6 +35,36 @@ function defaultCreateStore(env) {
       if (error) throw new Error(`work load failed: ${error.message}`);
       return data;
     },
+    // The places we already hold for this work. Handed to the model so it picks a
+    // known place rather than naming one the story uses ("Notting Hill Bookshop"),
+    // which is right for a story and unmappable for us.
+    async workPlaces(workId) {
+      const { data, error } = await client
+        .from("work_place_links")
+        .select("place_id, places ( id, name, lat, lng )")
+        .eq("work_id", workId)
+        .is("scene_id", null);
+      if (error) throw new Error(`work places load failed: ${error.message}`);
+      return (data ?? [])
+        .map((row) => row.places)
+        .filter((place) => place && place.lat !== null && place.lng !== null);
+    },
+    // The scene→place edge. `work_place_links.scene_id` is where this belongs —
+    // the schema already modelled it, and the spoiler-safe RPC already reads it.
+    async linkScenes(workId, links) {
+      if (links.length === 0) return 0;
+      const { error } = await client.from("work_place_links").insert(
+        links.map((link) => ({
+          work_id: workId,
+          place_id: link.place_id,
+          scene_id: link.scene_id,
+          relation_kind: "narrative_location",
+          narrative_order: link.sequence_index,
+        })),
+      );
+      if (error) throw new Error(`scene link insert failed: ${error.message}`);
+      return links.length;
+    },
     // The cache IS the scenes table: if a work already has a trail, there is nothing
     // to extract and no model call to pay for.
     async existingScenes(workId) {
@@ -55,9 +86,9 @@ function defaultCreateStore(env) {
         spoiler_tier: scene.spoiler_tier,
         is_fictional_setting: scene.is_fictional_setting,
       }));
-      const { error } = await client.from("scenes").insert(rows);
+      const { data, error } = await client.from("scenes").insert(rows).select("id, sequence_index");
       if (error) throw new Error(`scenes insert failed: ${error.message}`);
-      return rows.length;
+      return data ?? [];
     },
   };
 }
@@ -103,13 +134,17 @@ export function createTrailHandler({
       if (!work) return jsonError("No such work", 404);
       if (!env.OPENAI_API_KEY) return jsonError("The OpenAI API key is not configured.", 503);
 
+      // The list the model must choose from. Loaded before the call, because grounding
+      // the extraction beats trying to match free-text place names afterwards.
+      const knownPlaces = await store.workPlaces(workId);
+
       const openai = createOpenAIClient(env.OPENAI_API_KEY);
       const response = await openai.responses.parse({
         model: env.OPENAI_MODEL || "gpt-5.6-terra",
         store: false,
         max_output_tokens: 1600,
         reasoning: { effort: "low" },
-        instructions: storyTrailInstructions(),
+        instructions: storyTrailInstructions(knownPlaces),
         input: [{
           role: "user",
           content: `Work: ${work.title}${work.year ? ` (${work.year})` : ""}. Kind: ${work.kind}.`,
@@ -132,8 +167,33 @@ export function createTrailHandler({
       }
 
       const saved = await store.saveScenes(workId, scenes);
+
+      // Link the scenes the model tied to a place we hold. `known_place` is only ever
+      // a KEY into our own list — a value that is not in it finds nothing and the
+      // scene simply has no place, which is a normal outcome.
+      const placeByKey = new Map(
+        knownPlaces.map((place) => [normalizeTrailPlace(place.name), place.id]),
+      );
+      const sceneIdByIndex = new Map(saved.map((row) => [row.sequence_index, row.id]));
+      const links = scenes
+        .map((scene) => ({
+          place_id: placeByKey.get(normalizeTrailPlace(scene.known_place)),
+          scene_id: sceneIdByIndex.get(scene.sequence_index),
+          sequence_index: scene.sequence_index,
+        }))
+        .filter((link) => link.place_id && link.scene_id);
+
+      let linked = 0;
+      try {
+        linked = await store.linkScenes(workId, links);
+      } catch (error) {
+        // The scenes are saved and useful on their own; a failed link is a missing
+        // pin, not a reason to lose the extraction.
+        logError("trail: scene linking failed", error);
+      }
+
       return Response.json(
-        { work_id: workId, cached: false, extracted: saved, scenes },
+        { work_id: workId, cached: false, extracted: saved.length, linked, scenes },
         { headers: noStoreHeaders },
       );
     } catch (error) {

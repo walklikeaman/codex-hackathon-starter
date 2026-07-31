@@ -19,6 +19,7 @@ const scene = (overrides = {}) => ({
   safe_teaser: "Where it begins",
   spoiler_tier: 1,
   is_fictional_setting: false,
+  known_place: null,
   ...overrides,
 });
 

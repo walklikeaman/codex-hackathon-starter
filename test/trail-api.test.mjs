@@ -26,7 +26,8 @@ function handlerWith(overrides = {}) {
     env: { ENRICH_TOKEN: "test-token", OPENAI_API_KEY: "k", ...overrides.env },
     createOpenAIClient: () => ({
       responses: {
-        parse: async () => {
+        parse: async (params) => {
+          calls.instructions = params.instructions;
           calls.generated += 1;
           return overrides.response ?? { status: "completed", output_parsed: parsedTrail };
         },
@@ -39,7 +40,16 @@ function handlerWith(overrides = {}) {
         ? overrides.work
         : { id: WORK, title: "Notting Hill", kind: "film", year: 1999 }),
       existingScenes: async () => overrides.existingScenes ?? [],
-      saveScenes: async (workId, scenes) => { calls.saved = scenes; return scenes.length; },
+      workPlaces: async () => overrides.places ?? [],
+      linkScenes: async (workId, links) => {
+        if (overrides.linkThrows) throw new Error("db down");
+        calls.linked = links;
+        return links.length;
+      },
+      saveScenes: async (workId, scenes) => {
+        calls.saved = scenes;
+        return scenes.map((scene, index) => ({ id: `s${index}`, sequence_index: scene.sequence_index }));
+      },
     })),
     logError: () => {},
   });
@@ -117,4 +127,73 @@ test("an unknown work is a 404, not an extraction", async () => {
 test("without the service role the route says so instead of half-working", async () => {
   const { handler } = handlerWith({ createStore: () => null });
   assert.equal((await handler(trailRequest({ work_id: WORK }))).status, 503);
+});
+
+// --- grounded extraction ---------------------------------------------------------
+
+const PLACES = [
+  { id: "p1", name: "Portobello Road Market", lat: 51.5156, lng: -0.2057 },
+  { id: "p2", name: "Leadenhall Market", lat: 51.5127, lng: -0.0835 },
+];
+
+test("the model is handed the places we already hold, and told null is fine", async () => {
+  // Without this it named places as the STORY does — "Notting Hill Bookshop" — which
+  // is right for a story and unmappable for us, and matching that afterwards would be
+  // guessing.
+  const { handler, calls } = handlerWith({ places: PLACES });
+  await handler(trailRequest({ work_id: WORK }));
+
+  assert.match(calls.instructions, /Portobello Road Market/);
+  assert.match(calls.instructions, /Leadenhall Market/);
+  assert.match(calls.instructions, /null is a normal/i);
+  assert.match(calls.instructions, /Never invent a value/i);
+});
+
+test("a scene tied to a known place gets linked to it", async () => {
+  const { handler, calls } = handlerWith({
+    places: PLACES,
+    response: { status: "completed", output_parsed: { scenes: [
+      { ...parsedTrail.scenes[0], known_place: "Portobello Road Market" },
+    ] } },
+  });
+  const body = await (await handler(trailRequest({ work_id: WORK }))).json();
+
+  assert.equal(body.linked, 1);
+  assert.equal(calls.linked[0].place_id, "p1");
+  assert.equal(calls.linked[0].scene_id, "s0");
+});
+
+test("a place the model invented links to nothing", async () => {
+  // `known_place` is only ever a KEY into our list; a value outside it finds nothing
+  // and the scene simply has no place, which is a normal outcome.
+  const { handler, calls } = handlerWith({
+    places: PLACES,
+    response: { status: "completed", output_parsed: { scenes: [
+      { ...parsedTrail.scenes[0], known_place: "The Bookshop That Never Was" },
+    ] } },
+  });
+  const body = await (await handler(trailRequest({ work_id: WORK }))).json();
+
+  assert.equal(body.linked, 0);
+  assert.deepEqual(calls.linked, []);
+});
+
+test("a failed link loses a pin, not the extraction", async () => {
+  const { handler, calls } = handlerWith({
+    places: PLACES, linkThrows: true,
+    response: { status: "completed", output_parsed: { scenes: [
+      { ...parsedTrail.scenes[0], known_place: "Portobello Road Market" },
+    ] } },
+  });
+  const body = await (await handler(trailRequest({ work_id: WORK }))).json();
+
+  assert.equal(body.extracted, 1);   // the scenes survived
+  assert.equal(body.linked, 0);
+  assert.ok(calls.saved.length > 0);
+});
+
+test("a work with no mapped places says so rather than listing nothing", async () => {
+  const { handler, calls } = handlerWith({ places: [] });
+  await handler(trailRequest({ work_id: WORK }));
+  assert.match(calls.instructions, /known_place must be null/i);
 });
