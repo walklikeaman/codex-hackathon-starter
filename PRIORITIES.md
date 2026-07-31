@@ -87,7 +87,7 @@ Ranked within tier; each notes the step that enables it.
 | ✅ | ~~63~~ | Scene-nearby GPS narration — **shipped and visible**: triggers wired to the on-map walk control | Step 5 | The audio-guide core loop |
 | ✅ | ~~64~~ | Walk mode (Wake Lock) — **shipped and visible** on the map, walking the work's real locations | — | Cheap enabler that makes geo-triggers actually work |
 | ✅ | ~~66~~ | TTS cache by content hash — **shipped**, replay verified free | — | Cheap; makes replays free — cost control before scaling audio |
-| 🟡 | 71 | Story-trail mode — **extraction + polyline shipped**; blocked on resolving scene place names to known places | Step 6 | The differentiator; needs `scenes` first |
+| ✅ | ~~71~~ | Story-trail mode — **shipped**: Skyfall walks Istanbul → London → National Gallery → Shanghai → Hashima → London, spoiler-free by default | Step 6 | The differentiator; needs `scenes` first |
 | ✅ | ~~72~~ | Spoiler shield — **shipped**, enforced in SQL | Step 6 | No competitor has it; small once trails exist |
 | ✅ | ~~45~~ | OSM building-footprint snap — **shipped**, live on production | Step 2 | House-level precision |
 | ★★★ | 47 | Wikipedia-prose AI enrichment (spike) | Step 1/2 | Big coverage expansion; `size-L` spike |
