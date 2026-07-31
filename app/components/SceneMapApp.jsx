@@ -1147,6 +1147,11 @@ export default function SceneMapApp() {
   // is a claim about ONE story's order, and overlaying two would be meaningless.
   const [trailScenes, setTrailScenes] = useState([]);
   const [trailPlaces, setTrailPlaces] = useState([]);
+  // Spoiler-free is the DEFAULT, never a setting someone has to find: with progress 0
+  // the server withholds each unreached scene's coordinates entirely, so the trail
+  // cannot leak the plot even by the shape of a line. Seeing it whole is an explicit,
+  // reversible choice.
+  const [trailSpoilers, setTrailSpoilers] = useState(false);
   const [nextStopId, setNextStopId] = useState(null);
 
   const visibleLocations = useMemo(
@@ -1224,7 +1229,7 @@ export default function SceneMapApp() {
         // and it is spoiler-safe by default: a withheld scene arrives with no
         // coordinates at all, so it simply cannot become a stop.
         const [trail, profile] = await Promise.all([
-          fetch(`/api/scenes?workId=${encodeURIComponent(graphWorkId)}`, { signal: controller.signal }),
+          fetch(`/api/scenes?workId=${encodeURIComponent(graphWorkId)}${trailSpoilers ? "&progress=9999" : ""}`, { signal: controller.signal }),
           fetch(`/api/work?id=${encodeURIComponent(graphWorkId)}`, { signal: controller.signal }),
         ]);
         const scenes = trail.ok ? (await trail.json()).scenes ?? [] : [];
@@ -1237,7 +1242,7 @@ export default function SceneMapApp() {
       }
     })();
     return () => controller.abort();
-  }, [graphWorkId]);
+  }, [graphWorkId, trailSpoilers]);
 
   const activeFilmFrames = activeLocation?.backdrop && activeLocation?.backdropVerified
     ? [{
@@ -1913,6 +1918,19 @@ export default function SceneMapApp() {
 
         {/* Over the map, not inside the panel: a control you need while walking must
             not live in a sheet you have to open first. */}
+        {/* Only offered when there IS a trail to reveal — an option that does nothing
+            is worse than no option. */}
+        {trailScenes.length > 0 && (
+          <label className="trail-spoilers">
+            <input
+              type="checkbox"
+              checked={trailSpoilers}
+              onChange={(event) => setTrailSpoilers(event.target.checked)}
+            />
+            <span>Show the whole story trail <small>reveals plot order</small></span>
+          </label>
+        )}
+
         <WalkControls
           stops={walkStops}
           onNextStopChange={setNextStopId}

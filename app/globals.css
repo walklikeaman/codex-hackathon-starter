@@ -2970,3 +2970,37 @@ figcaption a {
   .leaflet-fade-anim .leaflet-tile,
   .leaflet-zoom-anim .leaflet-zoom-animated { transition: none !important; }
 }
+
+/* The one control that trades spoiler safety for completeness. Sits with the walk
+   control on the map, and states its cost in the label rather than in a tooltip
+   nobody opens. */
+.trail-spoilers {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(78px + env(safe-area-inset-bottom));
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-solid);
+  color: var(--text);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.trail-spoilers small { display: block; color: var(--muted); font-size: 0.68rem; }
+.trail-spoilers input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+@media (max-width: 860px) {
+  /* Under the walk control, which owns the free top edge on a phone. */
+  .trail-spoilers {
+    top: calc(72px + env(safe-area-inset-top));
+    bottom: auto;
+  }
+}
