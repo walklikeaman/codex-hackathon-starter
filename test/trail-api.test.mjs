@@ -197,3 +197,28 @@ test("a work with no mapped places says so rather than listing nothing", async (
   await handler(trailRequest({ work_id: WORK }));
   assert.match(calls.instructions, /known_place must be null/i);
 });
+
+test("a scene whose own name matches ours links, even with known_place null", async () => {
+  // The model names places exactly as we do but leaves known_place null in almost
+  // every case. This is still an exact match into our own closed list — not fuzzy
+  // matching — so it recovers the link without loosening the rule.
+  const { handler, calls } = handlerWith({
+    places: PLACES,
+    response: { status: "completed", output_parsed: { scenes: [
+      { ...parsedTrail.scenes[0], place_name: "Leadenhall Market", known_place: null },
+    ] } },
+  });
+  const body = await (await handler(trailRequest({ work_id: WORK }))).json();
+  assert.equal(body.linked, 1);
+  assert.equal(calls.linked[0].place_id, "p2");
+});
+
+test("a name outside our list still links to nothing", async () => {
+  const { handler } = handlerWith({
+    places: PLACES,
+    response: { status: "completed", output_parsed: { scenes: [
+      { ...parsedTrail.scenes[0], place_name: "Diagon Alley", known_place: null },
+    ] } },
+  });
+  assert.equal((await (await handler(trailRequest({ work_id: WORK }))).json()).linked, 0);
+});

@@ -177,7 +177,14 @@ export function createTrailHandler({
       const sceneIdByIndex = new Map(saved.map((row) => [row.sequence_index, row.id]));
       const links = scenes
         .map((scene) => ({
-          place_id: placeByKey.get(normalizeTrailPlace(scene.known_place)),
+          // `known_place` first, then the scene's own name against the SAME closed
+          // list. Measured: the model names places exactly as we do — "National
+          // Gallery", "Hashima Island" — while leaving known_place null in 21 of 22
+          // cases. Both paths are an exact match into our own set, so "Diagon Alley"
+          // still links to nothing; this recovers real links without loosening
+          // anything into a guess.
+          place_id: placeByKey.get(normalizeTrailPlace(scene.known_place))
+            ?? placeByKey.get(normalizeTrailPlace(scene.place_name)),
           scene_id: sceneIdByIndex.get(scene.sequence_index),
           sequence_index: scene.sequence_index,
         }))
