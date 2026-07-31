@@ -7,6 +7,63 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-07-28] update | Write routes closed, walk mode surfaced, story trail joined up
+
+- **#120 — the write routes were open.** Six of them wrote to the database and spent
+  real money with no authentication, all holding the service-role key so RLS never
+  constrained them. Closed behind a token, verified on production: 401 without and
+  with a wrong token, 200 with the right one. Two properties matter more than the
+  mechanism — it **fails closed** (a missing token shuts the route, because "no
+  secret configured, so let everyone in" is how a guard silently stops guarding), and
+  the comparison is constant-time. The guard runs before the body is read, so an
+  unauthorised request costs zero model calls; the tests assert that with stores that
+  throw if reached.
+- **#114 turned out to be a decision, not a layout pass.** The rule: **features about
+  being outside live on the map, not in the panel.** The panel is for choosing what to
+  see; the map is for walking. That one sentence released #63 and #64, whose logic had
+  been written, tested and invisible for weeks because each new thing queued behind
+  "where does it go in the panel?".
+  * Placement then took two corrections, both the *same bug the issue was about*: a
+    floating control landing on a panel. Bottom-left sat under the command panel on
+    desktop; the phone bottom is contested by BOTH the location sheet and the collapsed
+    panel, so there it takes the top edge — the only free one.
+- **#71 — the blocker was never the UI.** The extractor named places as the STORY does
+  ("Notting Hill Bookshop", "William Thacker's flat"), which is right for a story and
+  unmappable for us. Fixed by handing the model the places we already hold and letting
+  it pick one **or none**.
+  * It named them correctly and then left `known_place` null in 21 of 22 cases — so the
+    link now also matches the scene's own name against the *same closed list*. Not
+    fuzzy matching smuggled back in: "Diagon Alley" and "Hogwarts" still find nothing.
+  * Backfilled the existing scenes in SQL rather than re-extracting — the names were
+    already ours, so paying the model again would have bought nothing.
+  * A schema constraint had to go: `(work_id, place_id, relation_kind)` unique forbade
+    Skyfall visiting London in scenes 2, 7 and 9. A plot that doubles back is exactly
+    what the dashed numbered line exists to show. Split into two partial indexes so
+    work-level uniqueness still holds.
+  * Result: Skyfall has a real 7-stop trail — Istanbul → London → National Gallery →
+    Shanghai → Hashima Island → London → London. Gaps at 5 and 8 are Macau and the
+    lodge, which we do not hold; only places we have become stops.
+  * The trail then drew ONE stop, and the spoiler shield was right: at progress 0 the
+    server withholds unreached scenes' coordinates entirely, so a plot cannot leak
+    through the shape of a line. Safety is only usable with a way out, so there is one
+    control that states its cost in the label. 1 stop → 7 on opt-in.
+
+### The worktree rewound again, and the test count caught it
+
+- Mid-session `git status` showed HEAD back at the commit this session STARTED from.
+  Everything since had vanished from the working copy, and the last half hour of edits
+  had been written against stale files — the `trail/route.js` in front of me had no
+  #120 guard in it.
+- **What caught it: the test count fell 588 → 388.** Exactly the signal that caught the
+  same failure once before (280 → 130). Nothing else looked wrong.
+- Nothing was lost: every commit had been pushed, so `origin/main` held all of it.
+  Recovery was stash → `reset --hard origin/main` → pop, then checking that BOTH the
+  guard and the new work survived the merge before trusting it.
+- Also: `git push` after the reset went to the branch, not main — the same rewind. Worth
+  checking `git branch --show-current` after any hard reset here.
+- Standing lesson: **a falling test count is the tripwire for this repo.** Run the whole
+  suite, not one file, and read the total.
+
 ## [2026-07-28] update | Film profile, verified frames, and a fabricated match
 
 - The film profile (#107, #110) shipped: poster, scores that link back to the page
