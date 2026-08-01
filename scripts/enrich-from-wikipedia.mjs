@@ -120,8 +120,18 @@ async function main() {
   const env = process.env;
   const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) {
-    console.error("NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
+  // Naming BOTH when only one is missing sends someone to check the variable that was
+  // already fine. Say which, and where it goes.
+  const missing = [
+    !supabaseUrl && "NEXT_PUBLIC_SUPABASE_URL",
+    !serviceKey && "SUPABASE_SERVICE_ROLE_KEY",
+  ].filter(Boolean);
+  if (missing.length > 0) {
+    console.error(`Missing: ${missing.join(", ")}`);
+    console.error("Add it to .env.local and run with:");
+    console.error("  node --env-file=.env.local scripts/enrich-from-wikipedia.mjs");
+    console.error("Edit the file in an editor rather than echoing the value —");
+    console.error("a secret typed into a shell stays in your history.");
     process.exit(1);
   }
   if (!env.OPENAI_API_KEY && !DRY_RUN) {
