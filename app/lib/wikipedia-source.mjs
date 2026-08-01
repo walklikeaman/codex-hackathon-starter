@@ -25,6 +25,18 @@ import { integerOrNull } from "./numbers.mjs";
 export const USER_AGENT =
   "GloryMap/1.0 (https://codex-hackathon-starter.vercel.app/; nakonechnyi.n@gmail.com) node-fetch/3";
 
+// How far behind a replica may be before we agree to be turned away.
+//
+// maxlag exists so that bots stop hammering the databases during trouble, and honouring
+// it is not optional. But five seconds — the value for a bot making EDITS — turns this
+// job away for a reason that protects nothing: we read article titles and sitelinks,
+// which change on the scale of years, so a replica eight seconds behind serves us data
+// that is byte-for-byte what a fresh one would. Measured live, routine lag sits around
+// 8s (x-database-lag: 8, retry-after: 5) and never clears at five.
+//
+// A real incident is minutes behind, not seconds, and this still backs off from that.
+export const MAX_DATABASE_LAG_SECONDS = 30;
+
 // 30% of the documented 200/min ceiling. The ceiling itself carries a "subject to
 // change" note, so it is deliberately not hardcoded as the target — and this job has
 // no deadline that justifies running near a limit.
@@ -59,7 +71,7 @@ export function buildEntitiesUrl(qids) {
   url.searchParams.set("sitefilter", "enwiki");
   url.searchParams.set("format", "json");
   url.searchParams.set("formatversion", "2");
-  url.searchParams.set("maxlag", "5");
+  url.searchParams.set("maxlag", String(MAX_DATABASE_LAG_SECONDS));
   return url.toString();
 }
 
@@ -82,7 +94,7 @@ export function buildTocUrl(title) {
   url.searchParams.set("redirects", "1");
   url.searchParams.set("format", "json");
   url.searchParams.set("formatversion", "2");
-  url.searchParams.set("maxlag", "5");
+  url.searchParams.set("maxlag", String(MAX_DATABASE_LAG_SECONDS));
   return url.toString();
 }
 
@@ -97,7 +109,7 @@ export function buildSectionUrl(title, index) {
   url.searchParams.set("redirects", "1");
   url.searchParams.set("format", "json");
   url.searchParams.set("formatversion", "2");
-  url.searchParams.set("maxlag", "5");
+  url.searchParams.set("maxlag", String(MAX_DATABASE_LAG_SECONDS));
   return url.toString();
 }
 
@@ -133,6 +145,31 @@ export function apiError(payload) {
   if (!error) return null;
   return error.code ? `${error.code}: ${error.info ?? ""}`.trim() : "unknown api error";
 }
+
+// Not every 200-with-an-error-body means the same thing, and treating them alike threw
+// away a whole enrichment run over eight seconds of replica lag.
+//
+//   * missingtitle, invalidtitle — permanent. The page does not exist; asking again
+//     produces the same answer, so the work is skipped.
+//   * maxlag, readonly, ratelimited — temporary, and in the maxlag case it is the API
+//     answering the politeness WE asked for: we send maxlag ourselves, so being told a
+//     replica is behind is the signal to come back shortly, not a failure.
+const RETRYABLE_API_ERRORS = new Set(["maxlag", "readonly", "ratelimited"]);
+
+export function isRetryableApiError(payload) {
+  const code = payload?.error?.code;
+  return typeof code === "string" && RETRYABLE_API_ERRORS.has(code);
+}
+
+// How long to wait, taken from the response rather than guessed. Wikimedia sends
+// Retry-After with a maxlag breach and with 429/503, and it is the source of truth.
+export function retryAfterMs(response, fallbackMs = 5000) {
+  const header = Number(response?.headers?.get?.("retry-after"));
+  return Number.isFinite(header) && header > 0 ? header * 1000 : fallbackMs;
+}
+
+// A bound, so a service that is lagged indefinitely fails loudly instead of looping.
+export const MAX_RETRY_ATTEMPTS = 5;
 
 // --- text ---------------------------------------------------------------------
 

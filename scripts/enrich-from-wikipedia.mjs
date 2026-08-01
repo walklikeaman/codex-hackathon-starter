@@ -26,7 +26,10 @@ import {
   buildTocUrl,
   chooseSection,
   cleanWikitext,
+  isRetryableApiError,
+  MAX_RETRY_ATTEMPTS,
   MIN_REQUEST_GAP_MS,
+  retryAfterMs,
   USER_AGENT,
   wikipediaAttribution,
 } from "../app/lib/wikipedia-source.mjs";
@@ -36,17 +39,8 @@ import {
   extractionInstructions,
   wikipediaLocationsSchema,
 } from "../app/lib/wikipedia-extract.mjs";
-import {
-  buildGeocodeQuery,
-  chooseCandidate,
-  groupByName,
-  MAX_NAMES_PER_QUERY,
-  QUERY_GAP_MS,
-  retryPlan,
-  WIKIDATA_LICENSE,
-  WIKIDATA_SPARQL,
-} from "../app/lib/geocode-wikidata.mjs";
-import { normalizePlaceName } from "../app/lib/place-dedup.mjs";
+import { WIKIDATA_LICENSE } from "../app/lib/geocode-wikidata.mjs";
+import { createGeocoder } from "../app/lib/geocode-client.mjs";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -60,61 +54,42 @@ const ONE_WORK = arg("work", null);
 
 const headers = { "User-Agent": USER_AGENT, "Accept-Encoding": "gzip" };
 
-async function wikimedia(url) {
+async function wikimedia(url, attempt = 1) {
   const response = await fetch(url, { headers });
   // 429/503 carry Retry-After and it is the source of truth, not a guess of ours.
-  if (response.status === 429 || response.status === 503) {
-    const wait = (Number(response.headers.get("retry-after")) || 60) * 1000;
+  if ((response.status === 429 || response.status === 503) && attempt <= MAX_RETRY_ATTEMPTS) {
+    const wait = retryAfterMs(response, 60_000);
     console.log(`   waiting ${wait / 1000}s (${response.status})`);
     await sleep(wait);
-    return wikimedia(url);
+    return wikimedia(url, attempt + 1);
   }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const payload = await response.json();
-  // Wikimedia answers a missing page with 200 and an error body.
+
+  // Wikimedia answers BOTH a missing page and a lagged replica with 200 and an error
+  // body, and only one of them is worth asking about again. We send maxlag=5 on every
+  // request, so being told the replicas are behind is the API honouring that — not a
+  // failure, and certainly not a reason to abandon the run.
+  if (isRetryableApiError(payload) && attempt <= MAX_RETRY_ATTEMPTS) {
+    // Retry-After is a floor, not a promise. Repeating it unchanged against a lag that
+    // is not moving just asks the same question five times; each attempt waits longer.
+    const wait = retryAfterMs(response) * attempt;
+    console.log(`   ${apiError(payload)} — retrying in ${wait / 1000}s`);
+    await sleep(wait);
+    return wikimedia(url, attempt + 1);
+  }
+
   const error = apiError(payload);
   if (error) throw new Error(error);
   await sleep(MIN_REQUEST_GAP_MS);
   return payload;
 }
 
-// Geocode a batch of names through Wikidata. Anything it refuses stays without a
-// coordinate rather than being guessed at — the submission is still a real claim.
-async function geocode(names) {
-  const resolved = new Map();
-  const batches = [];
-  for (let i = 0; i < names.length; i += MAX_NAMES_PER_QUERY) {
-    batches.push(names.slice(i, i + MAX_NAMES_PER_QUERY));
-  }
-
-  for (const batch of batches) {
-    const query = buildGeocodeQuery(batch);
-    if (!query) continue;
-
-    const response = await fetch(WIKIDATA_SPARQL, {
-      method: "POST",
-      headers: { ...headers, Accept: "application/sparql-results+json",
-        "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ query }),
-    });
-
-    if (!response.ok) {
-      // A timeout and a rate limit mean opposite things; the plan says which.
-      const plan = retryPlan(response.status);
-      console.log(`   geocoder ${response.status} → ${plan.action}`);
-      await sleep(plan.waitMs);
-      continue;
-    }
-
-    const grouped = groupByName((await response.json()).results?.bindings);
-    for (const name of batch) {
-      const chosen = chooseCandidate(grouped.get(normalizePlaceName(name)) ?? []);
-      resolved.set(name, chosen);
-    }
-    await sleep(QUERY_GAP_MS);
-  }
-  return resolved;
-}
+// The same geocoder the discovery route uses. Two implementations of "turn a name into
+// a point" would drift, and the one that drifted would be the one inventing coordinates.
+// Anything it refuses stays without a coordinate rather than being guessed at — the
+// submission is still a real claim.
+const geocode = createGeocoder({ onNote: (note) => console.log(`   ${note}`) });
 
 async function main() {
   const env = process.env;

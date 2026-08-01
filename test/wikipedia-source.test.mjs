@@ -3,6 +3,10 @@ import test from "node:test";
 
 import {
   apiError,
+  isRetryableApiError,
+  MAX_DATABASE_LAG_SECONDS,
+  MAX_RETRY_ATTEMPTS,
+  retryAfterMs,
   articleTitleFromEntity,
   buildEntitiesUrl,
   buildSectionUrl,
@@ -39,7 +43,7 @@ test("the pace is well under the documented ceiling", () => {
 test("entity lookups respect the API's own batch ceiling", () => {
   assert.match(buildEntitiesUrl(["Q1", "Q2"]), /ids=Q1%7CQ2/);
   assert.match(buildEntitiesUrl(["Q1"]), /sitefilter=enwiki/);
-  assert.match(buildEntitiesUrl(["Q1"]), /maxlag=5/);
+  assert.match(buildEntitiesUrl(["Q1"]), /maxlag=/);
   assert.equal(buildEntitiesUrl(Array.from({ length: 51 }, (_, i) => `Q${i + 1}`)), null);
   assert.equal(buildEntitiesUrl(["not-a-qid"]), null);
   assert.equal(buildEntitiesUrl([]), null);
@@ -191,4 +195,51 @@ test("a trimmed quote says so", () => {
 
 test("no title means no attribution, and therefore nothing to publish", () => {
   assert.equal(wikipediaAttribution({ title: null, revid: 1 }), null);
+});
+
+// --- a lagged replica is not a missing page -------------------------------------------
+
+test("a temporary failure and a permanent one are told apart", () => {
+  // Both arrive as HTTP 200 with an error body. Treating them alike abandoned a whole
+  // enrichment run because a Wikimedia replica was eight seconds behind.
+  assert.equal(isRetryableApiError({ error: { code: "maxlag", info: "Waiting for wdqs1013" } }), true);
+  assert.equal(isRetryableApiError({ error: { code: "readonly" } }), true);
+  assert.equal(isRetryableApiError({ error: { code: "ratelimited" } }), true);
+
+  assert.equal(isRetryableApiError({ error: { code: "missingtitle" } }), false);
+  assert.equal(isRetryableApiError({ error: { code: "invalidtitle" } }), false);
+  assert.equal(isRetryableApiError({}), false);
+  assert.equal(isRetryableApiError(null), false);
+});
+
+test("we ask for maxlag, so we must be able to honour the answer", () => {
+  // Sending maxlag and then treating the reply as fatal is asking a question and
+  // punishing the service for answering it.
+  for (const url of [buildTocUrl("Skyfall"), buildSectionUrl("Skyfall", "8"), buildEntitiesUrl(["Q4941"])]) {
+    assert.match(url, new RegExp(`maxlag=${MAX_DATABASE_LAG_SECONDS}`));
+  }
+  assert.equal(isRetryableApiError({ error: { code: "maxlag" } }), true);
+});
+
+test("the lag threshold reflects a read job, and still backs off from an incident", () => {
+  // Five seconds is the value for a bot making EDITS, and measured live the routine lag
+  // sits at 8 — so five turned this job away for a staleness that cannot affect it.
+  // A real incident runs to minutes, which this still refuses.
+  assert.ok(MAX_DATABASE_LAG_SECONDS > 8);
+  assert.ok(MAX_DATABASE_LAG_SECONDS <= 60);
+});
+
+test("the wait comes from the response, not from a guess", () => {
+  const withHeader = { headers: { get: (name) => (name === "retry-after" ? "12" : null) } };
+  assert.equal(retryAfterMs(withHeader), 12_000);
+
+  // No header, a nonsensical one, or none at all still yields a real delay rather than
+  // a tight loop.
+  assert.equal(retryAfterMs({ headers: { get: () => null } }), 5000);
+  assert.equal(retryAfterMs({ headers: { get: () => "soon" } }), 5000);
+  assert.equal(retryAfterMs(null, 60_000), 60_000);
+});
+
+test("retrying is bounded, so an indefinitely lagged service fails loudly", () => {
+  assert.ok(MAX_RETRY_ATTEMPTS >= 3 && MAX_RETRY_ATTEMPTS <= 10);
 });
