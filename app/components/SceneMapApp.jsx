@@ -48,7 +48,7 @@ import {
 import StoryTrail from "./StoryTrail.jsx";
 import WalkControls from "./WalkControls.jsx";
 import WorkProfile from "./WorkProfile.jsx";
-import { trailStops } from "../lib/story-trail.mjs";
+import { isWalkableStop, trailStops } from "../lib/story-trail.mjs";
 import { normalizePlaceName } from "../lib/place-dedup.mjs";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
 import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
@@ -1200,7 +1200,10 @@ export default function SceneMapApp() {
   // own, so that is the fallback rather than showing nothing: the feature works today
   // and gets better when the trail fills in.
   const walkStops = useMemo(() => {
-    if (trailStopList.length > 0) return trailStopList;
+    // Only somewhere you can walk TO. Routing a walker to a city centroid would send
+    // them to an arbitrary point that no scene happened at.
+    const walkable = trailStopList.filter(isWalkableStop);
+    if (walkable.length > 0) return walkable;
     return trailPlaces
       .filter((place) => place.role === "on_location")
       .map((place, index) => ({

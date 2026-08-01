@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isWalkableStop,
   MAX_TRAIL_STOPS,
   normalizeTrail,
   storyTrailInstructions,
@@ -156,4 +157,47 @@ test("the trail length is bounded", () => {
   });
   assert.equal(storyTrailSchema.safeParse(scenes(MAX_TRAIL_STOPS)).success, true);
   assert.equal(storyTrailSchema.safeParse(scenes(MAX_TRAIL_STOPS + 1)).success, false);
+});
+
+// --- a stop must be somewhere you can stand ------------------------------------
+
+test("a city is not a stop you can walk to", () => {
+  // "Istanbul" is a centroid in a database. A numbered pin there says "come to this
+  // spot" about a place that has no spot — the film was shot SOMEWHERE in that city
+  // and we do not know where.
+  assert.equal(isWalkableStop({ geocode_precision: "city" }), false);
+  assert.equal(isWalkableStop({ geocode_precision: "country" }), false);
+  assert.equal(isWalkableStop({ geocode_precision: "region" }), false);
+});
+
+test("a point, a street or a building is somewhere you can stand", () => {
+  assert.equal(isWalkableStop({ geocode_precision: "point" }), true);
+  assert.equal(isWalkableStop({ geocode_precision: "street" }), true);
+  assert.equal(isWalkableStop({ geocode_precision: "building" }), true);
+});
+
+test("a snapped footprint outranks whatever precision it inherited", () => {
+  // The same rule the precision badge uses: an OSM footprint is stronger evidence
+  // than the string the geocoder left behind.
+  assert.equal(isWalkableStop({ geocode_precision: "city", osm_building_id: "way/1" }), true);
+});
+
+test("unknown precision is not walkable — the cautious direction", () => {
+  assert.equal(isWalkableStop({}), false);
+  assert.equal(isWalkableStop(null), false);
+});
+
+test("precision travels with the stop, so the map can tell them apart", () => {
+  const places = new Map([
+    ["istanbul", { id: "p1", name: "Istanbul", lat: 41, lng: 28.9, geocode_precision: "city" }],
+    ["national gallery", { id: "p2", name: "National Gallery", lat: 51.5, lng: -0.12, geocode_precision: "point" }],
+  ]);
+  const stops = trailStops([
+    { sequence_index: 1, known_place: "Istanbul", place_norm: "istanbul", is_fictional_setting: false, spoiler_tier: 1 },
+    { sequence_index: 2, known_place: "National Gallery", place_norm: "national gallery", is_fictional_setting: false, spoiler_tier: 1 },
+  ], places);
+
+  assert.equal(stops.length, 2, "an area is still a real fact about the story");
+  assert.equal(isWalkableStop(stops[0]), false);
+  assert.equal(isWalkableStop(stops[1]), true);
 });

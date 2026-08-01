@@ -3004,3 +3004,14 @@ figcaption a {
     bottom: auto;
   }
 }
+
+/* An area, not a stop. Hollow and marked "~" because the film was shot somewhere in
+   that city and we do not know where — a solid numbered pin would claim a spot that
+   does not exist. */
+.trail-stop.is-area {
+  border-style: dashed;
+  border-color: rgba(124, 196, 255, 0.55);
+  background: transparent;
+  color: rgba(207, 232, 255, 0.75);
+  font-weight: 500;
+}

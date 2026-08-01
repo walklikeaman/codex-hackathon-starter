@@ -71,6 +71,10 @@ export function shapeScenes(rows, progress) {
       place_name: row.place_name ?? null,
       lat: finiteOrNull(row.lat),
       lng: finiteOrNull(row.lng),
+      // Carried so the trail can tell a spot you can stand on from an area you can
+      // only be inside. Withheld with everything else for an unreached scene.
+      geocode_precision: row.geocode_precision ?? null,
+      osm_building_id: row.osm_building_id ?? null,
       label: row.act_or_chapter ?? sequenceLabel(row.sequence_index),
     };
   });

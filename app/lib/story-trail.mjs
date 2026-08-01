@@ -119,6 +119,18 @@ export function normalizeTrail(parsed) {
 
 // Which stops can be drawn. A fictional setting is listed but never placed on the map,
 // and a scene whose place could not be resolved is simply not a stop yet.
+// Precisions you can actually walk to. A city or a country centroid is a point in a
+// database, not a place to stand — a numbered pin there says "come to this spot"
+// about somewhere that has no spot. Those are still real facts about the story, so
+// they are kept and labelled as AREAS rather than dropped.
+const WALKABLE_PRECISION = new Set(["point", "building", "street"]);
+
+export function isWalkableStop(stop) {
+  if (!stop) return false;
+  if (stop.osm_building_id) return true;
+  return WALKABLE_PRECISION.has(String(stop.geocode_precision ?? "").toLowerCase());
+}
+
 export function trailStops(scenes, placeByNorm) {
   const resolved = placeByNorm instanceof Map ? placeByNorm : new Map(Object.entries(placeByNorm ?? {}));
   const stops = [];
@@ -142,6 +154,8 @@ export function trailStops(scenes, placeByNorm) {
       place: place.name ?? scene.place_name,
       position: [lat, lng],
       spoiler_tier: scene.spoiler_tier,
+      geocode_precision: place.geocode_precision ?? null,
+      osm_building_id: place.osm_building_id ?? null,
     });
   }
   return stops;

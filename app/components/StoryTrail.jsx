@@ -20,14 +20,19 @@
 import { Marker, Polyline, Tooltip } from "react-leaflet";
 import L from "leaflet";
 
-import { trailPath } from "../lib/story-trail.mjs";
+import { isWalkableStop, trailPath } from "../lib/story-trail.mjs";
 
 // Numbers, not pins: the position in the story IS the information here, and a marker
 // that merely repeats "a place" adds nothing next to the pins already on the map.
-function stopIcon(index, isNext) {
+function stopIcon(index, { isNext, walkable }) {
+  // An area gets a different mark on purpose. A numbered pin says "stand here", and
+  // for a city centroid there is no here — the film was shot somewhere in that city,
+  // and we do not know where. Saying that plainly is the whole product.
+  const classes = ["trail-stop", isNext ? "is-next" : "", walkable ? "" : "is-area"]
+    .filter(Boolean).join(" ");
   return L.divIcon({
     className: "",
-    html: `<span class="trail-stop${isNext ? " is-next" : ""}">${index}</span>`,
+    html: `<span class="${classes}">${walkable ? index : "~"}</span>`,
     iconSize: [26, 26],
     iconAnchor: [13, 13],
   });
@@ -57,14 +62,19 @@ export default function StoryTrail({ stops, nextStopId = null, onSelect }) {
         <Marker
           key={stop.id}
           position={stop.position}
-          icon={stopIcon(stop.sequence_index, stop.id === nextStopId)}
+          icon={stopIcon(stop.sequence_index, {
+            isNext: stop.id === nextStopId,
+            walkable: isWalkableStop(stop),
+          })}
           eventHandlers={onSelect ? { click: () => onSelect(stop) } : undefined}
         >
           {/* The place name only. The plot beat is withheld here on purpose — the
               spoiler shield decides what a reader has earned, and a map tooltip is
               not the place to quietly bypass it. */}
           <Tooltip direction="top" offset={[0, -12]}>
-            {stop.sequence_index}. {stop.place}
+            {isWalkableStop(stop)
+              ? `${stop.sequence_index}. ${stop.place}`
+              : `${stop.sequence_index}. Somewhere in ${stop.place} — exact spot unknown`}
           </Tooltip>
         </Marker>
       ))}
