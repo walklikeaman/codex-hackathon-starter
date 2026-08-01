@@ -1788,6 +1788,9 @@ export default function SceneMapApp() {
             place: location.place,
             lat: location.position[0],
             lng: location.position[1],
+            // The entity id, so a place found by both routes is recognised as one place
+            // however differently the two sources spelled its name.
+            wikidataId: location.locationId ?? null,
           })),
         }),
       });
@@ -1811,9 +1814,17 @@ export default function SceneMapApp() {
         if (!duplicate) merged.push(location);
       }
       applyLocationResults(merged);
-      setLocationsStatus(merged.length > nextLocations.length
+      // Places the research named but could not pin down. Saying so is the difference
+      // between "found one" and "found three, could place one" — only one is true, and
+      // silence here reads as the wrong one.
+      const unplaced = Array.isArray(discovery.unplaced) ? discovery.unplaced.length : 0;
+      const unplacedNote = unplaced
+        ? ` ${unplaced} more ${unplaced === 1 ? "was" : "were"} named without a precise enough location to map.`
+        : "";
+      setLocationsStatus((merged.length > nextLocations.length
         ? `${merged.length} sourced places for ${matchedTitle}: Wikidata plus cited web research.`
-        : `${nextLocations.length || "No"} verified places for ${matchedTitle}; no additional sourced places were found.`);
+        : `${nextLocations.length || "No"} verified places for ${matchedTitle}; no additional sourced places were found.`)
+        + unplacedNote);
     } catch (error) {
       if (requestId !== locationRequestId.current) return;
       setLocationsStatus(error instanceof Error ? error.message : "Location search failed");
