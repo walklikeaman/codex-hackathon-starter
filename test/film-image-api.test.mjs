@@ -174,6 +174,7 @@ test("film image API rejects an unverified film-location pair before paid matchi
     env: {
       TMDB_API_READ_ACCESS_TOKEN: "tmdb-test-token",
       OPENAI_API_KEY: "openai-test-key",
+      SCENE_MATCH_SIGNING_SECRET: "openai-test-key",
     },
     fetchImpl: upstreamFetch({ bindings: [] }),
     allowRequest: () => true,

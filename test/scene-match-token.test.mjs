@@ -35,12 +35,18 @@ test("rejects signing malformed ids or an empty secret", () => {
   assert.equal(verifySceneMatchToken(request, "invalid", "test-secret"), false);
 });
 
-test("uses an explicit signing secret before the OpenAI key", () => {
+test("the signing secret is explicit, with no fallback to an API key", () => {
+  // It used to fall back to OPENAI_API_KEY. Rotating or removing that key — exactly
+  // what switching model providers involves — then changed the signing secret and
+  // invalidated every token already stamped onto a location, surfacing as a 403 on a
+  // page the user already had open.
   assert.equal(sceneMatchSigningSecret({
     SCENE_MATCH_SIGNING_SECRET: "dedicated-secret",
     OPENAI_API_KEY: "openai-key",
   }), "dedicated-secret");
-  assert.equal(sceneMatchSigningSecret({ OPENAI_API_KEY: "openai-key" }), "openai-key");
+  assert.equal(sceneMatchSigningSecret({ OPENAI_API_KEY: "openai-key" }), null);
+  assert.equal(sceneMatchSigningSecret({ SCENE_MATCH_SIGNING_SECRET: "   " }), null);
+  assert.equal(sceneMatchSigningSecret({}), null);
 });
 
 test("adds capabilities only to canonical film records returned by the server", () => {
@@ -53,7 +59,7 @@ test("adds capabilities only to canonical film records returned by the server", 
   const series = { ...film, kind: "series" };
   const [signedFilm, unsignedSeries] = addSceneMatchTokens(
     [film, series],
-    { OPENAI_API_KEY: "openai-key" },
+    { SCENE_MATCH_SIGNING_SECRET: "openai-key" },
   );
 
   assert.equal(

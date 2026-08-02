@@ -10,8 +10,16 @@ function sceneMatchPayload({ tmdbId, workId, locationId }) {
   return `v1:${tmdbId}:${workId}:${locationId}`;
 }
 
+// One explicit secret, with no fallback to an API key.
+//
+// It used to fall back to OPENAI_API_KEY, which quietly coupled two unrelated things:
+// rotating or removing that key — exactly what switching model providers involves —
+// changed the signing secret, invalidating every token already stamped onto a
+// location. The user's symptom is a 403 on a page they already have open, with nothing
+// in the deploy that looks related.
 export function sceneMatchSigningSecret(env = process.env) {
-  return env.SCENE_MATCH_SIGNING_SECRET || env.OPENAI_API_KEY || null;
+  const secret = env.SCENE_MATCH_SIGNING_SECRET;
+  return typeof secret === "string" && secret.trim() ? secret : null;
 }
 
 export function signSceneMatchRequest(request, secret) {
