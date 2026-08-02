@@ -10,28 +10,37 @@ const parsedTrail = {
     {
       sequence_index: 1, place_name: "Trafalgar Square", geo_hint: "London",
       plot_beat: "They meet under the column.", safe_teaser: "Where it begins",
-      spoiler_tier: 1, is_fictional_setting: false,
+      spoiler_tier: 1, is_fictional_setting: false, known_place: null,
     },
     {
       sequence_index: 2, place_name: "Hogwarts", geo_hint: "",
       plot_beat: "The letter arrives.", safe_teaser: "A journey starts",
-      spoiler_tier: 3, is_fictional_setting: true,
+      spoiler_tier: 3, is_fictional_setting: true, known_place: null,
     },
   ],
 };
+
+// What the model layer actually returns now: a chat completion whose content is the
+// JSON, validated against the real schema on the way through. The old harness handed
+// back `output_parsed` and so never exercised the schema at all — which is how a
+// fixture missing a required field passed for weeks.
+const modelReply = (parsed) => ({
+  choices: [{ finish_reason: "stop", message: { content: JSON.stringify(parsed) } }],
+});
 
 function handlerWith(overrides = {}) {
   const calls = { generated: 0, saved: null };
   const handler = createTrailHandler({
     env: { ENRICH_TOKEN: "test-token", OPENAI_API_KEY: "k", ...overrides.env },
-    createOpenAIClient: () => ({
-      responses: {
-        parse: async (params) => {
-          calls.instructions = params.instructions;
-          calls.generated += 1;
-          return overrides.response ?? { status: "completed", output_parsed: parsedTrail };
-        },
-      },
+    createRuntime: () => ("runtime" in overrides ? overrides.runtime : {
+      provider: "openrouter", tier: "cheap", model: "free-model", extraBody: {},
+      client: { chat: { completions: { create: async (body) => {
+        calls.instructions = body.messages[0].content;
+        calls.generated += 1;
+        return overrides.response ?? {
+          choices: [{ finish_reason: "stop", message: { content: JSON.stringify(parsedTrail) } }],
+        };
+      } } } },
     }),
     createStore: overrides.createStore ?? (() => ({
       // `??` cannot tell "not supplied" from "deliberately null", which is exactly
@@ -92,7 +101,7 @@ test("a first extraction saves the scenes for next time", async () => {
 test("an empty extraction is an honest answer, not a cached trail", async () => {
   // Caching "nothing" would permanently mark a work as having no story.
   const { handler, calls } = handlerWith({
-    response: { status: "completed", output_parsed: { scenes: [] } },
+    response: modelReply({ scenes: [] }),
   });
   const body = await (await handler(trailRequest({ work_id: WORK }))).json();
 
@@ -103,7 +112,7 @@ test("an empty extraction is an honest answer, not a cached trail", async () => 
 
 test("a refused or truncated response fails loudly rather than saving junk", async () => {
   const { handler, calls } = handlerWith({
-    response: { status: "incomplete", output_parsed: null },
+    response: { choices: [{ finish_reason: "length", message: { content: "{" } }] },
   });
   const response = await handler(trailRequest({ work_id: WORK }));
   assert.equal(response.status, 502);
@@ -152,9 +161,9 @@ test("the model is handed the places we already hold, and told null is fine", as
 test("a scene tied to a known place gets linked to it", async () => {
   const { handler, calls } = handlerWith({
     places: PLACES,
-    response: { status: "completed", output_parsed: { scenes: [
+    response: modelReply({ scenes: [
       { ...parsedTrail.scenes[0], known_place: "Portobello Road Market" },
-    ] } },
+    ] }),
   });
   const body = await (await handler(trailRequest({ work_id: WORK }))).json();
 
@@ -168,9 +177,9 @@ test("a place the model invented links to nothing", async () => {
   // and the scene simply has no place, which is a normal outcome.
   const { handler, calls } = handlerWith({
     places: PLACES,
-    response: { status: "completed", output_parsed: { scenes: [
+    response: modelReply({ scenes: [
       { ...parsedTrail.scenes[0], known_place: "The Bookshop That Never Was" },
-    ] } },
+    ] }),
   });
   const body = await (await handler(trailRequest({ work_id: WORK }))).json();
 
@@ -181,9 +190,9 @@ test("a place the model invented links to nothing", async () => {
 test("a failed link loses a pin, not the extraction", async () => {
   const { handler, calls } = handlerWith({
     places: PLACES, linkThrows: true,
-    response: { status: "completed", output_parsed: { scenes: [
+    response: modelReply({ scenes: [
       { ...parsedTrail.scenes[0], known_place: "Portobello Road Market" },
-    ] } },
+    ] }),
   });
   const body = await (await handler(trailRequest({ work_id: WORK }))).json();
 
@@ -204,9 +213,9 @@ test("a scene whose own name matches ours links, even with known_place null", as
   // matching — so it recovers the link without loosening the rule.
   const { handler, calls } = handlerWith({
     places: PLACES,
-    response: { status: "completed", output_parsed: { scenes: [
+    response: modelReply({ scenes: [
       { ...parsedTrail.scenes[0], place_name: "Leadenhall Market", known_place: null },
-    ] } },
+    ] }),
   });
   const body = await (await handler(trailRequest({ work_id: WORK }))).json();
   assert.equal(body.linked, 1);
@@ -216,9 +225,9 @@ test("a scene whose own name matches ours links, even with known_place null", as
 test("a name outside our list still links to nothing", async () => {
   const { handler } = handlerWith({
     places: PLACES,
-    response: { status: "completed", output_parsed: { scenes: [
+    response: modelReply({ scenes: [
       { ...parsedTrail.scenes[0], place_name: "Diagon Alley", known_place: null },
-    ] } },
+    ] }),
   });
   assert.equal((await (await handler(trailRequest({ work_id: WORK }))).json()).linked, 0);
 });

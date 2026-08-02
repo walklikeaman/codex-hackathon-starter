@@ -38,7 +38,28 @@ const APP_HEADERS = {
   "X-Title": "GloryMap",
 };
 
-export function chooseProvider(env = process.env) {
+// Which tier a call belongs to. This is a property of the TASK, not of which key
+// happens to be in the environment, so it is named at the call site.
+//
+//   cheap   — the answer is checked by code afterwards, or a bad one is visibly bad
+//             and costs only a retry. Narration, ordering, extraction behind a
+//             verbatim-quote gate.
+//   careful — a wrong answer is stored as fact and is expensive or impossible to
+//             undo. Frame matching writes a location claim; a negative still verdict
+//             is cached permanently with no invalidation path, so a weak model's
+//             mistake hides a real frame for good.
+//
+// Getting this backwards is not a cost problem, it is a data problem, which is why
+// the choice does not live in an env var.
+export const TIERS = Object.freeze({ CHEAP: "cheap", CAREFUL: "careful" });
+
+export function chooseProvider(env = process.env, tier = TIERS.CHEAP) {
+  if (tier === TIERS.CAREFUL) {
+    // Fall back to OpenRouter rather than refusing outright — a paid key may simply
+    // not be configured yet, and the caller can see `tier` did not get what it asked.
+    if (env?.OPENAI_API_KEY) return "openai";
+    return env?.OPENROUTER_API_KEY ? "openrouter" : null;
+  }
   if (env?.OPENROUTER_API_KEY) return "openrouter";
   if (env?.OPENAI_API_KEY) return "openai";
   return null;
@@ -47,14 +68,20 @@ export function chooseProvider(env = process.env) {
 // Build the client and everything that travels with it. Returns null when no key is
 // configured, so a caller can say which key is missing rather than throwing an SDK
 // error about an empty string.
-export function createModelClient(env = process.env, { OpenAIImpl = OpenAI } = {}) {
-  const provider = chooseProvider(env);
+export function createModelClient(env = process.env, { tier = TIERS.CHEAP, OpenAIImpl = OpenAI } = {}) {
+  const provider = chooseProvider(env, tier);
   if (!provider) return null;
 
   if (provider === "openrouter") {
     return {
       provider,
-      model: env.OPENROUTER_MODEL || env.MODEL || DEFAULT_FREE_MODEL,
+      tier,
+      // A careful task routed to OpenRouter did not get what it asked for. It still
+      // runs — but on the strongest model available, not the default free one.
+      downgraded: tier === TIERS.CAREFUL,
+      model: tier === TIERS.CAREFUL
+        ? (env.OPENROUTER_CAREFUL_MODEL || env.OPENROUTER_MODEL || DEFAULT_FREE_MODEL)
+        : (env.OPENROUTER_MODEL || env.MODEL || DEFAULT_FREE_MODEL),
       client: new OpenAIImpl({
         apiKey: env.OPENROUTER_API_KEY,
         baseURL: OPENROUTER_BASE_URL,
@@ -68,6 +95,8 @@ export function createModelClient(env = process.env, { OpenAIImpl = OpenAI } = {
 
   return {
     provider,
+    tier,
+    downgraded: false,
     model: env.OPENAI_MODEL || env.MODEL || DEFAULT_OPENAI_MODEL,
     client: new OpenAIImpl({ apiKey: env.OPENAI_API_KEY }),
     extraBody: {},

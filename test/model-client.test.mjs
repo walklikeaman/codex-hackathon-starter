@@ -9,6 +9,7 @@ import {
   DEFAULT_FREE_MODEL,
   OPENROUTER_BASE_URL,
   parseStructured,
+  TIERS,
   unwrapJson,
 } from "../app/lib/model-client.mjs";
 
@@ -239,4 +240,40 @@ test("the provider's own stop reason counts when the standard one is absent", as
   const result = await call(createModelClient({ OPENROUTER_API_KEY: "k" }, { OpenAIImpl }));
 
   assert.equal(result.reason, "truncated");
+});
+
+// --- the tier is a property of the task, not of the environment ------------------------
+
+test("a careful task prefers the paid provider even when a free key is present", () => {
+  // Getting this backwards is not a cost problem, it is a data problem: a frame match
+  // writes a location claim, and a negative still verdict is cached permanently with
+  // no invalidation path.
+  const env = { OPENROUTER_API_KEY: "free", OPENAI_API_KEY: "paid" };
+  assert.equal(chooseProvider(env, TIERS.CAREFUL), "openai");
+  assert.equal(chooseProvider(env, TIERS.CHEAP), "openrouter");
+});
+
+test("a cheap task takes the free provider when there is one", () => {
+  assert.equal(chooseProvider({ OPENROUTER_API_KEY: "free" }, TIERS.CHEAP), "openrouter");
+  assert.equal(chooseProvider({ OPENAI_API_KEY: "paid" }, TIERS.CHEAP), "openai");
+  assert.equal(chooseProvider({}, TIERS.CHEAP), null);
+});
+
+test("a careful task with no paid key still runs, and says it was downgraded", () => {
+  // Silently running a careful task on a free endpoint is the failure this flag makes
+  // visible; refusing outright would break a deployment that simply has no paid key.
+  const { OpenAIImpl } = fakeSdk({});
+  const runtime = createModelClient({ OPENROUTER_API_KEY: "free" },
+    { tier: TIERS.CAREFUL, OpenAIImpl });
+
+  assert.equal(runtime.provider, "openrouter");
+  assert.equal(runtime.downgraded, true);
+});
+
+test("a task that got the tier it asked for is not marked downgraded", () => {
+  const { OpenAIImpl } = fakeSdk({});
+  assert.equal(createModelClient({ OPENAI_API_KEY: "paid" },
+    { tier: TIERS.CAREFUL, OpenAIImpl }).downgraded, false);
+  assert.equal(createModelClient({ OPENROUTER_API_KEY: "free" },
+    { tier: TIERS.CHEAP, OpenAIImpl }).downgraded, false);
 });

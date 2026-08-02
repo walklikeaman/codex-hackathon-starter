@@ -1,5 +1,3 @@
-import OpenAI from "openai";
-import { zodTextFormat } from "openai/helpers/zod";
 import { createClient } from "@supabase/supabase-js";
 
 import {
@@ -9,6 +7,7 @@ import {
   storyTrailSchema,
 } from "../../lib/story-trail.mjs";
 import { enrichGuard } from "../../lib/enrich-auth.mjs";
+import { createModelClient, parseStructured, TIERS } from "../../lib/model-client.mjs";
 
 export const runtime = "nodejs";
 
@@ -103,7 +102,7 @@ function defaultCreateStore(env) {
 // the scenes table — the story does not change, so a second request costs nothing.
 export function createTrailHandler({
   env = process.env,
-  createOpenAIClient = (apiKey) => new OpenAI({ apiKey }),
+  createRuntime = (env) => createModelClient(env, { tier: TIERS.CHEAP }),
   createStore,
   logError = (...args) => console.error(...args),
 } = {}) {
@@ -132,31 +131,29 @@ export function createTrailHandler({
 
       const work = await store.loadWork(workId);
       if (!work) return jsonError("No such work", 404);
-      if (!env.OPENAI_API_KEY) return jsonError("The OpenAI API key is not configured.", 503);
+      // Cheap tier: this runs once per work, is cached in `scenes` forever, and is
+      // never called from the UI. Its output is narrative ordering, not evidence.
+      const runtime = createRuntime(env);
+      if (!runtime) return jsonError("No model key is configured.", 503);
 
       // The list the model must choose from. Loaded before the call, because grounding
       // the extraction beats trying to match free-text place names afterwards.
       const knownPlaces = await store.workPlaces(workId);
 
-      const openai = createOpenAIClient(env.OPENAI_API_KEY);
-      const response = await openai.responses.parse({
-        model: env.OPENAI_MODEL || "gpt-5.6-terra",
-        store: false,
-        max_output_tokens: 1600,
-        reasoning: { effort: "low" },
+      const extraction = await parseStructured({
+        runtime,
+        schema: storyTrailSchema,
+        schemaName: "story_trail",
         instructions: storyTrailInstructions(knownPlaces),
-        input: [{
-          role: "user",
-          content: `Work: ${work.title}${work.year ? ` (${work.year})` : ""}. Kind: ${work.kind}.`,
-        }],
-        text: { format: zodTextFormat(storyTrailSchema, "story_trail") },
+        input: `Work: ${work.title}${work.year ? ` (${work.year})` : ""}. Kind: ${work.kind}.`,
+        maxTokens: 4000,
       });
 
-      if (response.status !== "completed" || !response.output_parsed) {
-        throw new Error("Trail extraction was incomplete or refused");
+      if (!extraction.ok) {
+        throw new Error(`Trail extraction ${extraction.reason}`);
       }
 
-      const scenes = normalizeTrail(response.output_parsed);
+      const scenes = normalizeTrail(extraction.parsed);
       if (scenes.length === 0) {
         // Nothing usable is an honest answer for a work whose story we cannot place;
         // it is not an error, and it must not be cached as if it were a trail.
