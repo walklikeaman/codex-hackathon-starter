@@ -10,9 +10,12 @@
 
 import {
   buildGeocodeQuery,
+  gazetteerName,
   chooseCandidate,
   groupByName,
   MAX_NAMES_PER_QUERY,
+  MAX_BACKOFF_ATTEMPTS,
+  MAX_SHRINK_DEPTH,
   QUERY_GAP_MS,
   retryPlan,
   WIKIDATA_SPARQL,
@@ -41,11 +44,31 @@ export function createGeocoder({ fetchImpl = fetch, sleep = wait, onNote = () =>
   // the request rather than from a model.
   return async function geocodeNames(names, { near = null } = {}) {
     const resolved = new Map();
-    const batches = batched(Array.isArray(names) ? names : []);
 
-    for (const [index, batch] of batches.entries()) {
+    // Ask the gazetteer the question it can answer, and report under the name the
+    // caller used. Several prose names can reduce to one lookup.
+    const asked = new Map();
+    for (const original of Array.isArray(names) ? names : []) {
+      const lookup = gazetteerName(original);
+      if (!lookup) continue;
+      if (!asked.has(lookup)) asked.set(lookup, []);
+      asked.get(lookup).push(original);
+    }
+
+    // Ask about one batch, and then act on what the failure MEANS.
+    //
+    // `retryPlan` already distinguished a query that was too heavy from one that came
+    // in too fast, and the caller then ignored the distinction and skipped the batch
+    // either way — naming the right action without taking it. A 504 says the query
+    // overran its budget, and the answer to that is a smaller query. Seen live:
+    // sixteen names lost every coordinate to two skipped batches.
+    // Two budgets, not one. Halving a heavy query and waiting out a rate limit are
+    // answers to different problems, and sharing a counter between them means a single
+    // 429 spends the room needed to shrink: seen live, 8 names went 8 → 4 → wait → 4 →
+    // 2 and then gave up with splits still available.
+    async function resolveBatch(batch, { splits = 0, waits = 0 } = {}) {
       const query = buildGeocodeQuery(batch);
-      if (!query) continue;
+      if (!query) return;
 
       let response;
       try {
@@ -62,23 +85,44 @@ export function createGeocoder({ fetchImpl = fetch, sleep = wait, onNote = () =>
         // The geocoder being unreachable must not take the whole request down; every
         // name in this batch simply stays unplaced.
         onNote(`geocoder unreachable: ${failure?.message ?? "network error"}`);
-        continue;
+        return;
       }
 
       if (!response.ok) {
-        // A timeout and a rate limit mean opposite things; the plan says which.
         const plan = retryPlan(response.status);
-        onNote(`geocoder ${response.status} → ${plan.action}`);
-        if (plan.waitMs > 0) await sleep(plan.waitMs);
-        continue;
+
+        if (plan.action === "shrink_batch" && batch.length > 1 && splits < MAX_SHRINK_DEPTH) {
+          const half = Math.ceil(batch.length / 2);
+          onNote(`geocoder ${response.status} → splitting ${batch.length} names`);
+          await sleep(plan.waitMs);
+          await resolveBatch(batch.slice(0, half), { splits: splits + 1, waits });
+          await sleep(QUERY_GAP_MS);
+          await resolveBatch(batch.slice(half), { splits: splits + 1, waits });
+          return;
+        }
+
+        if (plan.action === "back_off" && waits < MAX_BACKOFF_ATTEMPTS) {
+          onNote(`geocoder ${response.status} → waiting ${plan.waitMs / 1000}s`);
+          await sleep(plan.waitMs);
+          await resolveBatch(batch, { splits, waits: waits + 1 });
+          return;
+        }
+
+        onNote(`geocoder ${response.status} → ${batch.length} name(s) left unplaced`);
+        return;
       }
 
       const payload = await response.json().catch(() => null);
       const grouped = groupByName(payload?.results?.bindings);
-      for (const name of batch) {
-        resolved.set(name, chooseCandidate(grouped.get(normalizePlaceName(name)) ?? [], { near }));
+      for (const lookup of batch) {
+        const chosen = chooseCandidate(grouped.get(normalizePlaceName(lookup)) ?? [], { near });
+        for (const original of asked.get(lookup) ?? [lookup]) resolved.set(original, chosen);
       }
+    }
 
+    const batches = batched([...asked.keys()]);
+    for (const [index, batch] of batches.entries()) {
+      await resolveBatch(batch);
       // Pace only BETWEEN queries. A single batch — the common case for a handful of
       // names — costs nothing extra, which is what makes this usable inside a request.
       if (index < batches.length - 1) await sleep(QUERY_GAP_MS);

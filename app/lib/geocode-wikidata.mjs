@@ -32,19 +32,59 @@ export const QUERY_GAP_MS = 5000;
 // What to do about a failed query, by status. Returning a decision rather than a
 // boolean keeps the caller from inventing its own interpretation.
 export function retryPlan(status) {
-  if (status === 504 || status === 500) return { action: "shrink_batch", waitMs: QUERY_GAP_MS };
+  // 502 belongs with 504 rather than with the permanent failures: WDQS answers a query
+  // that overran its budget with either, depending on which layer gave up first. Seen
+  // live in one run — a batch of eight returned 504 and the next returned 502.
+  if (status === 504 || status === 502 || status === 500) {
+    return { action: "shrink_batch", waitMs: QUERY_GAP_MS };
+  }
   if (status === 429 || status === 503) return { action: "back_off", waitMs: QUERY_GAP_MS * 4 };
   return { action: "give_up", waitMs: 0 };
 }
+
+// How many times a batch may be halved before we accept that the names themselves are
+// the problem. Eight names becomes one in three halvings.
+export const MAX_SHRINK_DEPTH = 3;
+
+// How many times we wait out a rate limit. Counted SEPARATELY from splitting: they
+// answer different problems, and sharing one budget let a single 429 consume the room
+// needed to shrink a query that was simply too heavy.
+export const MAX_BACKOFF_ATTEMPTS = 3;
 
 // Wikidata is CC0: no attribution owed, no share-alike, results freely storable. That
 // is precisely why it is the first rung.
 export const WIKIDATA_LICENSE = Object.freeze({ name: "CC0", url: "https://creativecommons.org/publicdomain/zero/1.0/" });
 
-// The class a candidate must descend from. Without this a search for "Skyfall" returns
-// the film, and a search for "Victoria" returns a monarch — both with no coordinate,
-// or worse, with one belonging to something else entirely.
-const GEOGRAPHIC_CLASS = "Q618123"; // geographical feature
+// This used to filter candidates with `wdt:P31/wdt:P279* wd:Q618123` — descent from
+// "geographical feature". It was correct and it did not work: measured live, the query
+// took 65 SECONDS and returned HTTP 504 for a SINGLE name, while a trivial query to the
+// same service answered in 0.45s. An unbounded subclass closure, evaluated for every
+// label match, is simply too expensive; moving it into FILTER EXISTS changed nothing
+// because the planner reorders it back.
+//
+// Dropping the closure takes the same query to under three seconds. Two things replace
+// it, and neither is the ontology:
+//
+//   1. REQUIRING A COORDINATE does most of the work already. Checked live: "Skyfall"
+//      returns nothing at all, because the film has no P625. The closure was redundant
+//      for exactly the case its comment cited.
+//   2. It was not redundant for everything — "Victoria" also matches a shipwreck and a
+//      bark, which do carry coordinates. So the direct P31 type comes back with each
+//      row and obvious non-places are dropped below, in code.
+//
+// This is a heuristic backstop, not a taxonomy, and it is allowed to be: every result
+// lands in the review queue with its Wikidata id, where "Victoria (shipwreck)" is
+// obvious to a human in a way it never is to a regex.
+const NON_PLACE_TYPES = new Set([
+  "shipwreck", "ship", "sailing ship", "bark", "barque", "brig", "schooner", "steamship",
+  "submarine", "aircraft", "spacecraft", "locomotive", "yacht", "ferry", "vessel",
+]);
+
+export function isPlaceType(typeLabel) {
+  const label = String(typeLabel ?? "").trim().toLowerCase();
+  if (!label) return true; // an untyped entity with a coordinate is still a place
+  return !NON_PLACE_TYPES.has(label);
+}
 
 // A name too generic to disambiguate. These match hundreds of entities, and a
 // population tiebreak between them is a coin toss dressed up as a decision.
@@ -52,6 +92,26 @@ const TOO_GENERIC = new Set([
   "city centre", "downtown", "the studio", "a studio", "the set", "on location",
   "various locations", "the city", "the street", "unknown",
 ]);
+
+// The name a gazetteer can actually answer.
+//
+// Models return the place as the PROSE names it, which is right for display and wrong
+// for lookup: the first live run asked Wikidata about "the Old Royal Naval College in
+// Greenwich", "Hankley Common in Surrey" and "the Golden Dragon casino in Macau", and
+// got nothing — while "Hankley Common" on its own resolves immediately. The enclosing
+// area is already carried separately in `area_hint`, so it is duplication rather than
+// information here.
+//
+// Only the leading article and a trailing "in <area>" are removed. A comma clause is
+// left alone: "Cambridge, Massachusetts" IS the gazetteer name, and stripping it would
+// turn an answerable name into an ambiguous one.
+export function gazetteerName(name) {
+  return String(name ?? "")
+    .trim()
+    .replace(/^(the|a|an)\s+/i, "")
+    .replace(/\s+in\s+[^,]+$/i, "")
+    .trim();
+}
 
 export function isGeocodableName(name) {
   const normalized = normalizePlaceName(name);
@@ -82,13 +142,17 @@ export function buildGeocodeQuery(names) {
 
   const values = wanted.map((name) => `"${sparqlLiteral(name)}"@en`).join(" ");
 
-  return `SELECT ?name ?place ?placeLabel ?lat ?lng ?population WHERE {
+  return `SELECT ?name ?place ?placeLabel ?lat ?lng ?population ?typeLabel ?exact WHERE {
   VALUES ?name { ${values} }
   ?place rdfs:label|skos:altLabel ?name .
-  ?place wdt:P31/wdt:P279* wd:${GEOGRAPHIC_CLASS} .
+  # Whether the name is the entity's OWN label or merely one of its aliases. "Istanbul
+  # Grill" matches "Istanbul" by alias; the city matches by label. That difference is
+  # evidence, and it is what stops a pub outranking a city.
+  BIND(EXISTS { ?place rdfs:label ?name } AS ?exact)
   ?place p:P625/psv:P625 ?node .
   ?node wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lng .
   OPTIONAL { ?place wdt:P1082 ?population }
+  OPTIONAL { ?place wdt:P31 ?type }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
 }
@@ -103,14 +167,22 @@ export function groupByName(bindings) {
     const qid = String(row?.place?.value ?? "").split("/").pop();
     if (!name || lat === null || lng === null || !/^Q[1-9]\d*$/.test(qid)) continue;
 
+    // A shipwreck has a coordinate and is not a place you can visit as a location.
+    const typeLabel = row?.typeLabel?.value ?? null;
+    if (!isPlaceType(typeLabel)) continue;
+
     const key = normalizePlaceName(name);
     if (!grouped.has(key)) grouped.set(key, []);
+    // One entity comes back once per P31 value; the same id is one candidate.
+    if (grouped.get(key).some((candidate) => candidate.wikidata_id === qid)) continue;
     grouped.get(key).push({
       wikidata_id: qid,
       name: row?.placeLabel?.value ?? name,
       lat,
       lng,
       population: finiteOrNull(row?.population?.value),
+      type_label: typeLabel,
+      exact_label: row?.exact?.value === "true",
     });
   }
   return grouped;
@@ -119,6 +191,50 @@ export function groupByName(bindings) {
 // How far apart two candidates must be before they count as rival places rather than
 // two records of the same one. Well under a city, well over a rounding difference.
 export const RIVAL_DISTANCE_KM = 25;
+
+// How near the hint a candidate must be for the hint to have said anything about it.
+//
+// Without this the hint was actively harmful. Checked live: with London as the hint,
+// "Istanbul" resolved to Istanbul Grill, a pub in Manchester, because Manchester is
+// closer to London than Turkey is; "Shanghai" resolved to a neighbourhood in Italy.
+// The hint exists to separate Cambridge England from Cambridge Massachusetts — two
+// comparable candidates, one of them where the user is looking. Ranking the whole world
+// by distance from a city is a different operation that happens to use the same
+// arithmetic, and it produces a confident wrong answer every time.
+export const HINT_RADIUS_KM = 100;
+
+// When a population difference stops being a coin toss and becomes evidence.
+//
+// This module refuses to rank Cambridge England (145,000) against Cambridge
+// Massachusetts (118,000), and that refusal is right: at 1.2x, picking the bigger one
+// invents an answer. But refusing EVERY population comparison cost real recall —
+// checked live, "Shanghai" and "Adana" were both refused, and their rivals are
+// unincorporated communities and a subbarrio with no recorded population at all
+// against cities of 24.8 million and 1.77 million.
+//
+// The first version of this used a RATIO — fifty to one — and it was wrong. Checked
+// against real data, "Victoria" has 110 exact-label candidates, and the state of
+// Australia (7,074,468) beats a Canadian district (110,942) by 63x. That clears any
+// sane ratio while being a hopeless choice among 110 real places. A ratio measures the
+// gap between two known quantities; it cannot tell a city beside a hamlet from a state
+// beside a city.
+//
+// What separates the two cases is whether there is anything to compare with at all.
+// Wikidata records a population for every settlement of consequence, so a rival with
+// none is not a contender — and when EVERY rival is silent, this is not a judgement
+// call, it is the absence of one. A single rival with a recorded population is enough
+// to refuse, which is why Cambridge, Glencoe and Victoria all still come back unplaced.
+//
+// The winner must also be large in absolute terms, because a missing population is
+// missing data rather than a measured zero.
+export const NOTABLE_POPULATION = 100_000;
+
+export function dominantByPopulation(list) {
+  const ranked = [...list].sort((a, b) => (b.population ?? 0) - (a.population ?? 0));
+  const [top, ...rivals] = ranked;
+  if (!top?.population || top.population < NOTABLE_POPULATION) return null;
+  return rivals.every((candidate) => candidate.population == null) ? top : null;
+}
 
 function kmApart(a, b) {
   const dLat = (a.lat - b.lat) * 111.32;
@@ -134,15 +250,28 @@ function kmApart(a, b) {
 // coordinate is inventing an answer. A `near` hint from the same prose is the only
 // thing that may break such a tie.
 export function chooseCandidate(candidates, { near = null } = {}) {
-  const list = (Array.isArray(candidates) ? candidates : []).filter(Boolean);
-  if (list.length === 0) return { place: null, reason: "no_candidate" };
-  if (list.length === 1) return { place: list[0], reason: "unique" };
+  const all = (Array.isArray(candidates) ? candidates : []).filter(Boolean);
+  if (all.length === 0) return { place: null, reason: "no_candidate" };
+
+  // An entity whose OWN label is the name beats one that merely lists it as an alias.
+  // This is evidence rather than a preference, and it is what separates the city of
+  // Istanbul from a pub called Istanbul Grill.
+  const exact = all.filter((candidate) => candidate.exact_label);
+  const list = exact.length > 0 ? exact : all;
+
+  if (list.length === 1) {
+    return { place: list[0], reason: exact.length > 0 && all.length > 1 ? "exact_label" : "unique" };
+  }
 
   if (near && finiteOrNull(near.lat) !== null && finiteOrNull(near.lng) !== null) {
     const sorted = [...list].sort((a, b) => kmApart(a, near) - kmApart(b, near));
-    // The hint must clearly favour one; if the two nearest are equally close to it,
-    // it has not disambiguated anything.
-    if (kmApart(sorted[1], near) - kmApart(sorted[0], near) > RIVAL_DISTANCE_KM) {
+    // The hint only speaks about its own neighbourhood. A winner hundreds of kilometres
+    // away was not disambiguated by the hint, it was merely the least distant of a set
+    // the hint knows nothing about.
+    const winnerIsNearby = kmApart(sorted[0], near) <= HINT_RADIUS_KM;
+    // And it must clearly favour one; two candidates equally close to it decide nothing.
+    const clearlyFavoured = kmApart(sorted[1], near) - kmApart(sorted[0], near) > RIVAL_DISTANCE_KM;
+    if (winnerIsNearby && clearlyFavoured) {
       return { place: sorted[0], reason: "nearest_to_hint" };
     }
   }
@@ -155,6 +284,9 @@ export function chooseCandidate(candidates, { near = null } = {}) {
     const best = [...list].sort((a, b) => (b.population ?? 0) - (a.population ?? 0))[0];
     return { place: best, reason: "same_place_multiple_records" };
   }
+
+  const dominant = dominantByPopulation(list);
+  if (dominant) return { place: dominant, reason: "dominant_population" };
 
   return { place: null, reason: "ambiguous_homonyms" };
 }

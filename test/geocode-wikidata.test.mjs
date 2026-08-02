@@ -5,9 +5,13 @@ import {
   buildGeocodeQuery,
   cacheRow,
   chooseCandidate,
+  dominantByPopulation,
+  gazetteerName,
   groupByName,
   isGeocodableName,
+  isPlaceType,
   MAX_NAMES_PER_QUERY,
+  NOTABLE_POPULATION,
   QUERY_GAP_MS,
   retryPlan,
   RIVAL_DISTANCE_KM,
@@ -37,13 +41,41 @@ test("a real place name is", () => {
 
 // --- the query --------------------------------------------------------------------
 
-test("the query demands a geographic thing AND a coordinate", () => {
-  // Without the class filter, "Skyfall" returns the film and "Victoria" a monarch.
+test("the query demands a coordinate, and never walks the subclass tree", () => {
+  // The closure `wdt:P31/wdt:P279* wd:Q618123` was correct and unusable: measured live
+  // it took 65 SECONDS and returned 504 for ONE name, while a trivial query to the same
+  // service answered in 0.45s. Requiring a coordinate does the same work — "Skyfall"
+  // returns nothing because the film has no P625.
   const query = buildGeocodeQuery(["Hankley Common"]);
-  assert.match(query, /wdt:P31\/wdt:P279\* wd:Q618123/);
+  assert.doesNotMatch(query, /P279/);
   assert.match(query, /wikibase:geoLatitude/);
+  // The direct type comes back so non-places can be dropped in code.
+  assert.match(query, /wdt:P31 \?type/);
   // An alias must count: prose rarely uses the canonical label.
   assert.match(query, /rdfs:label\|skos:altLabel/);
+});
+
+test("a thing with a coordinate that is not a place is dropped", () => {
+  // "Victoria" matches a shipwreck and a bark, and both carry coordinates.
+  assert.equal(isPlaceType("shipwreck"), false);
+  assert.equal(isPlaceType("Sailing Ship"), false);
+  assert.equal(isPlaceType("city"), true);
+  assert.equal(isPlaceType("common"), true);
+  // An untyped entity that has a coordinate is still a place.
+  assert.equal(isPlaceType(null), true);
+});
+
+test("one entity with several types is one candidate, not several", () => {
+  // Each P31 value returns its own row; without deduplication a place with three types
+  // looks like three records of itself and skews the population tiebreak.
+  const rows = ["island", "ghost town", "tourist attraction"].map((typeLabel) => ({
+    name: { value: "Hashima Island" },
+    place: { value: "http://www.wikidata.org/entity/Q285468" },
+    placeLabel: { value: "Hashima Island" },
+    lat: { value: "32.6277" }, lng: { value: "129.7383" },
+    typeLabel: { value: typeLabel },
+  }));
+  assert.equal(groupByName(rows).get("hashima island").length, 1);
 });
 
 test("a quote in a place name cannot rewrite the query", () => {
@@ -182,4 +214,96 @@ test("a cached coordinate records where it came from and under what licence", ()
 test("a refusal caches nothing", () => {
   assert.equal(cacheRow("Cambridge", { place: null, reason: "ambiguous_homonyms" }), null);
   assert.equal(cacheRow("X", null), null);
+});
+
+// --- the label is evidence; the hint is only local ------------------------------------
+
+test("an entity's own label beats one that merely lists the name as an alias", () => {
+  // Checked live: "Istanbul" matches the city by label and a Manchester pub called
+  // "Istanbul Grill" by alias. Without this the pub is a rival.
+  const chosen = chooseCandidate([
+    at(41.0082, 28.9784, { wikidata_id: "Q406", name: "Istanbul", exact_label: true, population: 15655924 }),
+    at(53.5330, -2.2850, { wikidata_id: "Q136769547", name: "Istanbul Grill", exact_label: false }),
+  ]);
+  assert.equal(chosen.place.wikidata_id, "Q406");
+});
+
+test("a hint speaks only about its own neighbourhood", () => {
+  // The bug this exists to prevent: with London as the hint, "Istanbul" resolved to a
+  // pub in Manchester, because Manchester is closer to London than Turkey is. The hint
+  // separates Cambridge from Cambridge; it does not rank the world by distance.
+  const chosen = chooseCandidate([
+    at(41.0082, 28.9784, { name: "Istanbul", exact_label: true }),
+    at(53.5330, -2.2850, { name: "Istanbul Grill", exact_label: true }),
+  ], { near: { lat: 51.5072, lng: -0.1276 } });
+
+  assert.notEqual(chosen.reason, "nearest_to_hint");
+});
+
+test("a hint still decides between two candidates that are actually near it", () => {
+  const chosen = chooseCandidate([
+    at(52.2053, 0.1218, { name: "Cambridge, England", exact_label: true }),
+    at(42.3736, -71.1097, { name: "Cambridge, Massachusetts", exact_label: true }),
+  ], { near: { lat: 51.5072, lng: -0.1276 } });
+
+  assert.equal(chosen.reason, "nearest_to_hint");
+  assert.equal(chosen.place.name, "Cambridge, England");
+});
+
+// --- population as evidence, and as a coin toss ----------------------------------------
+
+test("a city beside rivals with no recorded population at all is the answer", () => {
+  // Shanghai (24.8m) against three unincorporated communities Wikidata records no
+  // population for. Refusing this cost real recall for no safety.
+  const chosen = chooseCandidate([
+    at(31.2304, 121.4737, { name: "Shanghai", exact_label: true, population: 24870895 }),
+    at(37.61, -95.0, { name: "Shanghai", exact_label: true, population: null }),
+    at(18.45, -66.0, { name: "Shanghai", exact_label: true, population: null }),
+  ]);
+  assert.equal(chosen.reason, "dominant_population");
+  assert.equal(chosen.place.population, 24870895);
+});
+
+test("one rival with a recorded population is enough to refuse", () => {
+  // "Victoria": the state of Australia (7,074,468) beats a Canadian district (110,942)
+  // by 63x, so any ratio rule picks it — among 110 real places. Ratios cannot tell a
+  // city beside a hamlet from a state beside a city.
+  const chosen = chooseCandidate([
+    at(-36.85, 144.28, { name: "Victoria", exact_label: true, population: 7074468 }),
+    at(48.43, -123.37, { name: "Victoria", exact_label: true, population: 110942 }),
+  ]);
+  assert.equal(chosen.place, null);
+  assert.equal(chosen.reason, "ambiguous_homonyms");
+});
+
+test("two comparable cities are still a coin toss", () => {
+  assert.equal(dominantByPopulation([
+    { lat: 52.2, lng: 0.1, population: 145000 },
+    { lat: 42.3, lng: -71.1, population: 118000 },
+  ]), null);
+});
+
+test("a small place among silent rivals is not promoted either", () => {
+  // A missing population is missing data, not a measured zero, so the winner has to be
+  // large in absolute terms before silence on the other side counts for anything.
+  assert.equal(dominantByPopulation([
+    { lat: 1, lng: 1, population: 400 },
+    { lat: 50, lng: 50, population: null },
+  ]), null);
+  assert.ok(NOTABLE_POPULATION >= 50_000);
+});
+
+test("a prose name is reduced to one a gazetteer can answer", () => {
+  // The first live run asked Wikidata about "the Old Royal Naval College in Greenwich"
+  // and got nothing, while "Old Royal Naval College" resolves immediately. The area is
+  // already carried in area_hint, so repeating it here is duplication, not information.
+  assert.equal(gazetteerName("the Old Royal Naval College in Greenwich"), "Old Royal Naval College");
+  assert.equal(gazetteerName("Hankley Common in Surrey"), "Hankley Common");
+  assert.equal(gazetteerName("the National Gallery"), "National Gallery");
+});
+
+test("a comma clause is left alone — it IS the gazetteer name", () => {
+  // Stripping it would turn an answerable name into an ambiguous one.
+  assert.equal(gazetteerName("Cambridge, Massachusetts"), "Cambridge, Massachusetts");
+  assert.equal(gazetteerName("Hashima Island"), "Hashima Island");
 });

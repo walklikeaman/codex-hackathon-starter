@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createGeocoder } from "../app/lib/geocode-client.mjs";
-import { MAX_NAMES_PER_QUERY, QUERY_GAP_MS } from "../app/lib/geocode-wikidata.mjs";
+import { MAX_NAMES_PER_QUERY, QUERY_GAP_MS, retryPlan } from "../app/lib/geocode-wikidata.mjs";
 import { USER_AGENT } from "../app/lib/wikipedia-source.mjs";
 
 function binding(name, qid, lat, lng) {
@@ -93,7 +93,9 @@ test("a geocoder failure leaves names unplaced rather than failing the request",
   assert.equal(resolved.size, 0);
 });
 
-test("an HTTP error is handled by what it means, not by retrying blindly", async () => {
+test("a service that never recovers ends with the names unplaced, and says so", async () => {
+  // Retrying is bounded. What matters is that the give-up is reported in terms of the
+  // consequence — names without coordinates — rather than as a bare status code.
   const notes = [];
   const geocode = createGeocoder({
     fetchImpl: async () => ({ ok: false, status: 429 }),
@@ -102,7 +104,8 @@ test("an HTTP error is handled by what it means, not by retrying blindly", async
   });
 
   assert.equal((await geocode(["Hankley Common"])).size, 0);
-  assert.match(notes[0], /429 → back_off/);
+  assert.match(notes[0], /429 → waiting/);
+  assert.match(notes.at(-1), /left unplaced/);
 });
 
 test("a name too generic to look up is never sent", async () => {
@@ -111,4 +114,74 @@ test("a name too generic to look up is never sent", async () => {
 
   assert.equal(calls.length, 0);
   assert.equal(resolved.size, 0);
+});
+
+// --- acting on what the failure means --------------------------------------------------
+
+test("a query that was too heavy is split, not skipped", async () => {
+  // The plan said "shrink_batch" and the caller skipped the batch anyway. Sixteen
+  // names lost every coordinate to that gap between naming an action and taking it.
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    const names = [...options.body.get("query").matchAll(/"([^"]+)"@en/g)].map((m) => m[1]);
+    calls.push(names);
+    if (names.length > 1) return { ok: false, status: 504 };
+    return { ok: true, json: async () => ({ results: { bindings: [
+      binding(names[0], "Q1", 1, 2)] } }) };
+  };
+
+  const resolved = await createGeocoder({ fetchImpl, sleep: noSleep })(["Alpha Place", "Beta Place"]);
+  assert.deepEqual(calls[0], ["Alpha Place", "Beta Place"]);
+  assert.equal(resolved.get("Alpha Place").place.lat, 1);
+  assert.equal(resolved.get("Beta Place").place.lat, 1);
+});
+
+test("502 is a heavy query too, not a permanent failure", async () => {
+  // Seen live in one run: a batch of eight returned 504 and the next returned 502.
+  assert.equal(retryPlan(502).action, "shrink_batch");
+});
+
+test("splitting stops rather than recursing forever", async () => {
+  let attempts = 0;
+  const fetchImpl = async () => { attempts += 1; return { ok: false, status: 504 }; };
+  const resolved = await createGeocoder({ fetchImpl, sleep: noSleep })(
+    ["Alpha Place", "Beta Place", "Gamma Place", "Delta Place"]);
+
+  assert.equal(resolved.size, 0);
+  assert.ok(attempts < 20, `gave up after ${attempts} attempts`);
+});
+
+test("a rate limit waits and asks again, rather than dropping the names", async () => {
+  let attempts = 0;
+  const fetchImpl = async (url, options) => {
+    attempts += 1;
+    if (attempts === 1) return { ok: false, status: 429 };
+    const names = [...options.body.get("query").matchAll(/"([^"]+)"@en/g)].map((m) => m[1]);
+    return { ok: true, json: async () => ({ results: { bindings: [binding(names[0], "Q7", 3, 4)] } }) };
+  };
+
+  const resolved = await createGeocoder({ fetchImpl, sleep: noSleep })(["Hankley Common"]);
+  assert.equal(attempts, 2);
+  assert.equal(resolved.get("Hankley Common").place.wikidata_id, "Q7");
+});
+
+test("waiting out a rate limit does not spend the budget for splitting", async () => {
+  // Seen live: 8 names went 8 → 4 → wait → 4 → 2 and then gave up with splits still
+  // available, because one counter served two unrelated purposes.
+  const seen = [];
+  let ratelimited = false;
+  const fetchImpl = async (url, options) => {
+    const names = [...options.body.get("query").matchAll(/"([^"]+)"@en/g)].map((m) => m[1]);
+    seen.push(names.length);
+    if (names.length === 4 && !ratelimited) { ratelimited = true; return { ok: false, status: 429 }; }
+    if (names.length > 1) return { ok: false, status: 504 };
+    return { ok: true, json: async () => ({ results: { bindings: [binding(names[0], "Q9", 5, 6)] } }) };
+  };
+
+  const names = Array.from({ length: 8 }, (_, i) => `Place Number ${i}`);
+  const resolved = await createGeocoder({ fetchImpl, sleep: noSleep })(names);
+
+  // Every name reached a single-name query and was answered.
+  assert.equal(resolved.size, 8);
+  assert.ok(seen.includes(1), "never got down to one name per query");
 });
