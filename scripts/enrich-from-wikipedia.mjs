@@ -15,8 +15,6 @@
 import process from "node:process";
 
 import { createClient } from "@supabase/supabase-js";
-import OpenAI from "openai";
-import { zodTextFormat } from "openai/helpers/zod";
 
 import {
   apiError,
@@ -41,6 +39,7 @@ import {
 } from "../app/lib/wikipedia-extract.mjs";
 import { WIKIDATA_LICENSE } from "../app/lib/geocode-wikidata.mjs";
 import { createGeocoder } from "../app/lib/geocode-client.mjs";
+import { createModelClient, createThrottle, parseStructured } from "../app/lib/model-client.mjs";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -109,13 +108,18 @@ async function main() {
     console.error("a secret typed into a shell stays in your history.");
     process.exit(1);
   }
-  if (!env.OPENAI_API_KEY && !DRY_RUN) {
-    console.error("OPENAI_API_KEY is required (or pass --dry-run to fetch prose only).");
+  const runtime = createModelClient(env);
+  if (!runtime && !DRY_RUN) {
+    console.error("No model key configured. Add OPENROUTER_API_KEY (free models) or");
+    console.error("OPENAI_API_KEY to .env.local, or pass --dry-run to fetch prose only.");
     process.exit(1);
   }
+  if (runtime) console.log(`model: ${runtime.model} via ${runtime.provider}`);
 
   const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+  // Free endpoints share one per-account bucket. Pacing here is cheaper than learning
+  // the limit by breaching it, and this job has no deadline.
+  const throttle = createThrottle(Number(env.MODEL_REQUESTS_PER_MINUTE) || 12);
 
   let query = db.from("works").select("id, title, kind, year, wikidata_id").not("wikidata_id", "is", null);
   if (ONE_WORK) query = query.eq("id", ONE_WORK);
@@ -147,24 +151,30 @@ async function main() {
     const prose = cleanWikitext(raw.parse?.wikitext ?? "");
     console.log(`   "${section.line}" → ${prose.length} chars (rev ${revid})`);
 
-    if (DRY_RUN || !openai) { console.log("   dry run — not extracting"); continue; }
+    if (DRY_RUN || !runtime) { console.log("   dry run — not extracting"); continue; }
 
-    const response = await openai.responses.parse({
-      model: env.OPENAI_MODEL || "gpt-5.6-terra",
-      store: false,
-      max_output_tokens: 4000,
-      reasoning: { effort: "low" },
+    await throttle();
+    const extraction = await parseStructured({
+      runtime,
+      schema: wikipediaLocationsSchema,
+      schemaName: "wikipedia_locations",
       instructions: extractionInstructions(),
-      input: [{ role: "user", content: buildExtractionInput({ ...work, prose }) }],
-      text: { format: zodTextFormat(wikipediaLocationsSchema, "wikipedia_locations") },
-    }, { timeout: 90_000 });
+      input: buildExtractionInput({ ...work, prose }),
+      // 25 locations with a quoted sentence each runs past 4000 and the answer comes
+      // back as JSON cut off mid-string. Budget for the cap the schema allows.
+      maxTokens: 12_000,
+      timeout: 180_000, // a free endpoint took 27s on a short passage; give it room
+    });
 
-    if (response.status !== "completed" || !response.output_parsed) {
-      console.log(`   extraction ${response.status} — nothing written`);
+    // A weak model answering with prose, refusing, or running out of tokens is an
+    // ordinary outcome of asking a free endpoint. Record it and take the next film —
+    // dying here would abandon every work still queued behind this one.
+    if (!extraction.ok) {
+      console.log(`   extraction ${extraction.reason}${extraction.detail ? `: ${extraction.detail}` : ""}`);
       continue;
     }
 
-    const { accepted, rejected } = acceptExtraction(response.output_parsed, {
+    const { accepted, rejected } = acceptExtraction(extraction.parsed, {
       prose, article: { title, revid },
     });
     console.log(`   ${accepted.length} accepted, ${rejected.length} dropped`
@@ -202,7 +212,7 @@ async function main() {
 
     const { error: writeError } = await db
       .from("location_submissions")
-      .upsert(rows, { onConflict: "work_id,place_name" });
+      .upsert(rows, { onConflict: "work_id,place_key" });
 
     if (writeError) console.log(`   write failed: ${writeError.message}`);
     else {
