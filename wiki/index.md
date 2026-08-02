@@ -27,7 +27,9 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 
 - [demo-path](concepts/demo-path.md) — the one sacred scenario
 - [personal-library](concepts/personal-library.md) — Letterboxd ZIP/CSV, privacy
-- [location-discovery](concepts/location-discovery.md) — Wikidata + web research with a citation gate
+- [location-discovery](concepts/location-discovery.md) — three paths; a model may name a place, never locate one
+- [geocoding-cascade](concepts/geocoding-cascade.md) — names → points via Wikidata; refusing homonyms is the feature
+- [wikipedia-enrichment](concepts/wikipedia-enrichment.md) — Production prose → review queue, quote checked verbatim
 - [film-frames](concepts/film-frames.md) — three tiers of frame, and what each may claim
 - [film-imagery](concepts/film-imagery.md) — HMAC token → vision → only high confidence
 - [tours-and-voice](concepts/tours-and-voice.md) — route, timed tour, AI tour, TTS

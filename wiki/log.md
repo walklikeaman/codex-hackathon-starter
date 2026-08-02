@@ -7,6 +7,88 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-02] update | The discovery path stopped inventing coordinates (#121)
+
+**Object**: `app/lib/location-discovery-schema.mjs`, `app/api/locations/discover/route.js`,
+`app/lib/geocode-client.mjs`, `app/lib/wikipedia-source.mjs`, `scripts/enrich-from-wikipedia.mjs`
+**Scenario**: bugfix + rule-change · **Outcome**: ✅ success
+**Code changes**: `29ca3f8`, `b3ec14c`
+
+**#121 — we were asking the model where places are.** The web-research path had `lat` and
+`lng` in its output schema and an instruction reading "Give precise coordinates for the
+named public place". That is the one thing this project exists not to do, and it had been
+shipping to the live map: results were labelled "sourced places" beside genuinely verified
+Wikidata points.
+
+Worse than the invention was what it did to everything downstream. The radius check
+confirmed only that the made-up point was *plausibly located*; the identity string
+`web-<slug>-<lat>-<lng>` baked it in; the dedup compared invented positions. **A recalled
+coordinate has no identity, only a position** — so the same place found twice became two
+places.
+
+The model now returns a name and its citation, and names become points through the same
+Wikidata geocoder [[wikipedia-enrichment]] uses. The city being viewed became a real
+disambiguation hint — and it comes from the request, never from the model. A name the
+geocoder refuses is returned as `unplaced` and reported in the UI, because "found three,
+could place one" and "found one" are different statements and silence read as the wrong
+one. Identity became the Q-id, so a place found by both paths is now recognised as one
+place. New: [[geocoding-cascade]].
+
+**A lagged replica is not a missing page.** The first real enrichment run died on its
+first call with `maxlag: Waiting for wdqs1013: 7.95 seconds lagged` — from a call that
+sits *outside* the per-work error handling, so a few seconds of routine replication lag
+abandoned the whole run. Wikimedia answers both a missing article and a lagged replica
+with HTTP 200 and an error body; the script treated them alike. They are opposite
+problems, and the same mistake as conflating 504 with 429 in the geocoder a day earlier.
+
+Measured rather than guessed: the response carries `retry-after: 5` alongside
+`x-database-lag: 8`, so the suggested delay is a floor, not a promise — repeating it
+unchanged asks the same question five times against a lag that is not moving. The
+threshold moved off 5 for a reason that is about us, not about them: five is the value for
+a bot making **edits**, and we read article titles that change on the scale of years, so
+being turned away by an eight-second-stale replica protects nothing. 30 still refuses a
+real incident, which runs to minutes.
+
+**Updated**: `wiki/concepts/geocoding-cascade.md` (new),
+`wiki/concepts/wikipedia-enrichment.md` (new), `wiki/concepts/location-discovery.md`,
+`wiki/index.md`
+
+## [2026-08-01] update | Wikipedia prose became a third source, behind a review queue (#47)
+
+**Object**: `app/lib/wikipedia-source.mjs`, `app/lib/wikipedia-extract.mjs`,
+`app/lib/geocode-wikidata.mjs`, `scripts/enrich-from-wikipedia.mjs`
+**Scenario**: feature · **Outcome**: ⚠️ partial — built and verified against the live
+APIs; the extraction step has not yet run on real films (needs `OPENAI_API_KEY` locally)
+**Code changes**: `198c86d`, `7d53d2b`, `fab9aa3`, `69e56fe`
+
+Wikidata's P915 covers a few thousand films; thousands more describe where they were shot
+only in their article's "Production" section. This is the first path where a place enters
+the graph without a canonical statement behind it, so everything it produces arrives as
+`pending` in `location_submissions` — nothing reaches the map unreviewed.
+
+Two rules are built into the shape rather than bolted on. The extraction schema has **no
+coordinate field**, so the model cannot supply a point — a stronger guarantee than telling
+it not to guess, and the rule #121 then retrofitted onto [[location-discovery]]. And every
+returned sentence must appear **verbatim** in the prose we supplied or its location is
+dropped, because the scene matcher demanded a model justify itself, received a fluent and
+specific justification, and shipped a fabricated match. *Demanding evidence is not the same
+as checking it.*
+
+Several external constraints turned out to be the opposite of a reasonable guess, and were
+verified live: a default User-Agent gets HTTP 403, not a throttle; `action=parse&section=`
+takes the section's `index` and index is **not** `number` (on "Lost in Translation" it is
+8 versus 4, and passing the wrong one silently returns different prose); errors arrive
+with HTTP 200. On the geocoder, a 40-name batch returns HTTP 504 — reduced to 8.
+
+Refusing is the feature: two genuinely different places sharing a name are **not** resolved
+by taking the more populous one. Many accepted places therefore queue without a coordinate,
+which is intended — the claim is still real and reviewable.
+
+**Known gaps**: books have no "Production" section, so the thinnest works get nothing; only
+tier 1 of [[geocoding-cascade]] exists; the submissions queue has no review UI yet.
+
+**Updated**: `wiki/concepts/wikipedia-enrichment.md` (new)
+
 ## [2026-07-28] update | Write routes closed, walk mode surfaced, story trail joined up
 
 - **#120 — the write routes were open.** Six of them wrote to the database and spent
