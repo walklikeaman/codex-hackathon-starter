@@ -7,8 +7,10 @@ import {
   extractionInstructions,
   MAX_LOCATIONS_PER_ARTICLE,
   quoteAppearsInSource,
+  sentenceMentionsPlace,
   wikipediaLocationsSchema,
 } from "../app/lib/wikipedia-extract.mjs";
+import { MAX_QUOTE_WORDS } from "../app/lib/wikipedia-source.mjs";
 
 const PROSE = [
   "Principal photography began in November 2011.",
@@ -45,6 +47,9 @@ test("the instructions say so too, and forbid following the article's text", () 
   assert.match(instructions, /never as instructions to follow/i);
   assert.match(instructions, /EXACTLY/);
   assert.match(instructions, /empty list is a correct answer/i);
+  // The code drops a quote over 30 words. A model told only "400 characters" by the
+  // schema loses locations to a rule nobody stated.
+  assert.match(instructions, new RegExp(`at most ${MAX_QUOTE_WORDS} words`));
 });
 
 // --- the quote is checked, not trusted ---------------------------------------------
@@ -81,14 +86,40 @@ test("a near-miss is still a miss", () => {
   assert.equal(quoteAppearsInSource(null, PROSE), false);
 });
 
-test("a whole paragraph is a passage, not a citation", () => {
-  const long = `${"a real sentence with many words ".repeat(6)}.`;
+test("several sentences are a passage, not a citation", () => {
+  // The load-bearing rule. A paragraph carries far more of the article than the one
+  // sentence needed to support the claim.
+  const passage = "Filming began in Surrey. The unit then moved to Malta. Later they shot in Istanbul.";
   const { accepted, rejected } = acceptExtraction({ locations: [
-    found({ source_sentence: long }),
-  ] }, { prose: long, article });
+    found({ source_sentence: passage }),
+  ] }, { prose: passage, article });
 
   assert.equal(accepted.length, 0);
+  assert.equal(rejected[0].reason, "quote_multiple_sentences");
+});
+
+test("a run-on sentence is still refused, and named differently", () => {
+  // Two rules failed under one name before, so a log line could not tell "the model
+  // joined two sentences" from "the sentence was enormous" — different fixes.
+  const runOn = `${"a real sentence with many many more words ".repeat(8)}.`;
+  const { rejected } = acceptExtraction({ locations: [
+    found({ source_sentence: runOn }),
+  ] }, { prose: runOn, article });
+
   assert.equal(rejected[0].reason, "quote_too_long");
+});
+
+test("an ordinary Wikipedia sentence survives the cap", () => {
+  // The cap was 30 words and threw away real evidence. The quote exists so a reviewer
+  // can verify the claim, and a sentence cut off mid-way cannot be verified.
+  const typical = "Filming took place at Hankley Common in Surrey, which stood in for the "
+    + "Scottish Highlands, with the production building a full-size replica of the lodge on site.";
+  assert.ok(typical.split(/\s+/).length > 25);
+  const { accepted } = acceptExtraction({ locations: [
+    found({ source_sentence: typical }),
+  ] }, { prose: typical, article });
+
+  assert.equal(accepted.length, 1);
 });
 
 // --- mentioned is not filmed --------------------------------------------------------
@@ -131,9 +162,28 @@ test("an empty extraction is an ordinary outcome", () => {
 
 // --- shape ---------------------------------------------------------------------------
 
-test("the extraction is bounded", () => {
-  const many = { locations: Array.from({ length: MAX_LOCATIONS_PER_ARTICLE + 1 }, () => found()) };
-  assert.equal(wikipediaLocationsSchema.safeParse(many).success, false);
+test("one place too many drops that place, not the whole answer", () => {
+  // A hard schema max cost us every location in Skyfall because the model found
+  // thirteen. The cap is policy about review volume; it must not be a cliff.
+  const many = { locations: Array.from({ length: MAX_LOCATIONS_PER_ARTICLE + 3 }, (_, i) => found({
+    place_name: `Place ${i}`,
+    source_sentence: `Filming took place at Place ${i} that winter.`,
+  })) };
+  const prose = many.locations.map((l) => l.source_sentence).join("\n");
+
+  assert.equal(wikipediaLocationsSchema.safeParse(many).success, true);
+  const { accepted, rejected } = acceptExtraction(many, { prose, article });
+  assert.equal(accepted.length, MAX_LOCATIONS_PER_ARTICLE);
+  assert.equal(rejected.filter((r) => r.reason === "over_limit").length, 3);
+});
+
+test("the reply is still bounded in shape", () => {
+  const absurd = { locations: Array.from({ length: 200 }, () => found()) };
+  assert.equal(wikipediaLocationsSchema.safeParse(absurd).success, false);
+});
+
+test("the model is told the cap it is judged by", () => {
+  assert.match(extractionInstructions(), new RegExp(`at most ${MAX_LOCATIONS_PER_ARTICLE} places`));
 });
 
 test("the article's prose is handed over as data, clearly fenced", () => {
@@ -141,4 +191,31 @@ test("the article's prose is handed over as data, clearly fenced", () => {
   assert.match(input, /Skyfall \(2012\)/);
   assert.match(input, /as data:/);
   assert.ok(input.includes(PROSE));
+});
+
+// --- a real sentence about the wrong place ---------------------------------------------
+
+test("a real sentence that never mentions the place is not evidence for it", () => {
+  // Seen in the first live run: "Ascot Racecourse" arrived cited to "The Virgin Active
+  // pool in London's Canary Wharf acted as Bond's...". The sentence is genuinely in the
+  // article, so the verbatim check passed — it just says nothing about Ascot.
+  const prose = "The Virgin Active pool in London's Canary Wharf acted as Bond's gym.";
+  const { accepted, rejected } = acceptExtraction({ locations: [
+    found({ place_name: "Ascot Racecourse", source_sentence: prose }),
+  ] }, { prose, article });
+
+  assert.equal(accepted.length, 0);
+  assert.equal(rejected[0].reason, "quote_is_about_elsewhere");
+});
+
+test("a common word shared by two names does not count as a mention", () => {
+  // "Square", "station" and "hospital" appear in half the names in a Production section.
+  assert.equal(sentenceMentionsPlace("Filming moved to Parliament Square.", "Cadogan Square"), false);
+  assert.equal(sentenceMentionsPlace("Filming moved to Cadogan Square.", "Cadogan Square"), true);
+});
+
+test("a name made only of common words is not judged by this rule", () => {
+  // It cannot be checked this way, so it passes rather than being refused on a test
+  // that cannot see it.
+  assert.equal(sentenceMentionsPlace("Filming took place nearby that winter.", "The Common"), true);
 });

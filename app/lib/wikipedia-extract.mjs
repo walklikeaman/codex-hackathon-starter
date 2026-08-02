@@ -15,11 +15,20 @@
 
 import { z } from "zod";
 
-import { isStorableQuote } from "./wikipedia-source.mjs";
+import { MAX_QUOTE_WORDS, quoteRejection } from "./wikipedia-source.mjs";
 import { normalizePlaceName } from "./place-dedup.mjs";
 
-// Enough to be worth a model call, small enough that a bad answer is cheap.
-export const MAX_LOCATIONS_PER_ARTICLE = 12;
+// Two different limits, because they answer two different questions.
+//
+// The schema bound is a sanity ceiling on the SHAPE of a reply. The accept cap is
+// policy about how much we are willing to queue for review. Collapsing them into one
+// hard schema max made an over-eager model cost us everything: gemma found more than
+// twelve places in Skyfall's Production section — correctly, it names London, Istanbul,
+// Adana, Hashima, Shanghai and Glencoe among others — and the whole extraction was
+// rejected over the thirteenth. Every one of them still has to pass the verbatim-quote
+// gate, so more claims is more review, not more risk.
+export const MAX_LOCATIONS_PER_ARTICLE = 25;
+const SCHEMA_MAX_LOCATIONS = 40;
 
 const extractedLocation = z.object({
   // What the prose calls the place. A name, never a point.
@@ -36,7 +45,7 @@ const extractedLocation = z.object({
 });
 
 export const wikipediaLocationsSchema = z.object({
-  locations: z.array(extractedLocation).max(MAX_LOCATIONS_PER_ARTICLE),
+  locations: z.array(extractedLocation).max(SCHEMA_MAX_LOCATIONS),
 });
 
 export function extractionInstructions() {
@@ -49,11 +58,21 @@ export function extractionInstructions() {
     "source_sentence must be copied EXACTLY from the text you were given, character for",
     "character. Do not paraphrase, tidy, shorten or join sentences. A sentence that does",
     "not appear verbatim in the input will be discarded along with its location.",
+    // The schema can only express a character limit, so the word cap the code enforces
+    // is invisible to the model — it drops long quotes for a rule it was never told.
+    `Choose a single sentence of at most ${MAX_QUOTE_WORDS} words; a longer one is`,
+    "discarded as a passage rather than a citation.",
+    "The sentence must be the one that names THIS place. A real sentence about a",
+    "different location is discarded along with its location.",
+    "place_name is the place alone, with no article and no enclosing area: write",
+    "\"Old Royal Naval College\", not \"the Old Royal Naval College in Greenwich\".",
+    "The enclosing town or region goes in area_hint, where it belongs.",
     "Set is_filming_location false for a place the article merely mentions — somewhere",
     "considered and rejected, somewhere the story is set, a studio's corporate address,",
     "a person's birthplace.",
     "Return only places the article actually names. An empty list is a correct answer",
     "for an article that discusses production without naming anywhere.",
+    `Return at most ${MAX_LOCATIONS_PER_ARTICLE} places, most clearly supported first.`,
   ].join(" ");
 }
 
@@ -79,12 +98,42 @@ export function quoteAppearsInSource(quote, prose) {
   return comparable(prose).includes(needle);
 }
 
+// Words too common to identify a place. "Square", "station" and "hospital" appear in
+// half the names in a Production section, so matching on them proves nothing.
+const GENERIC_NAME_WORDS = new Set([
+  "the", "and", "for", "with", "near", "from", "street", "road", "square", "station",
+  "bridge", "park", "house", "hospital", "castle", "church", "hotel", "beach", "island",
+  "college", "gallery", "museum", "tower", "common", "casino", "studio", "studios",
+  "airport", "centre", "center", "palace", "cathedral", "market", "tunnels", "racecourse",
+]);
+
+// Does the quoted sentence actually talk about THIS place?
+//
+// The verbatim check proves the sentence exists in the article. It does not prove the
+// sentence has anything to do with the location it was attached to — and in the first
+// live run it did not: "Ascot Racecourse" arrived cited to "The Virgin Active pool in
+// London's Canary Wharf acted as Bond's...", a real sentence about a different place.
+// A citation that does not mention its subject is not evidence, it is decoration.
+export function sentenceMentionsPlace(sentence, placeName) {
+  const haystack = comparable(sentence);
+  const distinctive = comparable(placeName)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length >= 4 && !GENERIC_NAME_WORDS.has(word));
+
+  // A name made only of common words ("The Common") cannot be checked this way, so it
+  // is allowed through rather than rejected on a rule that cannot see it.
+  if (distinctive.length === 0) return true;
+  return distinctive.some((word) => haystack.includes(word));
+}
+
 // The accepted locations. Each gate below removed a specific way of being wrong:
 //
 //   * not a filming location   — the article mentioned it, that is all
 //   * quote not in the source  — the model wrote a sentence that is not there
-//   * quote too long           — a passage, not a citation
+//   * quote too long / multi-sentence — a passage, not a citation
+//   * quote about elsewhere    — a real sentence, attached to the wrong place
 //   * duplicate name           — one place, listed twice
+//   * over the limit           — beyond what we queue for review
 //
 // A dropped location is the normal case, not a failure.
 export function acceptExtraction(parsed, { prose, article }) {
@@ -100,12 +149,20 @@ export function acceptExtraction(parsed, { prose, article }) {
     if (!key) { drop("no_name"); continue; }
     if (location.is_filming_location !== true) { drop("not_a_filming_location"); continue; }
     if (seen.has(key)) { drop("duplicate"); continue; }
+    // Beyond the cap the extras are dropped, not the answer. They arrive in article
+    // order, so what survives is what the prose introduced first.
+    if (accepted.length >= MAX_LOCATIONS_PER_ARTICLE) { drop("over_limit"); continue; }
 
     // The load-bearing check. A model that invents a justification is the failure this
     // pipeline has already shipped once, and a fluent sentence is not evidence that
     // the sentence exists.
     if (!quoteAppearsInSource(location.source_sentence, prose)) { drop("quote_not_in_source"); continue; }
-    if (!isStorableQuote(location.source_sentence)) { drop("quote_too_long"); continue; }
+    const quoteProblem = quoteRejection(location.source_sentence);
+    if (quoteProblem) { drop(quoteProblem); continue; }
+    // The sentence is real; this asks whether it is real ABOUT THIS PLACE.
+    if (!sentenceMentionsPlace(location.source_sentence, name)) {
+      drop("quote_is_about_elsewhere"); continue;
+    }
 
     seen.add(key);
     accepted.push({

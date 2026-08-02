@@ -225,17 +225,31 @@ export function cleanWikitext(wikitext) {
     .trim();
 }
 
-// A quote may be stored, but kept short: one sentence. This is not a legal safe
+// A quote may be stored, but kept short: ONE SENTENCE. This is not a legal safe
 // harbour — no word count creates one — it simply keeps every quote obviously inside
 // any quotation exception, so the attribution we render is belt-and-braces.
-export const MAX_QUOTE_WORDS = 30;
+//
+// The single-sentence rule is the real bound; the word count only catches a run-on.
+// It was 30, and on the first live run that threw away legitimate evidence: a
+// Production section writes "Filming took place at X, which stood in for Y, with the
+// production using a purpose-built set at Z" as one 40-word sentence. The quote exists
+// so a reviewer can VERIFY the claim against the article, and a sentence cut off by an
+// arbitrary word count cannot be verified — the cap was defeating its own purpose.
+export const MAX_QUOTE_WORDS = 45;
+
+// Why a quote cannot be stored, or null if it can. Two different rules failed under one
+// name before, so a log saying "quote_too_long" could equally have meant "the model
+// joined two sentences" — different problems with different fixes.
+export function quoteRejection(quote) {
+  const text = String(quote ?? "").trim();
+  if (!text) return "quote_empty";
+  if ((text.match(/[.!?](\s|$)/g) ?? []).length > 1) return "quote_multiple_sentences";
+  if (text.split(/\s+/).length > MAX_QUOTE_WORDS) return "quote_too_long";
+  return null;
+}
 
 export function isStorableQuote(quote) {
-  const text = String(quote ?? "").trim();
-  if (!text) return false;
-  if (text.split(/\s+/).length > MAX_QUOTE_WORDS) return false;
-  // More than one sentence means it is a passage, not a citation.
-  return (text.match(/[.!?](\s|$)/g) ?? []).length <= 1;
+  return quoteRejection(quote) === null;
 }
 
 // --- attribution ----------------------------------------------------------------
