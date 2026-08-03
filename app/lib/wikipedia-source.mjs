@@ -48,43 +48,93 @@ export const WIKIPEDIA_LICENSE = Object.freeze({
   url: "https://creativecommons.org/licenses/by-sa/4.0/",
 });
 
-// Sections worth reading, best first. The h2 "Production" is preferred over its
-// "Filming" child because MediaWiki returns the whole subtree — asking for the child
-// throws away the siblings that usually carry the location prose.
-const SECTION_RANK = [
-  "production",
-  "filming",
-  "principal photography",
-  "filming locations",
-  "locations and sets",
-  "pre-production",
-  "development",
-];
+// Sections worth reading, best first, per language edition.
+//
+// Read off real articles rather than translated from the English list, and the payoff
+// is bigger than "the same thing in another language": SEVERAL EDITIONS HAVE A
+// DEDICATED LOCATIONS SECTION THAT ENGLISH LACKS. On Skyfall, French carries "Lieux de
+// l'action", Spanish "Localizaciones", Japanese "ロケーション" — while English buries the
+// same material inside "Production" and Russian folds the whole thing into one
+// "Работа над картиной".
+//
+// So this is not redundancy. An article in the film's own language routinely names
+// streets and buildings the English one summarises as "on location in the city".
+//
+// The h2 is preferred over its child because MediaWiki returns the whole subtree —
+// asking for the child throws away the siblings that usually carry the location prose.
+// A heading that means "where the story happens" is NOT one that means "where it was
+// shot", and this project is built on exactly that distinction. Both were in this list
+// once, and French duly picked "Lieux de l'action" — 105 characters about the plot's
+// settings — over the "Tournage" section further down that actually describes the
+// shoot. Narrative headings are excluded here; they belong to a different claim.
+// The PARENT production heading comes first in every edition, for the reason the
+// English list already had: MediaWiki returns the whole subtree, so asking for the
+// child throws away the siblings that carry the location prose. Verified on Skyfall —
+// French "Tournage", Spanish "Localizaciones", Japanese "ロケーション" and Polish "Zdjęcia"
+// are all children of the production heading above them. The specific filming headings
+// are the fallback for articles that have no parent, which is the usual German shape.
+const SECTION_RANK_BY_LANGUAGE = Object.freeze({
+  en: ["production", "filming", "principal photography", "filming locations",
+    "locations and sets", "pre-production", "development"],
+  fr: ["production", "tournage", "lieux de tournage", "développement"],
+  de: ["produktion", "entstehungsgeschichte", "dreharbeiten", "drehorte", "vorproduktion"],
+  ru: ["работа над картиной", "производство", "создание", "съёмки", "места съёмок"],
+  es: ["producción", "rodaje", "filmación", "localizaciones", "desarrollo"],
+  it: ["produzione", "riprese", "luoghi delle riprese", "sviluppo"],
+  ja: ["製作", "制作", "撮影", "ロケ地", "ロケーション"],
+  pl: ["produkcja", "zdjęcia", "plenery", "miejsca zdjęć", "powstanie"],
+});
 
-export function buildEntitiesUrl(qids) {
+// Ordered by how much production prose the edition tends to carry. English first
+// because it is the best-covered; after that an article in the work's own language is
+// usually the richest, and the caller decides which those are.
+export const SUPPORTED_LANGUAGES = Object.freeze(Object.keys(SECTION_RANK_BY_LANGUAGE));
+
+// Each language costs a model call, so the batch is bounded per work rather than per
+// run. Three covers English plus the work's own language plus one more.
+export const MAX_LANGUAGES_PER_WORK = 3;
+
+export function buildEntitiesUrl(qids, languages = SUPPORTED_LANGUAGES) {
   const ids = [...new Set(qids ?? [])].filter((id) => /^Q[1-9]\d*$/.test(id));
   if (ids.length === 0 || ids.length > 50) return null; // the API's own batch ceiling
   const url = new URL("https://www.wikidata.org/w/api.php");
   url.searchParams.set("action", "wbgetentities");
   url.searchParams.set("ids", ids.join("|"));
   url.searchParams.set("props", "sitelinks/urls");
-  url.searchParams.set("sitefilter", "enwiki");
+  url.searchParams.set("sitefilter", languages.map((code) => `${code}wiki`).join("|"));
   url.searchParams.set("format", "json");
   url.searchParams.set("formatversion", "2");
   url.searchParams.set("maxlag", String(MAX_DATABASE_LAG_SECONDS));
   return url.toString();
 }
 
-export function articleTitleFromEntity(entity) {
-  const title = entity?.sitelinks?.enwiki?.title;
+export function articleTitleFromEntity(entity, language = "en") {
+  const title = entity?.sitelinks?.[`${language}wiki`]?.title;
   // No article means skip the work. A constructed title would land on the wrong page
   // or a disambiguation, and be indistinguishable from a real answer.
   return typeof title === "string" && title.trim() ? title.trim() : null;
 }
 
-export function buildTocUrl(title) {
+// Which editions to read for one work, best first and bounded.
+//
+// `preferred` is the language of the work's own country of origin. It goes second
+// rather than first: English is the best-covered edition and the one whose section
+// names we have exercised most, and a work whose home edition is a stub should not
+// lose the English article to the cap.
+export function languagesForWork(entity, { preferred = null, limit = MAX_LANGUAGES_PER_WORK } = {}) {
+  const available = SUPPORTED_LANGUAGES.filter((code) => articleTitleFromEntity(entity, code));
+  const ordered = [
+    ...available.filter((code) => code === "en"),
+    ...available.filter((code) => code === preferred && code !== "en"),
+    ...available.filter((code) => code !== "en" && code !== preferred),
+  ];
+  return ordered.slice(0, Math.max(1, limit));
+}
+
+export function buildTocUrl(title, language = "en") {
   if (typeof title !== "string" || !title.trim()) return null;
-  const url = new URL("https://en.wikipedia.org/w/api.php");
+  if (!SUPPORTED_LANGUAGES.includes(language)) return null;
+  const url = new URL(`https://${language}.wikipedia.org/w/api.php`);
   url.searchParams.set("action", "parse");
   url.searchParams.set("page", title.trim());
   // `revid` must be asked for explicitly. The docs read as though action=parse
@@ -98,10 +148,11 @@ export function buildTocUrl(title) {
   return url.toString();
 }
 
-export function buildSectionUrl(title, index) {
+export function buildSectionUrl(title, index, language = "en") {
   const sectionIndex = String(index ?? "").trim();
   if (!title || !/^\d+$/.test(sectionIndex)) return null;
-  const url = new URL("https://en.wikipedia.org/w/api.php");
+  if (!SUPPORTED_LANGUAGES.includes(language)) return null;
+  const url = new URL(`https://${language}.wikipedia.org/w/api.php`);
   url.searchParams.set("action", "parse");
   url.searchParams.set("page", title);
   url.searchParams.set("prop", "wikitext");
@@ -114,22 +165,33 @@ export function buildSectionUrl(title, index) {
 }
 
 // Which section to read. Returns the `index`, never the `number` — see the header.
-export function chooseSection(tocdata) {
+export function chooseSection(tocdata, language = "en") {
   const sections = tocdata?.sections;
   if (!Array.isArray(sections) || sections.length === 0) return null;
+  const ranked = SECTION_RANK_BY_LANGUAGE[language];
+  if (!ranked) return null;
 
-  const rankOf = (line) => {
+  // An exact heading beats one that merely CONTAINS a listed word, and the difference
+  // is not cosmetic: "vorproduktion".includes("produktion") is true, so a plain
+  // substring test picked the German pre-production section over the article's real
+  // "Entstehungsgeschichte". The same trap waits in "Nachproduktion" and
+  // "Postprodukcja" — a prefix reverses what the heading means.
+  const scoreOf = (line) => {
     const text = String(line ?? "").toLowerCase().trim();
-    const rank = SECTION_RANK.findIndex((name) => text === name || text.includes(name));
-    return rank === -1 ? Infinity : rank;
+    const exact = ranked.indexOf(text);
+    if (exact !== -1) return { exactness: 0, rank: exact };
+    const contains = ranked.findIndex((name) => text.includes(name));
+    return contains === -1 ? null : { exactness: 1, rank: contains };
   };
 
   // An h2 outranks a deeper heading with the same name, because its subtree contains
   // everything below it.
   const best = sections
-    .map((section) => ({ section, rank: rankOf(section.line), level: Number(section.hLevel) || 9 }))
-    .filter((entry) => entry.rank !== Infinity)
-    .sort((a, b) => (a.rank - b.rank) || (a.level - b.level))[0];
+    .map((section) => ({ section, score: scoreOf(section.line), level: Number(section.hLevel) || 9 }))
+    .filter((entry) => entry.score !== null)
+    .sort((a, b) => (a.score.exactness - b.score.exactness)
+      || (a.score.rank - b.score.rank)
+      || (a.level - b.level))[0];
 
   if (!best) return null;
   const index = String(best.section.index ?? "");
@@ -261,10 +323,11 @@ export function isStorableQuote(quote) {
 // `integerOrNull` rather than `Number.isInteger(Number(revid))`: `Number(null)` is 0
 // and 0 is an integer, so the naive check happily builds `oldid=null` — the same
 // coercion that put places at Null Island four times before numbers.mjs existed.
-export function permalink(title, revid) {
+export function permalink(title, revid, language = "en") {
   const revision = integerOrNull(revid);
   if (!title || revision === null || revision <= 0) return null;
-  const url = new URL("https://en.wikipedia.org/w/index.php");
+  if (!SUPPORTED_LANGUAGES.includes(language)) return null;
+  const url = new URL(`https://${language}.wikipedia.org/w/index.php`);
   url.searchParams.set("title", String(title).replace(/ /g, "_"));
   url.searchParams.set("oldid", String(revision));
   return url.toString();
@@ -273,19 +336,24 @@ export function permalink(title, revid) {
 // Both halves are required and are separate obligations: crediting the author (the
 // article) and giving the licensing notice (naming CC BY-SA and linking it). Shipping
 // only "Source: Wikipedia" plus a link is the common failure and is non-compliant.
-export function wikipediaAttribution({ title, revid, modified = false }) {
+export function wikipediaAttribution({ title, revid, modified = false, language = "en" }) {
   if (!title) return null;
+  // The credit must point at the edition the text was actually copied from. Once the
+  // extractor reads French and Japanese articles, an en.wikipedia link is not a
+  // slightly wrong URL — it credits the wrong authors for the sentence we stored.
+  const edition = SUPPORTED_LANGUAGES.includes(language) ? language : "en";
   return {
     source: "wikipedia",
-    label: `Wikipedia, "${title}"`,
-    article_url: `https://en.wikipedia.org/wiki/${encodeURIComponent(String(title).replace(/ /g, "_"))}`,
-    permalink: permalink(title, revid),
+    label: `Wikipedia (${edition}), "${title}"`,
+    article_url: `https://${edition}.wikipedia.org/wiki/${encodeURIComponent(String(title).replace(/ /g, "_"))}`,
+    permalink: permalink(title, revid, edition),
     revid: integerOrNull(revid),
     license: WIKIPEDIA_LICENSE.name,
     license_url: WIKIPEDIA_LICENSE.url,
     modified: Boolean(modified),
     // Rendered wherever the quote is shown — not on an About page, because public
     // display is what the licence calls Sharing.
-    notice: `Source: Wikipedia, "${title}" — ${WIKIPEDIA_LICENSE.name}${modified ? " (modified)" : ""}`,
+    language: edition,
+    notice: `Source: Wikipedia (${edition}), "${title}" — ${WIKIPEDIA_LICENSE.name}${modified ? " (modified)" : ""}`,
   };
 }

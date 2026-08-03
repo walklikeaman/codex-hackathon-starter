@@ -219,3 +219,18 @@ test("a name made only of common words is not judged by this rule", () => {
   // that cannot see it.
   assert.equal(sentenceMentionsPlace("Filming took place nearby that winter.", "The Common"), true);
 });
+
+test("one malformed item costs itself, not the whole extraction", () => {
+  // Seen live: the French article yielded 27 places and a single empty source_sentence
+  // at index 26 failed the schema, taking the other 26 with it. A schema is
+  // all-or-nothing, so per-field limits belong in the accept pass.
+  const parsed = wikipediaLocationsSchema.parse({ locations: [
+    found(),
+    { place_name: "Somewhere", area_hint: "", source_sentence: "", is_filming_location: true },
+    { place_name: "X", area_hint: "", source_sentence: PROSE.split("\n")[1], is_filming_location: true },
+  ] });
+
+  const { accepted, rejected } = acceptExtraction(parsed, { prose: PROSE, article });
+  assert.equal(accepted.length, 1);
+  assert.deepEqual(rejected.map((r) => r.reason).sort(), ["no_name", "quote_wrong_length"]);
+});

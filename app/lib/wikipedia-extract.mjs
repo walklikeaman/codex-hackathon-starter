@@ -30,14 +30,21 @@ import { normalizePlaceName } from "./place-dedup.mjs";
 export const MAX_LOCATIONS_PER_ARTICLE = 25;
 const SCHEMA_MAX_LOCATIONS = 40;
 
+// The same split, one level down. Per-FIELD constraints belong in the accept pass, not
+// in the schema, for the reason the location cap already demonstrated: a schema is
+// all-or-nothing, so one malformed item costs every good one beside it. Seen live —
+// the French article yielded 27 places and a single empty source_sentence at index 26
+// took the other 26 with it.
+//
+// The shape is still described here. The lengths are policy, and policy drops items.
 const extractedLocation = z.object({
   // What the prose calls the place. A name, never a point.
-  place_name: z.string().min(2).max(160),
+  place_name: z.string(),
   // The town, city or region the prose puts it in, when it says. Used to break
   // homonyms — "Cambridge" is unresolvable, "Cambridge, England" is not.
-  area_hint: z.string().max(160),
+  area_hint: z.string(),
   // The sentence this came from, copied exactly. Checked against the source below.
-  source_sentence: z.string().min(10).max(400),
+  source_sentence: z.string(),
   // Whether the prose says filming happened THERE, or merely mentions the place.
   // "The crew scouted Venice but shot in Malta" names two places and only one is a
   // filming location.
@@ -146,7 +153,7 @@ export function acceptExtraction(parsed, { prose, article }) {
     const key = normalizePlaceName(name);
     const drop = (reason) => rejected.push({ place_name: name, reason });
 
-    if (!key) { drop("no_name"); continue; }
+    if (!key || name.length < 2 || name.length > 160) { drop("no_name"); continue; }
     if (location.is_filming_location !== true) { drop("not_a_filming_location"); continue; }
     if (seen.has(key)) { drop("duplicate"); continue; }
     // Beyond the cap the extras are dropped, not the answer. They arrive in article
@@ -156,7 +163,13 @@ export function acceptExtraction(parsed, { prose, article }) {
     // The load-bearing check. A model that invents a justification is the failure this
     // pipeline has already shipped once, and a fluent sentence is not evidence that
     // the sentence exists.
+    // Length first: an empty sentence is malformed, not "a sentence that is not in the
+    // article", and reporting the latter sends someone looking for a paraphrase that
+    // was never written.
+    const sentence = String(location.source_sentence ?? "").trim();
+    if (sentence.length < 10 || sentence.length > 400) { drop("quote_wrong_length"); continue; }
     if (!quoteAppearsInSource(location.source_sentence, prose)) { drop("quote_not_in_source"); continue; }
+
     const quoteProblem = quoteRejection(location.source_sentence);
     if (quoteProblem) { drop(quoteProblem); continue; }
     // The sentence is real; this asks whether it is real ABOUT THIS PLACE.
@@ -167,7 +180,7 @@ export function acceptExtraction(parsed, { prose, article }) {
     seen.add(key);
     accepted.push({
       place_name: name,
-      area_hint: String(location.area_hint ?? "").trim() || null,
+      area_hint: String(location.area_hint ?? "").trim().slice(0, 160) || null,
       source_sentence: String(location.source_sentence).trim(),
       // Provenance travels with the claim from the moment it is made, rather than
       // being attached later when nobody remembers which revision it came from.

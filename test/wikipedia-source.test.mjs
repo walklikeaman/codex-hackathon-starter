@@ -12,6 +12,7 @@ import {
   buildSectionUrl,
   buildTocUrl,
   chooseSection,
+  languagesForWork,
   cleanWikitext,
   isStorableQuote,
   MAX_QUOTE_WORDS,
@@ -173,10 +174,23 @@ test("attribution carries both halves the licence requires", () => {
   // Crediting the author and giving the licensing notice are SEPARATE obligations;
   // "Source: Wikipedia" plus a link satisfies only the first.
   const credit = wikipediaAttribution({ title: "Skyfall", revid: 123456 });
-  assert.match(credit.notice, /Wikipedia, "Skyfall"/);
+  assert.match(credit.notice, /Wikipedia \(en\), "Skyfall"/);
   assert.match(credit.notice, /CC BY-SA 4\.0/);
   assert.equal(credit.license_url, WIKIPEDIA_LICENSE.url);
   assert.match(credit.article_url, /en\.wikipedia\.org\/wiki\/Skyfall/);
+});
+
+test("the credit points at the edition the text was copied from", () => {
+  // Once the extractor reads French and Japanese articles, an en.wikipedia link is not
+  // a slightly wrong URL — it credits the wrong authors for the sentence we stored.
+  const credit = wikipediaAttribution({ title: "Skyfall", revid: 123456, language: "fr" });
+  assert.match(credit.article_url, /fr\.wikipedia\.org/);
+  assert.match(credit.permalink, /fr\.wikipedia\.org/);
+  assert.equal(credit.language, "fr");
+
+  // An edition we have no section rules for falls back rather than building a URL for
+  // a wiki we never read.
+  assert.equal(wikipediaAttribution({ title: "X", revid: 1, language: "xx" }).language, "en");
 });
 
 test("the exact revision is pinned, which is what settles the licence version", () => {
@@ -242,4 +256,90 @@ test("the wait comes from the response, not from a guess", () => {
 
 test("retrying is bounded, so an indefinitely lagged service fails loudly", () => {
   assert.ok(MAX_RETRY_ATTEMPTS >= 3 && MAX_RETRY_ATTEMPTS <= 10);
+});
+
+// --- more than one edition, because they do not say the same things --------------------
+
+test("each edition finds its own production heading", () => {
+  const one = (line) => ({ sections: [{ index: "4", line, hLevel: 2 }] });
+
+  assert.equal(chooseSection(one("Tournage"), "fr").index, "4");
+  assert.equal(chooseSection(one("Localizaciones"), "es").index, "4");
+  assert.equal(chooseSection(one("ロケーション"), "ja").index, "4");
+  assert.equal(chooseSection(one("Работа над картиной"), "ru").index, "4");
+  assert.equal(chooseSection(one("Dreharbeiten"), "de").index, "4");
+  assert.equal(chooseSection(one("Zdjęcia"), "pl").index, "4");
+});
+
+test("the parent heading wins in every language, not just English", () => {
+  // MediaWiki returns the whole subtree. Verified on Skyfall: French "Tournage",
+  // Spanish "Localizaciones", Japanese "ロケーション" and Polish "Zdjęcia" are all
+  // children of the production heading above them, so preferring the child throws
+  // away the siblings that carry the location prose.
+  const nested = (parent, child) => ({ sections: [
+    { index: "3", line: parent, hLevel: 2 },
+    { index: "5", line: child, hLevel: 3 },
+  ] });
+
+  assert.equal(chooseSection(nested("Production", "Tournage"), "fr").index, "3");
+  assert.equal(chooseSection(nested("Producción", "Localizaciones"), "es").index, "3");
+  assert.equal(chooseSection(nested("製作", "ロケーション"), "ja").index, "3");
+  assert.equal(chooseSection(nested("Produkcja", "Zdjęcia"), "pl").index, "3");
+});
+
+test("a heading about where the STORY happens is not one about where it was shot", () => {
+  // French Skyfall carries "Lieux de l'action" — 105 characters about the plot's
+  // settings — above the "Tournage" section that describes the shoot. Ranking them
+  // together picked the wrong one, and this project is built on that distinction.
+  const both = { sections: [
+    { index: "3", line: "Lieux de l'action", hLevel: 2 },
+    { index: "7", line: "Tournage", hLevel: 2 },
+  ] };
+  assert.equal(chooseSection(both, "fr").index, "7");
+});
+
+test("a section list is never applied to the wrong language", () => {
+  // "Production" is an English heading; matching it inside a Russian article would
+  // pick whatever happened to contain the substring.
+  assert.equal(chooseSection({ sections: [{ index: "4", line: "Production", hLevel: 2 }] }, "ru"), null);
+  assert.equal(chooseSection({ sections: [{ index: "4", line: "Tournage", hLevel: 2 }] }, "xx"), null);
+});
+
+test("only editions we can actually read are requested", () => {
+  const url = buildEntitiesUrl(["Q4941"]);
+  assert.match(url, /sitefilter=enwiki/);
+  assert.match(url, /frwiki/);
+  assert.equal(buildTocUrl("Skyfall", "xx"), null);
+  assert.equal(buildSectionUrl("Skyfall", "4", "xx"), null);
+  assert.match(buildTocUrl("Skyfall", "ja"), /ja\.wikipedia\.org/);
+});
+
+test("English leads, the work's own language follows, and the list is bounded", () => {
+  // English is the best-covered edition, so a work whose home edition is a stub must
+  // not lose it to the cap.
+  const entity = { sitelinks: {
+    enwiki: { title: "Skyfall" }, frwiki: { title: "Skyfall" },
+    dewiki: { title: "Skyfall" }, jawiki: { title: "007 スカイフォール" },
+  } };
+
+  assert.deepEqual(languagesForWork(entity, { preferred: "ja", limit: 3 }), ["en", "ja", "fr"]);
+  assert.deepEqual(languagesForWork(entity, { limit: 1 }), ["en"]);
+  assert.deepEqual(languagesForWork({ sitelinks: { frwiki: { title: "Skyfall" } } }), ["fr"]);
+  assert.deepEqual(languagesForWork({ sitelinks: {} }), []);
+});
+
+test("a prefix reverses the meaning, so an exact heading wins over a containing one", () => {
+  // "vorproduktion".includes("produktion") is true, and a plain substring test duly
+  // picked the German PRE-production section over the article's real
+  // "Entstehungsgeschichte". The same trap waits in "Nachproduktion" and
+  // "Postprodukcja".
+  const german = { sections: [
+    { index: "2", line: "Entstehungsgeschichte", hLevel: 2 },
+    { index: "3", line: "Vorproduktion", hLevel: 2 },
+    { index: "6", line: "Nachproduktion und Marketing", hLevel: 2 },
+  ] };
+  assert.equal(chooseSection(german, "de").index, "2");
+
+  // With no exact match anywhere, a containing heading is still better than nothing.
+  assert.equal(chooseSection({ sections: [{ index: "3", line: "Vorproduktion", hLevel: 2 }] }, "de").index, "3");
 });

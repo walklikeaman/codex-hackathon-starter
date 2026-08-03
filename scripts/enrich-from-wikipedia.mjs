@@ -3,6 +3,7 @@
 // Read filming locations out of Wikipedia prose and queue them for review (#47).
 //
 //   node scripts/enrich-from-wikipedia.mjs [--limit 5] [--dry-run] [--work <uuid>]
+//                                          [--languages 3]
 //
 // Deliberately a script and not a route. It is slow by design — one request a second
 // to Wikimedia, five seconds between Wikidata queries — because the pacing is the
@@ -24,6 +25,8 @@ import {
   buildTocUrl,
   chooseSection,
   cleanWikitext,
+  languagesForWork,
+  MAX_LANGUAGES_PER_WORK,
   isRetryableApiError,
   MAX_RETRY_ATTEMPTS,
   MIN_REQUEST_GAP_MS,
@@ -39,6 +42,7 @@ import {
 } from "../app/lib/wikipedia-extract.mjs";
 import { WIKIDATA_LICENSE } from "../app/lib/geocode-wikidata.mjs";
 import { createGeocoder } from "../app/lib/geocode-client.mjs";
+import { normalizePlaceName } from "../app/lib/place-dedup.mjs";
 import { createModelClient, createThrottle, parseStructured } from "../app/lib/model-client.mjs";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,6 +54,7 @@ function arg(name, fallback = null) {
 const DRY_RUN = process.argv.includes("--dry-run");
 const LIMIT = Number.parseInt(arg("limit", "5"), 10) || 5;
 const ONE_WORK = arg("work", null);
+const LANGUAGES = Number.parseInt(arg("languages", ""), 10) || MAX_LANGUAGES_PER_WORK;
 
 const headers = { "User-Agent": USER_AGENT, "Accept-Encoding": "gzip" };
 
@@ -131,72 +136,98 @@ async function main() {
   const entities = await wikimedia(buildEntitiesUrl(works.map((work) => work.wikidata_id)));
 
   for (const work of works) {
-    const title = articleTitleFromEntity(entities.entities?.[work.wikidata_id]);
     console.log(`\n${work.title}`);
-    if (!title) { console.log("   no English article — skipped"); continue; }
+    const entity = entities.entities?.[work.wikidata_id];
+    const languages = languagesForWork(entity, { limit: LANGUAGES });
+    if (languages.length === 0) { console.log("   no article in any edition we read — skipped"); continue; }
+    console.log(`   editions: ${languages.join(", ")}`);
 
-    let toc;
-    try {
-      toc = await wikimedia(buildTocUrl(title));
-    } catch (failure) {
-      console.log(`   ${failure.message}`);
-      continue;
+    // One accepted list per work, merged across editions. Reading more than one is not
+    // redundancy: French carries "Lieux de tournage" and Japanese "ロケーション", sections
+    // English does not have, so each edition names places the others summarise away.
+    // Whichever edition mentioned a place first keeps its citation — the sentence and
+    // the article it came from must stay together.
+    const accepted = [];
+    const seen = new Set();
+    const credits = new Map();
+
+    for (const language of languages) {
+      const title = articleTitleFromEntity(entity, language);
+
+      let toc;
+      try {
+        toc = await wikimedia(buildTocUrl(title, language));
+      } catch (failure) {
+        console.log(`   ${language}: ${failure.message}`);
+        continue;
+      }
+
+      const section = chooseSection(toc.parse?.tocdata, language);
+      if (!section) { console.log(`   ${language}: no production section`); continue; }
+
+      const revid = toc.parse?.revid;
+      const raw = await wikimedia(buildSectionUrl(title, section.index, language));
+      const prose = cleanWikitext(raw.parse?.wikitext ?? "");
+      console.log(`   ${language}: "${section.line}" → ${prose.length} chars (rev ${revid})`);
+
+      if (DRY_RUN || !runtime) continue;
+
+      await throttle();
+      const extraction = await parseStructured({
+        runtime,
+        schema: wikipediaLocationsSchema,
+        schemaName: "wikipedia_locations",
+        instructions: extractionInstructions(),
+        input: buildExtractionInput({ ...work, prose }),
+        // 25 locations with a quoted sentence each runs past 4000 and the answer comes
+        // back as JSON cut off mid-string. Budget for the cap the schema allows.
+        // The endpoint truncated a 25-location answer at well under this, so the
+        // budget is not the binding constraint — but leaving headroom costs nothing
+        // and a truncated reply is a total loss.
+        maxTokens: 20_000,
+        timeout: 180_000, // a free endpoint took 27s on a short passage; give it room
+      });
+
+      // A weak model answering with prose, refusing, or running out of tokens is an
+      // ordinary outcome of asking a free endpoint. Record it and take the next
+      // edition — dying here would abandon every work still queued behind this one.
+      if (!extraction.ok) {
+        console.log(`   ${language}: extraction ${extraction.reason}`
+          + (extraction.detail ? `: ${extraction.detail}` : ""));
+        continue;
+      }
+
+      const result = acceptExtraction(extraction.parsed, { prose, article: { title, revid } });
+      let fresh = 0;
+      for (const location of result.accepted) {
+        const key = normalizePlaceName(location.place_name);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        accepted.push({ ...location, language });
+        fresh += 1;
+      }
+      credits.set(language, wikipediaAttribution({ title, revid, language }));
+      console.log(`   ${language}: ${result.accepted.length} accepted, ${fresh} new`
+        + (result.rejected.length ? `, ${result.rejected.length} dropped` : ""));
     }
-
-    const section = chooseSection(toc.parse?.tocdata);
-    if (!section) { console.log("   no production section — skipped"); continue; }
-
-    const revid = toc.parse?.revid;
-    const raw = await wikimedia(buildSectionUrl(title, section.index));
-    const prose = cleanWikitext(raw.parse?.wikitext ?? "");
-    console.log(`   "${section.line}" → ${prose.length} chars (rev ${revid})`);
-
-    if (DRY_RUN || !runtime) { console.log("   dry run — not extracting"); continue; }
-
-    await throttle();
-    const extraction = await parseStructured({
-      runtime,
-      schema: wikipediaLocationsSchema,
-      schemaName: "wikipedia_locations",
-      instructions: extractionInstructions(),
-      input: buildExtractionInput({ ...work, prose }),
-      // 25 locations with a quoted sentence each runs past 4000 and the answer comes
-      // back as JSON cut off mid-string. Budget for the cap the schema allows.
-      maxTokens: 12_000,
-      timeout: 180_000, // a free endpoint took 27s on a short passage; give it room
-    });
-
-    // A weak model answering with prose, refusing, or running out of tokens is an
-    // ordinary outcome of asking a free endpoint. Record it and take the next film —
-    // dying here would abandon every work still queued behind this one.
-    if (!extraction.ok) {
-      console.log(`   extraction ${extraction.reason}${extraction.detail ? `: ${extraction.detail}` : ""}`);
-      continue;
-    }
-
-    const { accepted, rejected } = acceptExtraction(extraction.parsed, {
-      prose, article: { title, revid },
-    });
-    console.log(`   ${accepted.length} accepted, ${rejected.length} dropped`
-      + (rejected.length ? ` (${[...new Set(rejected.map((r) => r.reason))].join(", ")})` : ""));
 
     if (accepted.length === 0) continue;
 
     const located = await geocode(accepted.map((location) => location.place_name));
-    const credit = wikipediaAttribution({ title, revid });
 
     const rows = accepted.map((location) => {
       const chosen = located.get(location.place_name);
+      const credit = credits.get(location.language);
       return {
         work_id: work.id,
         place_name: location.place_name,
         area_hint: location.area_hint,
         source_sentence: location.source_sentence,
-        source_title: title,
-        source_revid: revid,
-        source_url: credit.permalink,
-        // A coordinate arrives with its provenance or not at all — the table enforces
-        // it, and a submission without one is still a real claim worth reviewing.
+        source_title: location.article_title,
+        source_revid: location.article_revid,
+        // The credit points at the edition the sentence was copied from. A French
+        // quote under an en.wikipedia permalink credits the wrong authors.
+        source_url: credit?.permalink ?? null,
         ...(chosen?.place
           ? {
             lat: chosen.place.lat,
