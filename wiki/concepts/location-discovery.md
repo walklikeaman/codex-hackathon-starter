@@ -8,6 +8,30 @@ Code: `app/lib/location-search.mjs`, `app/lib/location-discovery-schema.mjs`; ro
 **The rule every path obeys: a model may name a place, never locate one.** Names become
 points through [[geocoding-cascade]].
 
+## A title is not a question about the city on screen
+
+A work search used to return only the places falling inside the currently viewed city.
+Measured both ways: "Notting Hill" gave 1 place from London and **0 from Paris**;
+"Amélie" gave 4 from Paris and **0 from London**. The map came back empty not because
+the film's places are unknown, but because they are somewhere else.
+
+A radius answers "what is near me". That is the right question for a place search and
+the wrong one for a title search — somebody typing a film name is asking where that film
+is, and the answer must not depend on where they happened to be standing.
+
+So the radius decides what is marked as HERE, not what exists. `locationsByDistance`
+returns every place the work touches, nearest first, each carrying `in_radius`, and the
+response carries a `here` count. When nothing is in the current city the map moves to
+the first result and says so.
+
+Verified live: from London, "Amélie" now returns five places including Gare
+d'Ermont-Eaubonne and the Porte des Lilas cinema, where it previously returned none.
+
+**Two things this surfaced and did not fix.** Searching "Skyfall" matches Adele's lyric
+video (Q57840000) rather than the film, so a correct title can still resolve to the
+wrong entity. And the Wikidata place list per work is thin — one place for Notting Hill
+— which is what [[film-permits]] and [[wikipedia-enrichment]] exist to widen.
+
 ## Path 1 — canonical ([[wikidata]])
 
 nearby mode (geo-SPARQL around a point) or work mode (search for the work →

@@ -16,6 +16,35 @@ The user's "My movies": import, storage, map filtering. Implementation:
 - workIsInLibrary matches by normalized title (NFKD, a-z0-9) with a loose
   year comparison.
 - After import, the "library on map" filter is auto-enabled.
+- **No account is needed for any of it.** Import, storage and the map filter are all
+  client-side; signing in adds cloud sync across devices and nothing else.
+
+## The feature existed for weeks and could not be reached
+
+Both halves — the ZIP parser and the map filter — were finished and correct. Verified
+against a real 2,422-film export: parsed in 52ms, and `workIsInLibrary` matched 8 of our
+12 works, with all four misses being genuine absences rather than matching failures
+("Sherlock Holmes" is rightly not "Sherlock").
+
+What did not exist was a door. The header button read
+
+```js
+onClick={() => accountUser ? setAccountOpen(true) : signInWithProvider("google")}
+```
+
+so an anonymous visitor clicking it went straight to Google OAuth — and the import UI
+and the filter both live inside that panel. A guest could neither import a list nor
+filter by one, while the library is stored under `GUEST_LIBRARY_KEY`, so guest use was
+always the intent.
+
+The filter also sat in the account dialog, three clicks and an OAuth redirect away from
+the map it filters. It now sits above the work chips and appears only once there is a
+list to filter by, because an empty toggle is a question the visitor cannot answer.
+
+**This was the fourth time in this project that finished, correct work was invisible
+because it never reached the live path** — after posters, ratings and three audio
+features. "Done" and "reachable" diverge here systematically, and planning should treat
+them as separate states.
 
 ## Gotchas
 

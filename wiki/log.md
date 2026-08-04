@@ -7,6 +7,37 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-04] update | Two features that were finished and unreachable
+
+**Object**: `app/components/SceneMapApp.jsx`, `app/lib/location-search.mjs`,
+`app/api/locations/route.js`, `app/globals.css`
+**Scenario**: bugfix · **Outcome**: ✅ success
+**Code changes**: `157574d`, `b072401`
+
+**The personal library could not be opened without an account.** Both halves of it were
+written and correct — verified against a real 2,422-film Letterboxd export, parsed in
+52ms, with `workIsInLibrary` matching 8 of our 12 works and all four misses being real
+absences. What did not exist was a door: the header button sent an anonymous visitor
+straight to Google OAuth, and the import UI and the map filter both live inside that
+panel. The library is stored under a guest key, so guest use was always the intent.
+
+The filter also sat three clicks and a redirect away from the map it filters. It now
+sits above the work chips and appears only once there is a list to filter by. This was
+the **fourth** time in this project that finished work was invisible because it never
+reached the live path, after posters, ratings and three audio features.
+
+**A title search was trapped by the current city.** Typing "Notting Hill" while looking
+at Paris returned an empty map — 1 place from London, 0 from Paris; "Amélie" the mirror
+image. A radius answers "what is near me", which is right for a place search and wrong
+for a title search: somebody typing a film name is asking where that film is. The radius
+now decides what counts as *here*, not what exists, and the map moves to the results
+when the current city has none. From London, "Amélie" went from 0 places to five.
+
+Surfaced and not fixed: "Skyfall" still resolves to Adele's lyric video rather than the
+film, and per-work Wikidata place lists are thin — one place for Notting Hill.
+
+**Updated**: `wiki/concepts/personal-library.md`, `wiki/concepts/location-discovery.md`
+
 ## [2026-08-03] ingest | Filming permits — the first primary source in the project
 
 **Object**: `app/lib/film-permits.mjs`, `scripts/ingest-film-permits.mjs`,
