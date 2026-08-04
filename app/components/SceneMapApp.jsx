@@ -1972,14 +1972,19 @@ export default function SceneMapApp() {
             <p className="eyebrow">GloryMap</p>
             <h1>Stories on the map · {cityName}</h1>
           </div>
+          {/* Opening the library must not require an account. The library already
+              lives in localStorage under a guest key, so guest use was always the
+              intent — there was simply no door to it: this button signed you into
+              Google instead, which meant an anonymous visitor could neither import a
+              list nor filter the map by one. Signing in belongs INSIDE the panel,
+              where it does what it actually does: sync across devices. */}
           <button
             className={`account-button${accountUser ? "" : " is-login"}`}
             type="button"
-            onClick={() => accountUser ? setAccountOpen(true) : signInWithProvider("google")}
-            disabled={!accountUser && ["authorizing", "loading", "unavailable"].includes(accountStatus)}
+            onClick={() => setAccountOpen(true)}
           >
-            {accountUser ? <User size={18} /> : <LogIn size={17} />}
-            {accountUser ? "My movies" : "Login"}
+            {accountUser ? <User size={18} /> : <Film size={17} />}
+            {library.length > 0 ? `My movies · ${library.length}` : "My movies"}
           </button>
         </div>
 
@@ -2297,6 +2302,31 @@ export default function SceneMapApp() {
             </>
           )}
         </div>
+
+        {/* The map's own answer to "show me only what I have seen".
+            This filter already existed and was correct, and it lived inside the
+            account dialog — which an anonymous visitor could not open at all. A
+            filter on what the map shows belongs beside the map, next to the works
+            it filters. It appears only once there is a list to filter by; an empty
+            toggle is a question the visitor cannot answer. */}
+        {library.length > 0 && (
+          <div className="library-filter">
+            <button
+              type="button"
+              className={`library-filter-toggle${libraryMapOnly ? " is-on" : ""}`}
+              onClick={() => setLibraryMapOnly((current) => !current)}
+              aria-pressed={libraryMapOnly}
+            >
+              <Film size={15} aria-hidden="true" />
+              {libraryMapOnly ? "Only my list" : "All stories"}
+            </button>
+            <small>
+              {libraryMapOnly
+                ? `${libraryFilmIds.size} of ${films.length} ${films.length === 1 ? "story" : "stories"} here are on your list`
+                : `${library.length} in your list`}
+            </small>
+          </div>
+        )}
 
         <div className="film-grid" aria-label="Selected stories">
           {mapFilms.map((film) => {

@@ -546,6 +546,45 @@ h2 {
   filter: none;
 }
 
+/* The map's own "only my list" filter. It sits with the works it filters rather
+   than inside the account dialog, which an anonymous visitor cannot open. */
+.library-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.5rem;
+}
+
+.library-filter small {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.76rem;
+}
+
+.library-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.34rem 0.72rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.library-filter-toggle:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.library-filter-toggle.is-on {
+  background: var(--accent, #f0b429);
+  border-color: transparent;
+  color: #1a1408;
+}
+
 .film-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
