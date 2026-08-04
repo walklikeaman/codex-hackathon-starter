@@ -372,6 +372,24 @@ export function locationsWithinRadius(locations, center, radius) {
     .sort((first, second) => first.distance_km - second.distance_km);
 }
 
+// Every place a work touches, nearest first, each saying whether it falls inside the
+// city currently on screen.
+//
+// A radius answers "what is near me", which is the right question for a place search
+// and the wrong one for a work search. Asking for "Notting Hill" while looking at Paris
+// returned an empty map — not because we lack the film's places, but because they are
+// in London. The user typed a title, and a title is not a request about here.
+//
+// So the radius stops deciding what EXISTS and only decides what is marked as here.
+export function locationsByDistance(locations, center, radius) {
+  return locations
+    .map((location) => {
+      const distance_km = distanceKm(center, { lat: location.lat, lng: location.lng });
+      return { ...location, distance_km, in_radius: distance_km <= radius };
+    })
+    .sort((first, second) => first.distance_km - second.distance_km);
+}
+
 export function selectFirstMatchingWork(locations, workIds, limit, excludeLocationId = null) {
   for (const workId of workIds) {
     const workLocations = locations.filter((location) => location.work_wikidata_id === workId);

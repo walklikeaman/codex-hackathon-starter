@@ -6,6 +6,7 @@ import {
   entityClaimIds,
   isWikidataId,
   isWorkKind,
+  locationsByDistance,
   locationsWithinRadius,
   normalizeWikidataEntityLocations,
   normalizeWikidataLocations,
@@ -163,11 +164,15 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
   const locationIds = entityClaimIds(workEntity, config.locationProperty);
   const locationEntities = await fetchEntities(locationIds);
   const normalized = normalizeWikidataEntityLocations(workEntity, locationEntities, { kind });
-  const nearby = locationsWithinRadius(normalized, center, radius);
+  // Every place the work touches, nearest first. The radius no longer decides what
+  // exists — a title search is not a question about the city on screen.
+  const ranked = locationsByDistance(normalized, center, radius);
+  const locations = selectFirstMatchingWork(ranked, [matchedWorkId], limit, excludeLocationId);
 
   return {
     matchedWork,
-    locations: selectFirstMatchingWork(nearby, [matchedWorkId], limit, excludeLocationId),
+    locations,
+    here: locations.filter((location) => location.in_radius).length,
   };
 }
 
@@ -224,6 +229,10 @@ export async function GET(request) {
           kind,
           search_mode: "work",
           matched_work: result.matchedWork,
+          // How many of them are in the city on screen. The client needs this to know
+          // whether to fly somewhere: a title search that returns places nobody can see
+          // is the same failure as returning none.
+          here: result.here ?? 0,
           locations: addSceneMatchTokens(result.locations),
         },
         { headers: { "Cache-Control": SCENE_MATCH_TOKEN_CACHE_CONTROL } },

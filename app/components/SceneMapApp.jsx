@@ -1756,12 +1756,27 @@ export default function SceneMapApp() {
       const matchedWork = payload.matched_work;
       const matchedTitle = matchedWork?.label ?? nextLocations[0]?.film ?? query;
       applyLocationResults(nextLocations);
-      if (nextLocations.length) {
+
+      // A title is not a question about the city on screen. Searching "Notting Hill"
+      // while looking at Paris used to return an empty map — not because the film's
+      // places are unknown, but because they are in London. The server now returns
+      // them wherever they are, so the map goes to them.
+      const here = Number(payload.here ?? nextLocations.length);
+      const elsewhere = nextLocations.length - here;
+
+      if (nextLocations.length && here === 0) {
+        const [first] = nextLocations;
+        setMapCenter(first.position);
         setLocationsStatus(
-          `${nextLocations.length} verified ${nextLocations.length === 1 ? "place" : "places"} for ${matchedTitle} in ${cityName}.`,
+          `${nextLocations.length} verified ${nextLocations.length === 1 ? "place" : "places"} for ${matchedTitle} — none in ${cityName}, so the map moved to ${first.place}.`,
+        );
+      } else if (nextLocations.length) {
+        setLocationsStatus(
+          `${here} verified ${here === 1 ? "place" : "places"} for ${matchedTitle} in ${cityName}`
+          + (elsewhere > 0 ? `, and ${elsewhere} elsewhere.` : "."),
         );
       } else {
-        setLocationsStatus(`No verified ${workKind} locations for “${query}” were found inside ${cityName}.`);
+        setLocationsStatus(`No verified ${workKind} locations are mapped for “${query}” anywhere yet.`);
       }
 
       if (!matchedWork || nextLocations.length >= 3) return;
