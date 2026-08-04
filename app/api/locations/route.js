@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { MAX_SEARCH_RADIUS_KM } from "../../lib/nearby.mjs";
 import {
   buildLocationsSparql,
   buildWikidataEntitiesUrl,
@@ -180,7 +181,7 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const lat = numberInRange(searchParams.get("lat"), DEFAULTS.lat, { min: -90, max: 90 });
   const lng = numberInRange(searchParams.get("lng"), DEFAULTS.lng, { min: -180, max: 180 });
-  const radius = numberInRange(searchParams.get("radius"), DEFAULTS.radius, { min: 0.1, max: 50 });
+  const radius = numberInRange(searchParams.get("radius"), DEFAULTS.radius, { min: 0.1, max: MAX_SEARCH_RADIUS_KM });
   const limit = numberInRange(searchParams.get("limit"), DEFAULTS.limit, { min: 1, max: 60 });
   const kind = searchParams.get("kind") ?? DEFAULTS.kind;
   const workQuery = searchParams.has("q") ? safeSearchQuery(searchParams.get("q")) : null;

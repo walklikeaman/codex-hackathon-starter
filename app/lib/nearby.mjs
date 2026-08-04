@@ -49,13 +49,22 @@ export function formatDistanceMeters(meters) {
   return `${(Math.round(meters / 100) / 10).toFixed(1)} km`;
 }
 
+// How far a single search may reach. A country, not a city: the product is a route
+// through a region — Rowling's Edinburgh, the Antrim coast — and a viewport showing
+// Britain must be able to ask about Britain. Beyond this the answer stops being a
+// walkable set of stops and becomes a world map, which is a different product.
+export const MAX_SEARCH_RADIUS_KM = 500;
+
 export function mapSearchRadiusKm(distanceToCornerMeters) {
   if (!Number.isFinite(distanceToCornerMeters) || distanceToCornerMeters <= 0) {
     throw new Error("distanceToCornerMeters must be a positive number");
   }
 
   const radiusKm = Math.ceil(distanceToCornerMeters / 100) / 10;
-  return Math.min(50, Math.max(0.5, radiusKm));
+  // The ceiling was 50km — a city. It made zooming out pointless: the view widened to
+  // a country while the search kept asking about the same 50km, so Scotland's places
+  // stayed invisible from a Britain-wide view. MAX_SEARCH_RADIUS_KM covers a country.
+  return Math.min(MAX_SEARCH_RADIUS_KM, Math.max(0.5, radiusKm));
 }
 
 export function zoomForRadius(radiusMeters) {

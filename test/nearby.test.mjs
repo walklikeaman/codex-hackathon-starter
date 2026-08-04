@@ -6,6 +6,7 @@ import {
   distanceMeters,
   findNearby,
   formatDistanceMeters,
+  MAX_SEARCH_RADIUS_KM,
   mapSearchRadiusKm,
   zoomForRadius,
 } from "../app/lib/nearby.mjs";
@@ -88,9 +89,21 @@ test("formatDistanceMeters switches from meters to kilometers", () => {
 test("mapSearchRadiusKm covers the viewport and respects API limits", () => {
   assert.equal(mapSearchRadiusKm(120), 0.5);
   assert.equal(mapSearchRadiusKm(5250), 5.3);
-  assert.equal(mapSearchRadiusKm(72_000), 50);
+  // A city view still asks about a city.
+  assert.equal(mapSearchRadiusKm(72_000), 72);
   assert.throws(() => mapSearchRadiusKm(0));
   assert.throws(() => mapSearchRadiusKm(Number.NaN));
+});
+
+test("a country-wide view asks about a country, not about 50km of it", () => {
+  // The ceiling was 50km, so zooming out was pointless: the view widened to Britain
+  // while the search kept asking about the same city, and Scotland's places stayed
+  // invisible from a Britain-wide view.
+  assert.equal(mapSearchRadiusKm(600_000), MAX_SEARCH_RADIUS_KM);
+  assert.ok(MAX_SEARCH_RADIUS_KM >= 400, "a country must fit");
+  // But not the world: beyond a region the answer stops being a set of stops
+  // somebody could walk.
+  assert.ok(MAX_SEARCH_RADIUS_KM <= 1000);
 });
 
 test("zoomForRadius maps the selectable radii to sensible zoom levels", () => {

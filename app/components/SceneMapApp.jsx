@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import {
   Circle,
@@ -413,9 +413,20 @@ function FitRoute({ positions }) {
   return null;
 }
 
-function RefreshLocationsOnDrag({ onViewportChange }) {
-  const map = useMapEvents({
-    dragend() {
+// The viewport IS the question. Dragging used to refresh the search and zooming did
+// not, so widening the view to a country kept answering about the city — the places in
+// Scotland stayed invisible from a Britain-wide view because nothing re-asked.
+//
+// Zoom fires far more often than drag, hence the debounce: a pinch is a dozen events
+// and each one would otherwise be a request.
+const VIEWPORT_DEBOUNCE_MS = 400;
+
+function RefreshLocationsOnViewport({ onViewportChange }) {
+  const timerRef = useRef(null);
+
+  const schedule = useCallback((map) => {
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       const center = map.getCenter();
       const distanceToCorner = map.distance(center, map.getBounds().getNorthEast());
 
@@ -423,8 +434,17 @@ function RefreshLocationsOnDrag({ onViewportChange }) {
         center: [Number(center.lat.toFixed(5)), Number(center.lng.toFixed(5))],
         radiusKm: mapSearchRadiusKm(distanceToCorner),
       });
-    },
+    }, VIEWPORT_DEBOUNCE_MS);
+  }, [onViewportChange]);
+
+  const map = useMapEvents({
+    dragend: () => schedule(map),
+    zoomend: () => schedule(map),
+    // A resize changes what is visible without firing either of the others.
+    resize: () => schedule(map),
   });
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
 
   return null;
 }
@@ -1695,7 +1715,11 @@ export default function SceneMapApp() {
     preserveViewportContext.current = true;
     setBrowseCenter(center);
     setBrowseRadius(radiusKm);
-    setWorkQuery("");
+    // The title deliberately SURVIVES a viewport change. It used to be cleared here,
+    // which broke the thing zooming is for: searching a work and then widening the view
+    // dropped the work and fell back to a generic nearby search, instead of showing
+    // more of what was asked about. A pan or a zoom changes WHERE the question is
+    // asked, never WHAT was asked.
   }
 
   function changeWorkKind(nextKind) {
@@ -1874,7 +1898,11 @@ export default function SceneMapApp() {
   return (
     <main className="scene-shell">
       <section className="map-stage" aria-label="GloryMap locations map">
-        <MapContainer center={mapCenter} zoom={12} minZoom={11} maxZoom={17} zoomControl={false}>
+        {/* minZoom was 11 — a city. You could not zoom out to Britain, so the
+            behaviour this whole viewport change exists for was unreachable by
+            hand. 5 shows a country; below that the answer stops being a set of
+            stops somebody could walk. */}
+        <MapContainer center={mapCenter} zoom={12} minZoom={5} maxZoom={17} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -1882,7 +1910,7 @@ export default function SceneMapApp() {
           <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
           <FlyToUser position={userPosition} radius={nearbyRadius} />
-          <RefreshLocationsOnDrag onViewportChange={refreshVisibleMap} />
+          <RefreshLocationsOnViewport onViewportChange={refreshVisibleMap} />
           {userPosition && (
             <>
               <Circle
