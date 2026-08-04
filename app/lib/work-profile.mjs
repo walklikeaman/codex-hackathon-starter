@@ -58,6 +58,24 @@ export function placeRole(place) {
     // Set here, not shot here. Two different facts that a single pin would blur.
     return { role: "narrative", mappable: true, label: "Set here in the story" };
   }
+  // Neither filmed nor set here — this is where something CAME FROM. Thomas Riddell's
+  // grave gave a character its name; Harry Potter does not happen in Greyfriars
+  // Kirkyard. Without a role of its own the only options were to call it a filming
+  // location, which is false, or to drop it, which is what used to happen.
+  if (relation === "inspiration_for") {
+    return { role: "inspiration", mappable: true, label: "The idea came from here" };
+  }
+  // Built for visitors and never shot in: Bagshot Row's interior, the Green Dragon,
+  // the trolley in the wall at King's Cross while the films used platforms 4 and 5.
+  // Saying "filmed here" about these is the confident false claim the whole grounding
+  // rule exists to prevent, and it is worse than an imprecise pin because nothing
+  // about it looks wrong.
+  if (relation === "replica") {
+    return { role: "replica", mappable: true, label: "Built for visitors, not filmed here" };
+  }
+  if (relation === "author_place") {
+    return { role: "author", mappable: true, label: "Where the author worked" };
+  }
   if (placeClass === "studio_interior") {
     return { role: "studio", mappable: true, label: "Filmed at a studio" };
   }

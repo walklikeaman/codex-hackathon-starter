@@ -46,7 +46,12 @@ export function isMatchablePlace(place) {
   // opposite of what the place means.
   if (place.place_class === "studio_interior") return false;
   if (place.place_class === "fictional") return false;
-  if (place.relation_kind === "narrative_location") return false;
+  // Nothing was ever filmed at these, so a frame "matching" one asserts the opposite
+  // of what the place means. A replica is the sharpest case: the Green Dragon at
+  // Hobbiton looks exactly like the film because it was built to, and a vision model
+  // comparing them would agree enthusiastically and be entirely wrong.
+  const NEVER_FILMED = new Set(["narrative_location", "inspiration_for", "replica"]);
+  if (NEVER_FILMED.has(place.relation_kind)) return false;
   return MATCHABLE_PRECISION.has(String(place.geocode_precision ?? "").toLowerCase())
     || Boolean(place.osm_building_id);
 }

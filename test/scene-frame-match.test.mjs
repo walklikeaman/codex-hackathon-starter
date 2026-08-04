@@ -306,3 +306,14 @@ test("a confirmed match costs two calls: the claim and its refutation", async ()
   assert.equal(calls.checks, 1);
   assert.equal(calls.saved.length, 1);
 });
+
+test("a place nothing was filmed at is never frame-matched", () => {
+  // A replica is the sharpest case: the Green Dragon looks exactly like the film
+  // because it was built to, so a vision model would agree enthusiastically and be
+  // entirely wrong.
+  const base = { wikidata_id: "Q1", geocode_precision: "building" };
+  assert.equal(isMatchablePlace({ ...base, relation_kind: "filming_location" }), true);
+  assert.equal(isMatchablePlace({ ...base, relation_kind: "replica" }), false);
+  assert.equal(isMatchablePlace({ ...base, relation_kind: "inspiration_for" }), false);
+  assert.equal(isMatchablePlace({ ...base, relation_kind: "narrative_location" }), false);
+});

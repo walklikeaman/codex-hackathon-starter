@@ -360,3 +360,28 @@ test("a place with no matched frame simply has none", async () => {
   const body = await (await handler(request("film=509"))).json();
   assert.equal(body.places[0].scene_frame, undefined);
 });
+
+// --- relations that are neither filmed nor set here -------------------------------------
+
+test("a place the idea came from is neither a filming location nor a setting", () => {
+  // Thomas Riddell's grave gave a character its name; Harry Potter does not happen in
+  // Greyfriars Kirkyard. Without a role of its own the only options were calling it a
+  // filming location, which is false, or dropping it, which is what happened.
+  const role = placeRole({ relation_kind: "inspiration_for", place_class: "real_exterior" });
+  assert.equal(role.role, "inspiration");
+  assert.equal(role.mappable, true);
+  assert.match(role.label, /came from here/i);
+});
+
+test("a replica says so, rather than claiming a shoot", () => {
+  // The Green Dragon and Bagshot Row's interior were built for visitors and never shot
+  // in; the trolley at King's Cross is on a concourse while the films used platforms 4
+  // and 5. "Filmed here" about these is a confident false claim that looks right.
+  const role = placeRole({ relation_kind: "replica", place_class: "real_exterior" });
+  assert.equal(role.role, "replica");
+  assert.match(role.label, /not filmed here/i);
+});
+
+test("the author's own places have a role too", () => {
+  assert.equal(placeRole({ relation_kind: "author_place" }).role, "author");
+});
