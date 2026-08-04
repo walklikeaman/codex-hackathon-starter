@@ -7,6 +7,118 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-03] ingest | Filming permits — the first primary source in the project
+
+**Object**: `app/lib/film-permits.mjs`, `scripts/ingest-film-permits.mjs`,
+`supabase/migrations/20260803000000_submission_source_kind.sql`
+**Scenario**: feature · **Outcome**: ✅ success
+**Code changes**: `72c5f2e`
+
+Every other source here is somebody's **account** of where a film was shot. A permit
+record is not an account: the city granted permission to shoot at an address on a date,
+and the record is the primary document. No prose to extract, no gazetteer round trip,
+**no model call**, and no coordinate for anything to invent.
+
+Verified live on Paris: **14,760 records, ODbL**, published by the city's own Direction
+des Affaires Culturelles. It found The Crown in our existing works with no new data — ten
+Paris addresses from the 2022 shoot, among them souterrain Alexandre III, place Vendôme
+and place de la Concorde. A walkable route where every stop is a municipal record.
+
+They still land as `pending`. A permit is authorisation, and productions abandon
+locations, so this is a different KIND of evidence from a sentence, not a stronger grade
+of the same kind. The queue could not express that: `source_revid` and `source_sentence`
+were both NOT NULL and both are Wikipedia concepts, and `source_license` carried
+`default 'CC BY-SA 4.0'` — true while Wikipedia was the only writer, and **a false
+statement in the database** the moment anything else wrote. ODbL is share-alike on the
+database itself, which is not a licence you can infer.
+
+The coverage window matters more than the count: the Paris set begins in **2016**, so it
+holds Emily in Paris (255 locations) and nothing at all for Amélie. An empty answer for a
+classic is the correct answer.
+
+One correction: the title guard first demanded two words, which silently skipped
+"Skyfall", "Amélie" and "Parasite" for a risk `titleMatches` already covered. Correctness
+lives in the match, not in the query.
+
+Checked the neighbours too. San Francisco is a straight second instance. **New York fits
+the pipe and not the product** — MOME withholds production names, so the dataset cannot
+answer "which film shot here".
+
+**Updated**: `wiki/concepts/film-permits.md` (new), `wiki/index.md`
+
+## [2026-08-03] decision | Fandom and IMDb, looked at and refused
+
+**Object**: N/A — source evaluation
+**Scenario**: rule-change · **Outcome**: ✅ success
+**Code changes**: none — the value is in not building it
+
+**IMDb has no paid path.** Beyond the scraping prohibition and the non-commercial user
+licence, IMDb **does not own most of the photos** — its own terms say "IMDb *or its
+content suppliers*". There is no licensing department to ask, because the rights are not
+IMDb's to sell.
+
+**Fandom fails on evidence before it fails on licence.** Licences vary per wiki, verified
+live: Memory Alpha is CC-BY-NC and Minecraft CC BY-NC-SA. A correction to the obvious
+advice — "read the licence from `url`, not `text`" fails on its own example, since
+Minecraft declares NC in the text while pointing at the farm-default URL.
+
+But the decisive reason is different. The "Filming locations" category is **empty on the
+Bond, LOTR and Harry Potter wikis**. And a Fandom row would satisfy the *letter* of our
+guarantee — named page, verbatim quote, permalink — while the claim underneath is
+anonymous and unsourced. Verifying it means finding a real source, at which point that
+source is the citation and Fandom contributed a name.
+
+Recorded because a refusal is worth as much as a build: without this the same appealing
+idea returns every few weeks and gets researched again.
+
+**The trap worth remembering**: our homonym rule refuses Cambridge-vs-Cambridge, where
+there is real ambiguity. It does nothing against **Derry, Gotham, Springfield, Amity** —
+fictional places that resolve to exactly one real settlement, confidently. A fictional
+place that geocodes cleanly is the best-looking row in the queue. Exposure is currently
+low because narrative places only map into our own closed list, but this is what waits
+for the books branch.
+
+**Updated**: `wiki/sources/source-evaluation.md` (new)
+
+## [2026-08-03] update | Model calls moved to free providers, and the geocoder rebuilt
+
+**Object**: `app/lib/model-client.mjs`, `app/lib/geocode-wikidata.mjs`,
+`app/lib/geocode-client.mjs`, `app/api/trail/route.js`, `app/api/tour/route.js`,
+`app/lib/wikipedia-source.mjs`, `app/lib/wikipedia-extract.mjs`
+**Scenario**: feature + bugfix · **Outcome**: ✅ success
+**Code changes**: `8a9fd8f`, `d91f2f5`, `3ee0774`, `d19c6d1`, `2fab406`, `23ab2fa`
+
+**The provider swap was not the change it looked like.** OpenRouter's `/responses`
+endpoint exists — but returns HTTP 200 with `status: "completed"` while **ignoring the
+schema entirely**, answering with the model's reasoning prose. A structured-output
+request that succeeds and returns unstructured text is the worst failure available.
+`chat/completions` honours it, and both providers accept that shape, so there is one code
+path. Enrichment, trail and tour now run on `google/gemma-4-26b-a4b-it:free` — the only
+free model that survived the real extraction schema.
+
+The **tier** is named at the call site, never inferred from the environment: a careful
+task must not land on a free endpoint because someone added a free key.
+
+**The geocoder never actually worked.** The class filter `wdt:P31/wdt:P279* wd:Q618123`
+was correct and cost **65 seconds and HTTP 504 for a SINGLE name**. Batch size was never
+the problem. Four more defects behind it, each a case of naming the right action and not
+taking it — the retry plan said "shrink" and the caller skipped; the `near` hint resolved
+"Istanbul" to a **pub in Manchester**; a ratio rule for population picked the state of
+Australia for "Victoria" among 110 candidates.
+
+**Reading several language editions is not redundancy.** French carries "Tournage" and
+Japanese "ロケーション" inside sections English lacks. Measured: English alone gave 25
+places and 14 coordinates; adding French and German gave 32 and 17 — including Pinewood
+and Longcross Studios and Buachaille Etive Mòr.
+
+Two test harnesses turned out weaker than production. `/api/tour` had **no test at all**,
+and migrating it left a dangling `response.model` that reached a live request. The trail
+harness handed back `output_parsed` directly and so never exercised the schema — its
+fixture was missing a required field.
+
+**Updated**: `wiki/concepts/model-providers.md` (new),
+`wiki/concepts/geocoding-cascade.md`, `wiki/index.md`
+
 ## [2026-08-02] update | The discovery path stopped inventing coordinates (#121)
 
 **Object**: `app/lib/location-discovery-schema.mjs`, `app/api/locations/discover/route.js`,

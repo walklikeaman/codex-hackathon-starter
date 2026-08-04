@@ -23,10 +23,26 @@ is first.
 
 ## Tier 1 — Wikidata (`WIKIDATA_SPARQL`)
 
-A candidate must prove two things: it descends from `Q618123` (geographical feature), and
-it has a coordinate. Without the class filter a search for "Skyfall" returns the film and
-"Victoria" returns a monarch. Labels AND aliases are matched — prose rarely uses the
-canonical label.
+A candidate must have a **coordinate**. Labels AND aliases are matched — prose rarely
+uses the canonical label.
+
+### The class filter had to go, and why that was safe
+
+The query once required descent from `Q618123` (geographical feature) via
+`wdt:P31/wdt:P279*`. Correct, and unusable: measured live it took **65 SECONDS and
+returned HTTP 504 for a SINGLE name**, while a trivial query to the same service answered
+in 0.45s. Batch size was never the problem. Moving it into `FILTER EXISTS` changed
+nothing — the planner reorders it back.
+
+Dropping the closure takes the same query under three seconds. Two things replace it:
+
+1. **Requiring a coordinate does most of the work.** Checked live: "Skyfall" returns
+   nothing at all, because the film has no P625 — exactly the case the old comment cited.
+2. It was **not** redundant for everything: "Victoria" also matches a shipwreck and a
+   bark, which do carry coordinates. So the direct `P31` type comes back with each row
+   and obvious non-places are dropped in code (`isPlaceType`). A heuristic backstop, not
+   a taxonomy — every result reaches review with its Q-id, where "Victoria (shipwreck)"
+   is obvious to a human in a way it never is to a regex.
 
 ## Choosing is the hard part; refusing is the point
 
@@ -35,14 +51,52 @@ canonical label.
 - **unique** — one candidate.
 - **same_place_multiple_records** — candidates cluster within `RIVAL_DISTANCE_KM` (25 km).
   A settlement and its centre are not rivals; the most populous record wins.
-- **nearest_to_hint** — a `near` hint clearly favours one. The hint is the city the user
-  is already looking at, and it comes from the request, **never from a model**.
+- **exact_label** — an entity whose OWN label is the name beats one that merely lists it
+  as an alias. Evidence, not preference: it is what separates the city of Istanbul from a
+  pub called Istanbul Grill.
+- **nearest_to_hint** — a `near` hint clearly favours one, AND the winner is within
+  `HINT_RADIUS_KM` of it. The hint is the city the user is already looking at, and it
+  comes from the request, **never from a model**.
+- **dominant_population** — the winner has a recorded population over 100,000 and
+  **every** rival has none recorded at all.
 - **ambiguous_homonyms** — Cambridge England and Cambridge Massachusetts. The prose said
   "Cambridge"; writing the bigger one's coordinate invents an answer. Refused.
 - **no_candidate** — nothing matched.
 
 Callers drop what was refused rather than substituting a fallback. A claim with no point
 is still a real claim; a claim with a wrong point is a lie the map presents as fact.
+
+### The hint only speaks about its own neighbourhood
+
+Without a radius the hint was actively harmful. Checked live with London as the hint:
+"Istanbul" resolved to **Istanbul Grill, a pub in Manchester**, because Manchester is
+closer to London than Turkey is; "Shanghai" resolved to a neighbourhood in Italy. The
+hint exists to separate Cambridge England from Cambridge Massachusetts — two comparable
+candidates, one where the user is looking. Ranking the whole world by distance from a
+city is a different operation that happens to use the same arithmetic, and it produces a
+confident wrong answer every time.
+
+### Population: when it is evidence, and when it is a coin toss
+
+Refusing every population comparison cost real recall — "Shanghai" and "Adana" were both
+refused beside rivals with **no recorded population at all**.
+
+A **ratio rule was tried first and was wrong.** "Victoria" has 110 exact-label candidates,
+and the state of Australia (7,074,468) beats a Canadian district (110,942) by 63×,
+clearing any sane threshold while being a hopeless choice. A ratio measures the gap
+between two known quantities; it cannot tell a city beside a hamlet from a state beside a
+city.
+
+What separates the cases is **whether there is anything to compare with**. One rival with
+a recorded population is enough to refuse, which is why Cambridge, Glencoe and Victoria
+all still come back unplaced.
+
+### A prose name is not a gazetteer name
+
+`gazetteerName` strips a leading article and a trailing "in <area>": the first live run
+asked Wikidata about "the Old Royal Naval College in Greenwich" and got nothing, while
+"Old Royal Naval College" resolves immediately. A comma clause is left alone —
+"Cambridge, Massachusetts" IS the gazetteer name.
 
 Names too generic to disambiguate ("various locations", "the studio", a bare year) are
 never sent — a population tiebreak between hundreds of matches is a coin toss dressed as
@@ -52,9 +106,14 @@ a decision.
 
 - `MAX_NAMES_PER_QUERY = 8`. Forty names returns **HTTP 504**: the label|altLabel union
   across the geographic class tree is expensive per name, and WDQS hard-fails at 60s.
-- **504 and 429 mean opposite things.** 504 — the query was too heavy, shrink the batch;
-  waiting changes nothing. 429 — we were too fast, wait; a smaller batch changes nothing.
-  `retryPlan(status)` returns the decision so no caller invents its own reading.
+- **504 and 429 mean opposite things.** 504 (and 502) — the query was too heavy, so the
+  batch is **halved and asked again**; waiting changes nothing. 429 — we were too fast,
+  wait; a smaller batch changes nothing. The plan named the right action for a while
+  before the caller took it: sixteen names once lost every coordinate to a caller that
+  skipped the batch either way.
+- **The two budgets are counted separately.** Sharing one let a single 429 spend the room
+  needed to shrink — seen live, 8 names went 8 → 4 → wait → 4 → 2 and gave up with splits
+  still available.
 - `QUERY_GAP_MS = 5000`, paced only **between** queries. A single batch costs no delay,
   which is what makes this usable inside a request.
 - Every call carries the real `USER_AGENT` — WDQS refuses anonymous clients outright.

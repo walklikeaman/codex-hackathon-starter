@@ -28,6 +28,8 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [demo-path](concepts/demo-path.md) — the one sacred scenario
 - [personal-library](concepts/personal-library.md) — Letterboxd ZIP/CSV, privacy
 - [location-discovery](concepts/location-discovery.md) — three paths; a model may name a place, never locate one
+- [film-permits](concepts/film-permits.md) — the only primary source: the city that issued the permit
+- [model-providers](concepts/model-providers.md) — which model answers, and the request shape both honour
 - [geocoding-cascade](concepts/geocoding-cascade.md) — names → points via Wikidata; refusing homonyms is the feature
 - [wikipedia-enrichment](concepts/wikipedia-enrichment.md) — Production prose → review queue, quote checked verbatim
 - [film-frames](concepts/film-frames.md) — three tiers of frame, and what each may claim
@@ -42,6 +44,8 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [personal-collections-matrix](sources/personal-collections-matrix.md) —
   where to read personal collections from (research 22.07, verified live) + ideas
   (film stills, "paste your Letterboxd handle")
+- [source-evaluation](sources/source-evaluation.md) — IMDb, Fandom and frame corpora:
+  what we looked at, refused, and why it will not change
 - [feature-research](sources/feature-research.md) — competitors, APIs and legal
   notes behind `ROADMAP.md` and backlog issues #44–#77
 - `Context/brief-scenemap-design.md` — the original product brief
