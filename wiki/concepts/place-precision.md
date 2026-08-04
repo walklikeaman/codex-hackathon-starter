@@ -84,3 +84,37 @@ geometry may be stored.
 
 Related: [[location-discovery]] (where places come from),
 [[testing-conventions]] (how these rules are enforced).
+
+## Provenance is a database rule, not a habit (2026-08-05)
+
+Every stored fact records where it came from, and the database enforces it.
+
+Stated by the owner on 2026-08-05, and it was already the convention and already
+broken. Measured before writing the rule: **92 links in `work_place_links`, 8 of them
+with no evidence row at all.** Checked against Wikidata, five correspond to real P840
+statements and **three do not exist there** — Skyfall→Hashima Island,
+Skyfall→National Gallery, Harry Potter→London Zoo.
+
+Those three are probably TRUE. Hashima is the acknowledged model for Silva's island,
+the zoo is the snake scene. That is the whole argument: **with no recorded source there
+is no way to tell a right row from a wrong one**, and "probably true" is the state this
+project exists to refuse.
+
+What the database now enforces:
+
+- `place_evidence` must carry an identifiable source — a `source_url` for a page or a
+  `source_ref` for a statement (Q-id, TMDB id, image id). A snippet describes a source;
+  it cannot stand in for one.
+- `work_place_links` must have at least one evidence row, checked by a **deferred**
+  constraint trigger so link and evidence can be written together, which is how they
+  are actually written.
+- `links_without_evidence` lists the debt. A rule whose violations cannot be listed is
+  a rule nobody can pay off.
+
+Both constraints are `not valid` / deferred rather than retroactive. Validating would
+fail on rows nobody can now source, and deleting those would destroy facts that are
+probably correct. Visible debt is the honest state; an invented citation is not.
+
+**A subtlety worth writing down:** a `deferrable initially deferred` constraint trigger
+fires at COMMIT, so it cannot be caught by an exception block in the same transaction —
+the first test of this rule reported it was not working when it was.
