@@ -5,6 +5,7 @@ import {
   buildWikidataEntitiesUrl,
   buildWikidataSearchUrl,
   entityClaimIds,
+  entityText,
   isWikidataId,
   isWorkKind,
   locationsByDistance,
@@ -22,6 +23,7 @@ import {
   addSceneMatchTokens,
   SCENE_MATCH_TOKEN_CACHE_CONTROL,
 } from "../../lib/scene-match-token.mjs";
+import { findInvertedPlaces } from "../../lib/inverted-places.mjs";
 
 // node:crypto (via scene-match-token) requires the Node runtime, not edge.
 export const runtime = "nodejs";
@@ -168,12 +170,39 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
   // Every place the work touches, nearest first. The radius no longer decides what
   // exists — a title search is not a question about the city on screen.
   const ranked = locationsByDistance(normalized, center, radius);
-  const locations = selectFirstMatchingWork(ranked, [matchedWorkId], limit, excludeLocationId);
+  const stated = selectFirstMatchingWork(ranked, [matchedWorkId], limit, excludeLocationId);
+
+  // The other direction: places whose OWN article mentions this work. Wikidata's P915
+  // is a statement somebody wrote on the work's item, and per-work it is thin — one
+  // place for Notting Hill. The inverted search reads the category that only ever lives
+  // on the place's page, which is where the graves, the cafés and the schools are.
+  //
+  // It runs AFTER the statement search rather than beside it, and is given what that
+  // search already found, so the same place cannot arrive twice. Its cost is bounded
+  // and its failures are swallowed: these are extra places, never the answer.
+  const candidates = await findInvertedPlaces({
+    work: {
+      id: matchedWorkId,
+      title: matchedWork?.label ?? entityText(workEntity, "labels"),
+      year: stated[0]?.work_year ?? null,
+    },
+    kind,
+    center,
+    radiusKm: radius,
+    limit: Math.max(0, limit - stated.length),
+    exclude: stated,
+    onError: (error) => console.warn("inverted place search failed", error?.message),
+  });
+
+  // Every inverted hit is inside `nearcoord:`, so it is here by construction — but the
+  // distance is still measured rather than assumed, because the client sorts on it.
+  const locations = [...stated, ...locationsByDistance(candidates, center, radius)];
 
   return {
     matchedWork,
     locations,
     here: locations.filter((location) => location.in_radius).length,
+    candidate_count: candidates.length,
   };
 }
 
@@ -234,6 +263,9 @@ export async function GET(request) {
           // whether to fly somewhere: a title search that returns places nobody can see
           // is the same failure as returning none.
           here: result.here ?? 0,
+          // How many of them are candidates rather than statements. The client says so
+          // on the card; a count here lets it say so before opening one.
+          candidates: result.candidate_count ?? 0,
           locations: addSceneMatchTokens(result.locations),
         },
         { headers: { "Cache-Control": SCENE_MATCH_TOKEN_CACHE_CONTROL } },

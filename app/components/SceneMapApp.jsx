@@ -305,9 +305,14 @@ function locationsFromApi(records) {
       const kind = record.kind ?? "film";
       const relationLabel = record.relation_label
         ?? (kind === "book" ? "Story setting" : "Filming location");
+      // A place found by the inverted search has no Wikidata item — it is a Wikipedia
+      // article — so the id has to come from somewhere else. Falling through to
+      // `undefined` would give every such place the SAME id, and the map would show
+      // one pin for all of them.
+      const placeId = record.loc_wikidata_id ?? record.loc_source_id;
 
       return {
-        id: `${kind}-${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+        id: `${kind}-${record.work_wikidata_id}-${placeId}`,
         filmId: record.work_wikidata_id,
         film: record.work_title,
         scene: record.scene_title ?? relationLabel,
@@ -324,6 +329,11 @@ function locationsFromApi(records) {
         year: record.work_year,
         kind,
         relationKind: record.relation_kind,
+        // Not a claim that anything was filmed here — only that this place's own
+        // article mentions the work. The map must keep the two apart everywhere it
+        // shows them, so the flag travels with the location rather than being
+        // re-derived at each render.
+        isCandidate: record.relation_kind === "candidate",
         sourceUrl: record.source_url,
         sourceTitle: record.source_title,
         evidenceSource: record.evidence_source ?? "wikidata",
@@ -449,10 +459,14 @@ function RefreshLocationsOnViewport({ onViewportChange }) {
   return null;
 }
 
-function makeMarkerIcon(selected, nearest, kind) {
+// A candidate pin is drawn hollow, and that is a claim about evidence, not a style.
+// A solid pin here means somebody stated this place belongs to this work; a candidate
+// means only that the place's article mentions it. Two facts that different, sharing
+// one symbol, is the map telling a person something we have not verified.
+function makeMarkerIcon(selected, nearest, kind, candidate) {
   return L.divIcon({
     className: "",
-    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}${nearest ? " is-nearest" : ""}"><span></span></span>`,
+    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}${nearest ? " is-nearest" : ""}${candidate ? " is-candidate" : ""}"><span></span></span>`,
     iconSize: [34, 42],
     iconAnchor: [17, 34],
   });
@@ -1931,6 +1945,7 @@ export default function SceneMapApp() {
                 activeLocation?.id === location.id,
                 nearby?.nearest?.location.id === location.id,
                 location.kind,
+                location.isCandidate,
               )}
               eventHandlers={{
                 click: () => setActiveLocation(location),
@@ -1941,6 +1956,12 @@ export default function SceneMapApp() {
                 <strong>{location.film}</strong>
                 <br />
                 {location.place}
+                {location.isCandidate && (
+                  <>
+                    <br />
+                    <em>Unverified mention</em>
+                  </>
+                )}
               </Popup>
             </Marker>
           ))}
@@ -2703,6 +2724,13 @@ export default function SceneMapApp() {
                 <span>{activeLocation.position[0].toFixed(4)}, {activeLocation.position[1].toFixed(4)}</span>
               </div>
             </div>
+            {activeLocation.isCandidate && (
+              <p className="evidence-caveat" role="note">
+                <strong>Unverified.</strong> Found by reading this place&rsquo;s own article,
+                not a statement about the work. It may be where something was named,
+                written or imagined rather than filmed &mdash; open the source and judge it.
+              </p>
+            )}
             <p>{activeLocation.description}</p>
             <VoiceGuide location={activeLocation} story={activeNarration} />
             <div className="comparison-grid">
