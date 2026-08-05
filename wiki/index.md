@@ -15,7 +15,8 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 
 - [glorymap-app](entities/glorymap-app.md) — the product, the graph hub
 - [frontend](entities/frontend.md) — the SceneMapApp + VoiceGuide monolith, patterns and gotchas
-- [api-layer](entities/api-layer.md) — 7 BFF routes: contracts, timeouts, caches
+- [api-layer](entities/api-layer.md) — the BFF routes: contracts, timeouts, caches
+  (+ `POST /api/access` since 05.08 — one Overpass call per tour, see [[three-axes]])
 - [wikidata](entities/wikidata.md) — P915/P840/P4947, SPARQL, limits, gotchas
 - [openai](entities/openai.md) — 4 model roles, principles of distrust, incidents
 - [external-services](entities/external-services.md) — Nominatim, OSRM, TMDB, Commons

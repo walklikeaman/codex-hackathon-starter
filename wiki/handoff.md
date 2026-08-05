@@ -1,4 +1,4 @@
-# Handoff — 2026-08-05
+# Handoff — 2026-08-05 (updated after the wiring session)
 
 Written because a session ended, not because the work did. Read `wiki/log.md` for the
 chronicle and `wiki/index.md` for the concept pages. **This page is only the things that
@@ -16,16 +16,19 @@ in, the graveyard she took a name from. Every pin is source-backed and never inv
 
 This project's most repeated failure is finished, correct work that never reaches the
 live path. It has happened with posters, ratings, three audio features, the personal
-library and the map filter. **Three modules from this session are in the same state:**
+library and the map filter.
 
-| module | callers | what it does |
+**The three modules that were in that state are now wired** (`a7b8ba0`, `bbf4f7a`,
+`d962a03`) — check before assuming otherwise:
+
+| module | reaches the user through | what to check first |
 |---|---|---|
-| `app/lib/place-search.mjs` | **0** | the inverted search — finds Greyfriars, verified |
-| `app/lib/place-access.mjs` | **0** | can a person stand there |
-| `app/lib/place-grade.mjs` | 1 (only place-access) | precision as an axis |
+| `place-search.mjs` | `inverted-places.mjs` → `/api/locations?q=` → hollow pins | ordering of the fan-out: six branches is the whole budget |
+| `place-access.mjs` | `POST /api/access` → `timed-tour.mjs` → per-stop notes | OSM coverage is ~1 in 3 and city-biased |
+| `place-grade.mjs` | `/api/locations` grades every place → dashed areas | a place with no readable type stays a pin |
 
-They are tested and verified against live services. Nothing calls them. Wiring them is
-worth more than any new module.
+Nothing new is sitting unwired as of this session. **Before writing a module, grep for
+its callers** — `grep -rn "from .*<module>" app/` — and if the answer is zero, wire it.
 
 ## Traps that cost real time, all found by measurement
 
@@ -36,6 +39,17 @@ worth more than any new module.
 - Overpass answers "the server is probably too busy" with HTTP 200 and an HTML page.
 - CirrusSearch `insource:/A/ OR insource:/B/` returns **zero results, not an error**. The
   alternation must go inside one regex: `insource:/A|B/`.
+
+**A name in an Overpass query is not enough.** A union of `around` statements returns
+ONE result set, so an element fetched for another point is still in the list — and the
+nearest named feature to a place is routinely not the place (Greyfriars' is a gravestone
+8 m away, Alnwick Castle's is the Diana Gift Shop). Re-check the name on the way out,
+with EXACT normalized equality: `namesMatch` accepts one extra word, which is right for
+merging two records of one place and turns "Notting Hill Bookshop" into Notting Hill here.
+
+**A Wikidata item can have no English label.** Q34660 — J. K. Rowling — has labels in
+dozens of languages and none in English today, so the label service returns the bare
+q-id. Fall back to the English Wikipedia sitelink title.
 
 **`insource:"X"` and `insource:/X/` are different operators.** The quoted form matches
 tokens and misses "Rowling's". The regex form is the one that works.
@@ -85,11 +99,17 @@ Nothing in `location_submissions` has been reviewed. There is no review UI.
 
 ## Next, in the order I would take it
 
-1. **Wire the three modules.** Especially `isRoutable` into the tour builder — it is
-   aimed at the one case where a self-guided map is worse than a coach.
-2. **Turn inverted-search candidates into claims.** It returns places, not statements;
-   a quoted sentence checked verbatim is still needed, and the machinery exists in
-   `wikipedia-extract.mjs`.
+1. **Turn inverted-search candidates into claims.** They arrive as candidates — a hollow
+   pin saying "this place's article mentions the work" — and that is honest but thin.
+   A quoted sentence checked verbatim is the next step, and the machinery is in
+   `wikipedia-extract.mjs`. The relation it should produce is usually `inspiration_for`
+   or `author_place`, both of which the schema now has.
+2. **Decide the access rule.** Measured coverage is 4 of 12, city-biased. Today an
+   unconfirmed stop is routed to WITH a warning; the module's own argument says not
+   knowing should stop the route. That is the operator's call, and it is one constant
+   plus one filter (`isRoutable` in `createTimedTourCandidates`) away either direction.
+   Better coverage would settle it: OSM opening hours, Wikidata P1656/P8626, or the
+   attraction's own page.
 3. **Order stops by story, not distance.** `story-trail.mjs` already has
    `sequence_index`; `timed-tour.mjs` uses `nearestNeighborOrder` and ignores it.
 4. **Leg mode** — walk / transit / drive. `timed-tour` is hard-coded to 30/60/120 minutes
@@ -98,6 +118,12 @@ Nothing in `location_submissions` has been reviewed. There is no review UI.
 
 ## Known-wrong, unfixed
 
+- The inverted search returns some **non-places with coordinates** — "Eurovision Young
+  Musicians 2018" comes back for Harry Potter in Edinburgh. It is labelled unverified
+  and it is still noise; an event is not a place.
+- A one-word title (**"Dracula"**, "Trainspotting") contributes nothing to the inverted
+  search — `isSearchableEntity` needs two words — so such a work depends entirely on its
+  fan-out, and a work with no characters in Wikidata gets no candidates at all.
 - Searching **"Skyfall" resolves to Adele's lyric video** (Q57840000), not the film.
 - The 500km search takes **3.7 seconds**.
 - Zoom-triggered refetch was verified by code and API, **not through the browser** — the

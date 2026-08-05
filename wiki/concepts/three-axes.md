@@ -56,10 +56,39 @@ a locked gate and lets them think it was their own mistake.
 
 ## Silence is not permission
 
-Checked live on Overpass: Greyfriars Kirkyard carries `opening_hours: 24/7`, The Elephant
-House carries hours and a website, **Midhope Castle carries nothing at all**. Coverage is
-partial, so an absent tag reads as `unknown` and never as `open` — reading "no tag" as
-"walk in" would invent the exact promise the axis exists to stop making.
+**Corrected 2026-08-05.** This page said Greyfriars Kirkyard carries `opening_hours:
+24/7`. It does not: its own OSM way carries no access tag at all, and the reading came
+from a loose name match picking up The Elephant House 87 m away — the café's hours read
+as the graveyard's. The comparison is now exact (`normalizePlaceName` equality, not
+`namesMatch`, which accepts one extra word and duly turned "Notting Hill Bookshop" into
+Notting Hill).
+
+Measured with the strict rule, on twelve stops from tours that sell today, **OSM knows
+about four**: The Elephant House, the V&A, St Paul's and Leadenhall Market carry hours.
+Midhope Castle, Doune Castle, Culross, Falkland, Alnwick Castle, London Zoo, Greyfriars
+and Marchmont carry nothing an app can read. Coverage is a **city** phenomenon: 3 of 4
+in central London, 0 of 5 in rural Scotland.
+
+An absent tag reads as `unknown` and never as `open` — reading "no tag" as "walk in"
+would invent the exact promise the axis exists to stop making.
+
+## How the axes reach a person (2026-08-05)
+
+All three modules are called now; before this they were written, verified and reachable
+from nothing.
+
+| axis | where it lands | what a person sees |
+|---|---|---|
+| evidence | `/api/locations`, the pin and the card | a hollow dashed pin and "Unverified" for a candidate found by the inverted search |
+| precision | `/api/locations` grades every place | a dashed **area** instead of a dot, plus "The source names this area, not a spot inside it" |
+| access | `POST /api/access` → the timed tour | "Free to visit · hours" per stop, or "We have not confirmed whether you can get in", plus "3 of 4 stops" above the route |
+
+**Where the access rule was softened, and why.** `isRoutable` refuses an unknown, and
+applied literally to a whole tour that would leave no Scottish tour at all — 0 of 5 rural
+stops resolve. So: a place OSM says is **closed** is never routed to; among tours of
+equal length the one with more confirmed stops **wins**; and an unconfirmed stop is
+carried with its own sentence rather than deleted. The option that stays forbidden is the
+silent one — routing to an unknown and letting the wording imply it is open.
 
 The same principle, one level down, is the database rule: see
 [[place-precision]] for provenance. With no recorded source there is no way to tell a

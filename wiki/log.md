@@ -7,6 +7,55 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-05] update | Three finished modules reached the live path
+
+**Object**: `app/lib/inverted-places.mjs`, `app/api/access/route.js`,
+`app/api/locations/route.js`, `app/lib/place-search.mjs`, `app/lib/place-grade.mjs`,
+`app/lib/place-access.mjs`, `app/lib/timed-tour.mjs`, `app/components/SceneMapApp.jsx`
+**Scenario**: feature · **Outcome**: ✅ success
+**Code changes**: `a7b8ba0`, `bbf4f7a`, `d962a03`
+
+The handoff named the project's most repeated failure — finished, correct work that
+never reaches the live path, now five times over — and listed three modules in that
+state. All three are called now. 819 tests (was 788), production build clean, each
+change verified in a browser.
+
+**The inverted search finds Greyfriars.** Two ordering bugs, both invisible until it
+ran. A work's title is usually also its main character's name, so "Harry Potter"
+arrived twice and spent two of the six branches — pushing out Lord Voldemort, the ONE
+name that graveyard's article contains. And Wikidata returns characters in no order,
+so the budget went to the wrong ones in both directions: ranked now by class and by
+sitelink count, DESCENDING for invented names (Voldemort was ninth of eleven) and
+ASCENDING for real people, because George Washington is an Outlander character and his
+273 sitelinks are about him. `wikibase:sitelinks` rather than a COUNT: 698ms vs 2,765ms.
+Edinburgh, "Harry Potter": 4 places before, 18 after, 8 of them candidates.
+
+**Nothing arrives as a claim.** A hit says only that a place's article mentions the
+work — which is exactly what Thomas Riddell's grave is — so candidates get a hollow
+pin, an "unverified" note and a link to the article. Turning one into a claim needs a
+quoted sentence checked verbatim; that is still the next step.
+
+**A route now says whether you can get in**, and the design was decided by measuring
+first: of twelve stops from tours selling today, OSM knows about four, all in cities
+(3 of 4 in London, 0 of 5 in rural Scotland). So `isRoutable` was applied where it
+holds — closed is never routed to, confirmed beats unknown in the ranking — and an
+unconfirmed stop is carried with its own sentence rather than deleted. Two ways to read
+a neighbour's tags as this place's were found by running it: the nearest named feature
+to Greyfriars is a gravestone 8 m away, and `namesMatch` accepts one extra word, which
+printed "Notting Hill Bookshop" hours as Notting Hill's access.
+
+**A place located to an island is drawn as one.** GROUP_CONCAT over P31, finest type
+wins. Three gaps found by watching the live map: candidates have no P31 at all (fixed
+with Wikipedia's `pageterms`, so Edinburgh stops being a dot), everything after " in "
+is where a place is rather than what it is ("faculty in City of Edinburgh" made a
+university building a settlement), and four missing words — "area of", "kirkyard",
+"zoo", "market".
+
+**Corrected**: this project believed Greyfriars Kirkyard carried `opening_hours: 24/7`.
+It carries no access tag; that reading was the loose-name-match trap, measured twice.
+
+**Updated**: `wiki/concepts/three-axes.md`, `wiki/handoff.md`
+
 ## [2026-08-05] rule-change | Provenance is enforced by the database, not by habit
 
 **Object**: `supabase/migrations/20260805010000_provenance_is_required.sql`
