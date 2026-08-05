@@ -112,11 +112,17 @@ export function buildLocationsSparql({
     excludeLocationId,
   });
 
+  // `?types` is what a place IS, and it decides whether the place may be a pin at all
+  // ([[three-axes]]). GROUP_CONCAT rather than SAMPLE, because a place carries several
+  // P31s and SAMPLE picks one at random: the Isle of Skye is an island AND a place with
+  // a Council area, and grading it on whichever arrives first is a coin toss over
+  // whether it appears as a dot you could stand on.
   return `
 SELECT ?work ?workLabel ?location ?locationLabel ?coord ?locationDescription
        (MIN(?date) AS ?releaseDate)
        (SAMPLE(?placeImage) AS ?image)
        (SAMPLE(?tmdb) AS ?tmdbId)
+       (GROUP_CONCAT(DISTINCT ?typeLabel; separator="|") AS ?types)
 WHERE {
   {
     SELECT DISTINCT ?work ?location ?coord WHERE {${core}
@@ -126,6 +132,11 @@ WHERE {
   OPTIONAL { ?work wdt:P577 ?date . }
   OPTIONAL { ?work wdt:P4947 ?tmdb . }
   OPTIONAL { ?location wdt:P18 ?placeImage . }
+  OPTIONAL {
+    ?location wdt:P31 ?type .
+    ?type rdfs:label ?typeLabel .
+    FILTER(LANG(?typeLabel) = "en")
+  }
   OPTIONAL {
     ?location schema:description ?locationDescription .
     FILTER(LANG(?locationDescription) = "en")
@@ -241,7 +252,7 @@ export function workMatchesTypeGraph(workEntity, typeEntities, kind) {
   return typeAncestry(workEntity, typeEntities).has(rootType);
 }
 
-export function normalizeWikidataEntityLocations(workEntity, locationEntities, { kind }) {
+export function normalizeWikidataEntityLocations(workEntity, locationEntities, { kind, typeLabels = null } = {}) {
   const config = workKindConfig(kind);
   if (!config || !isWikidataId(workEntity?.id)) return [];
 
@@ -281,6 +292,12 @@ export function normalizeWikidataEntityLocations(workEntity, locationEntities, {
         kind,
         locationDescription: entityText(locationEntity, "descriptions"),
       }),
+      // The entity path knows the place's P31 ids; their labels come from a second
+      // batch the caller has already fetched, or not at all — an ungraded place is
+      // still a place, and refusing to show it would be the worse mistake.
+      place_types: entityClaimIds(locationEntity, "P31")
+        .map((typeId) => (typeLabels instanceof Map ? typeLabels.get(typeId) : typeLabels?.[typeId]))
+        .filter(Boolean),
       source_url: `https://www.wikidata.org/wiki/${locationId}`,
     }];
   });
@@ -355,6 +372,9 @@ export function normalizeWikidataLocations(bindings, { kind }) {
         kind,
         locationDescription: row.locationDescription?.value,
       }),
+      // What the place IS, for the precision axis. Several, because a place is several
+      // things and the finest of them decides whether it can be a pin.
+      place_types: (row.types?.value ?? "").split("|").filter(Boolean),
       source_url: `https://www.wikidata.org/wiki/${locWikidataId}`,
     });
   }

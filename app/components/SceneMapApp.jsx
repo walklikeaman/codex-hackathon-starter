@@ -27,6 +27,7 @@ import {
   LocateFixed,
   LogOut,
   MapPin,
+  Maximize2,
   Plus,
   Route,
   Search,
@@ -331,6 +332,11 @@ function locationsFromApi(records) {
         year: record.work_year,
         kind,
         relationKind: record.relation_kind,
+        // How exactly the place is located — a separate question from how well it is
+        // evidenced, and the one that decides whether it may be drawn as a dot.
+        precision: record.precision ?? "unknown",
+        display: record.display ?? "pin",
+        precisionCaveat: record.precision_caveat ?? null,
         // Not a claim that anything was filmed here — only that this place's own
         // article mentions the work. The map must keep the two apart everywhere it
         // shows them, so the flag travels with the location rather than being
@@ -472,6 +478,17 @@ function makeMarkerIcon(selected, nearest, kind, candidate) {
     iconSize: [34, 42],
     iconAnchor: [17, 34],
   });
+}
+
+// How big an area is, roughly, so it can be drawn as one. These are not claims about
+// the boundary — we do not have boundaries — they are honest orders of magnitude: a
+// village you could cross on foot, a county you could not. Drawing the county as a dot
+// is the lie this replaces; drawing it as a ring the size of a county is merely vague,
+// which is exactly what the source was.
+const AREA_RADIUS_M = { settlement: 1200, region: 12000, country: 60000, unknown: 3000 };
+
+function areaRadiusMeters(precision) {
+  return AREA_RADIUS_M[precision] ?? AREA_RADIUS_M.unknown;
 }
 
 const userIcon = L.divIcon({
@@ -1996,7 +2013,35 @@ export default function SceneMapApp() {
               </Marker>
             </>
           )}
-          {visibleLocations.map((location) => (
+          {/* A place the source located only to an island, a county or a city is drawn
+              as the area it is. The owner's rule: "we do not include the whole island
+              as a point, but as an area where the exact place is not known" — a dot on
+              Istanbul's centre invents a doorway that no source ever claimed. */}
+          {visibleLocations.filter((location) => location.display === "area").map((location) => (
+            <Circle
+              key={`area-${location.id}`}
+              center={location.position}
+              radius={areaRadiusMeters(location.precision)}
+              pathOptions={{
+                color: "#f7b733",
+                weight: activeLocation?.id === location.id ? 2 : 1,
+                opacity: 0.55,
+                fillOpacity: activeLocation?.id === location.id ? 0.12 : 0.06,
+                dashArray: "6 6",
+              }}
+              eventHandlers={{ click: () => setActiveLocation(location) }}
+            >
+              <Popup>
+                <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
+                <strong>{location.film}</strong>
+                <br />
+                {location.place}
+                <br />
+                <em>Somewhere in here — the source names the area, not a spot</em>
+              </Popup>
+            </Circle>
+          ))}
+          {visibleLocations.filter((location) => location.display !== "area").map((location) => (
             <Marker
               key={location.id}
               position={location.position}
@@ -2792,6 +2837,12 @@ export default function SceneMapApp() {
                 <span>{activeLocation.position[0].toFixed(4)}, {activeLocation.position[1].toFixed(4)}</span>
               </div>
             </div>
+            {activeLocation.precisionCaveat && (
+              <p className="precision-caveat" role="note">
+                <Maximize2 size={15} aria-hidden="true" />
+                {activeLocation.precisionCaveat}
+              </p>
+            )}
             {/* Only once a tour has asked. Printing "we have not confirmed" beside
                 every pin on the map would say nothing, since nothing has been checked
                 — the sentence is only worth reading where it was actually looked up. */}

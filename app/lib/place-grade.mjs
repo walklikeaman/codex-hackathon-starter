@@ -76,26 +76,41 @@ export function precisionRank(precision) {
 // Substrings are safe HERE because of the order. A finer rung is tested first, so
 // "island church" is a building and "regional theatre" is a building — the coarse word
 // inside a fine label never wins, which is the direction that would actually hurt.
+// Words added after a live run, each because a real place fell through to "unknown" and
+// was drawn as a dot: "cemetery" and "kirkyard" (Greyfriars — "graveyard" was already
+// caught by "grave", the Scottish word was not), "zoo" and "market" (London Zoo,
+// Leadenhall Market), and "area of" for Wikidata's own type for a district, which is
+// how Kensington, Wandsworth and Notting Hill were all pinned as though they had doors.
 const TYPE_PRECISION = [
-  ["point", ["grave", "tomb", "memorial", "monument", "statue", "plaque", "bench", "fountain", "well"]],
+  ["point", ["grave", "tomb", "memorial", "monument", "statue", "plaque", "bench", "fountain",
+    "well", "cemetery", "kirkyard", "churchyard"]],
   ["building", ["building", "house", "hotel", "cafe", "restaurant", "pub", "bar", "castle",
     "palace", "church", "cathedral", "kirk", "abbey", "museum", "library", "theatre", "theater",
     "cinema", "school", "college", "university", "station", "hospital", "shop", "store",
-    "tower", "bridge", "lighthouse", "studio"]],
+    "tower", "bridge", "lighthouse", "studio", "zoo", "market", "hall", "stadium", "gallery"]],
   ["street", ["street", "road", "lane", "avenue", "square", "plaza", "harbour", "harbor",
     "quay", "pier", "alley", "close", "court", "crescent", "terrace", "steps"]],
   ["settlement", ["village", "hamlet", "town", "city", "municipality", "suburb",
-    "neighbourhood", "neighborhood", "district", "borough", "parish", "commune"]],
+    "neighbourhood", "neighborhood", "district", "borough", "parish", "commune",
+    "area of"]],
   ["region", ["island", "isle", "county", "region", "province", "state", "park", "forest",
     "glen", "valley", "mountain", "loch", "lake", "bay", "coast", "peninsula", "moor",
     "common", "estate", "beach"]],
   ["country", ["country", "sovereign state", "kingdom", "republic"]],
 ];
 
+// Everything after " in " says WHERE a place is, not what it is, and reading it as a
+// type puts the containing city's rung on the place inside it. Measured live: Moray
+// House School is described as "faculty in City of Edinburgh" — no word in "faculty"
+// is in the vocabulary, so "city" won and a university building was drawn as a
+// settlement-sized area. The descriptions this now grades correctly all keep their
+// meaning without the clause: "graveyard surrounding Greyfriars Kirk", "public
+// university", "secondary school", "castle".
 function foldLabel(value) {
   return String(value ?? "")
     .toLowerCase()
     .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\s+in\s+.*$/, "")
     .trim();
 }
 
@@ -124,18 +139,36 @@ export function precisionFromType(typeLabel) {
   return best?.precision ?? "unknown";
 }
 
+// A place is usually several things at once, and the finest of them wins.
+//
+// Wikidata gives the Isle of Skye "island" and "place with a Council area"; Greyfriars
+// Kirkyard is a "cemetery" and a "listed building". Grading on whichever P31 arrives
+// first is a coin toss over whether a place appears as a dot somebody could stand on,
+// and the two possible mistakes are not equal: calling a churchyard a region loses a
+// real stop, while calling an island a building invents a doorway. The finest rung is
+// the one the place is most specifically about — and the coarse types it also belongs
+// to are true of everything around it too.
+export function precisionFromTypes(typeLabels) {
+  const labels = (Array.isArray(typeLabels) ? typeLabels : [typeLabels]).filter(Boolean);
+  if (labels.length === 0) return "unknown";
+
+  return labels
+    .map((label) => precisionFromType(label))
+    .sort((left, right) => precisionRank(left) - precisionRank(right))[0];
+}
+
 // A street address is precise whatever the type says. "6A Nicolson Street" is a
 // building even if the entity behind it is typed as a café chain — the number is the
 // evidence, and it is stronger than any label.
 const HAS_STREET_NUMBER = /^\s*\d+[A-Za-z]?\s+\S/;
 
-export function precisionOf({ name, typeLabel, precision } = {}) {
+export function precisionOf({ name, typeLabel, typeLabels, precision } = {}) {
   // An explicit precision from the source wins: a permit record knows its own address
   // better than any inference from a name.
   const stated = String(precision ?? "").toLowerCase();
   if (PRECISION.includes(stated)) return stated;
   if (HAS_STREET_NUMBER.test(String(name ?? ""))) return "building";
-  return precisionFromType(typeLabel);
+  return precisionFromTypes(typeLabels ?? typeLabel);
 }
 
 // How a place should appear. Three outcomes, and the middle one is the point of all
@@ -152,8 +185,10 @@ export const DISPLAY = Object.freeze({
 // most precise thing anyone has, and it is precisely what the guided tours sell. So thin
 // evidence NEVER hides a precise place; it marks it unconfirmed and keeps it. What weak
 // evidence forfeits is the right to be presented as established, not the right to exist.
-export function gradePlace({ precision, name, typeLabel, confidence = 0, verified = false } = {}) {
-  const resolved = precisionOf({ precision, name, typeLabel });
+export function gradePlace({
+  precision, name, typeLabel, typeLabels, confidence = 0, verified = false,
+} = {}) {
+  const resolved = precisionOf({ precision, name, typeLabel, typeLabels });
   const pinnable = isPinnable(resolved);
 
   return {

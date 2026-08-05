@@ -123,6 +123,10 @@ export function toLocationRecords(candidates, { work, kind }) {
     relation_property: null,
     relation_label: "Possible connection",
     relation_description: candidateDescription(candidate.title, work.title),
+    // Wikipedia's own one-line description, standing in for the P31 a Wikipedia page
+    // does not have. Without it every candidate is ungraded, and Edinburgh — a city of
+    // half a million — arrives on the map as a dot somebody could stand on.
+    place_types: candidate.description ? [candidate.description] : [],
     evidence_source: INVERTED_EVIDENCE_SOURCE,
     source_title: "Wikipedia article",
     source_url: `https://en.wikipedia.org/?curid=${candidate.pageid}`,

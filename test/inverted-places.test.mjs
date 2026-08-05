@@ -192,3 +192,25 @@ test("records keep the work they belong to, so the map can group them", () => {
   assert.equal(record.kind, "book");
   assert.equal(record.lat, 55.9478);
 });
+
+test("a candidate carries what Wikipedia says it is, so it can be graded", async () => {
+  // A Wikipedia page has no P31. Without the short description every candidate is
+  // ungraded — and Edinburgh, a city of half a million, arrived on the live map as a
+  // dot somebody could stand on.
+  const { calls, fetchImpl } = stubFetch([
+    { body: fanoutPayload([character("Lord Voldemort")]) },
+    { body: { query: { pages: [
+      { pageid: 9602, title: "Edinburgh", coordinates: [{ lat: 55.953, lon: -3.189 }],
+        terms: { description: ["capital city of Scotland, UK"] } },
+      { pageid: 1, title: "Greyfriars Kirkyard", coordinates: [{ lat: 55.9469, lon: -3.1925 }] },
+    ] } } },
+  ]);
+
+  const records = await findInvertedPlaces({
+    work: WORK, center: EDINBURGH, radiusKm: 15, fetchImpl,
+  });
+
+  assert.deepEqual(records[0].place_types, ["capital city of Scotland, UK"]);
+  assert.deepEqual(records[1].place_types, [], "a page with no description is ungraded, not mis-graded");
+  assert.match(decodeURIComponent(calls[1]), /pageterms/);
+});

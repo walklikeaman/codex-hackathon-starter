@@ -224,7 +224,14 @@ export function buildSearchUrl(query, { language = "en", limit = 20 } = {}) {
   url.searchParams.set("gsrlimit", String(Math.min(limit, 50)));
   // Coordinates come back with the page, so a result that cannot be placed is visible
   // immediately rather than after a second round trip.
-  url.searchParams.set("prop", "coordinates|info");
+  //
+  // `pageterms` comes back with it too, and it is what lets a candidate be GRADED. A
+  // Wikipedia hit has no P31 and would otherwise be typeless — which put Edinburgh on
+  // the live map as a dot, the exact failure the precision axis exists to prevent. The
+  // short description ("capital city of Scotland", "cemetery in Edinburgh") is the only
+  // statement of what the place IS that this search can see, and it costs no request.
+  url.searchParams.set("prop", "coordinates|info|pageterms");
+  url.searchParams.set("wbptterms", "description");
   url.searchParams.set("format", "json");
   url.searchParams.set("formatversion", "2");
   return url.toString();
@@ -246,7 +253,13 @@ export function candidatesFromSearch(payload) {
       const lat = finiteOrNull(coordinate?.lat);
       const lng = finiteOrNull(coordinate?.lon);
       if (lat === null || lng === null) return null;
-      return { title: page.title, pageid: page.pageid, lat, lng };
+      return {
+        title: page.title,
+        pageid: page.pageid,
+        lat,
+        lng,
+        description: page?.terms?.description?.[0] ?? null,
+      };
     })
     .filter(Boolean);
 }
