@@ -61,6 +61,12 @@ pricing kills an archive. Shutterstock's editorial terms explicitly forbid "disp
 content as a 'gallery' … through which third parties may search", which is a description
 of this product.
 
+**MovieMaps (2026-08-05) is the same category with less cover** — no footer at all, and
+each image page carries its own "Copyright Touchstone Pictures". Its 90,764 frames were
+therefore taken as **links for the reviewer** and never as content, while its geodata was
+taken as leads. That is not an exception to this section; it is this section applied.
+See [[moviemaps-source]].
+
 ## The trap worth remembering: a fictional place that geocodes cleanly
 
 Our homonym rule refuses **Cambridge vs Cambridge** — two real places, genuine ambiguity.

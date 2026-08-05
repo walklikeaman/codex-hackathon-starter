@@ -7,6 +7,51 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-05] ingest | MovieMaps: 18k geocoded places, and a licence nobody wrote
+
+**Object**: `tools/scraperai/`, `app/lib/moviemaps-source.mjs`,
+`scripts/ingest-moviemaps.mjs`, `scripts/ingest-moviemaps-works.mjs`,
+`scripts/check-service-key.mjs`, `supabase/migrations/2026080502–04*`
+**Scenario**: ingest · **Outcome**: ✅ success
+**Code changes**: `d1d9077`, `b5720e6`, `9f8540b`, `cbffe3f`
+
+**The coordinates were never in the HTML.** MovieMaps draws its map client-side, so a
+parser reading the rendered page gets names and no points. Every detail page ends with
+the call the site makes to its own JavaScript — `moviemaps.loadPublic('MovieDetail', …)`
+— carrying coordinates, city, country, Street View camera pose and the fictional name
+each place plays. One movie page geocodes an entire film. Reading that instead of the
+markup is the difference between a gazetteer with invisible holes and 18,048 locations
+where **every single one** has both a coordinate and a street address. Full harvest:
+24,089 pages, 0 errors, 102 minutes, 90,764 frames.
+
+**The site publishes no licence at all** — /about, /terms, /legal and /copyright all 404.
+So every row carries `source_license = 'unstated'`: not a guess at a permissive one, and
+not the `CC BY-SA 4.0` default removed when [[film-permits]] landed, for exactly this
+reason. A MovieMaps row is a lead, not licensed content. Its 90,738 frame links are
+stored for the **reviewer** and never enter `work_images` — that is the Film-Grab
+refusal in [[moviemaps-source]]'s sibling page applied, not waived: a permissive footer
+grants nothing when the copyright is the studio's, and here there is not even a footer.
+
+**A CASE with no ELSE let a whole source owe no evidence.** Adding `moviemaps` to
+`submission_source_kind` opened a hole in the provenance rule written one migration
+earlier: the evidence CHECK is a CASE over `source_kind` with no ELSE, a CASE that
+matches nothing returns NULL, and a CHECK treats NULL as **passed**. Every moviemaps row
+would have satisfied the rule by not being named in it. It now ends in `else false`.
+
+Two more worth keeping. **A check that ran a select proved nothing** — `works` is
+publicly readable, so the anon key passed the "can this key write" test; it now probes a
+write and reads the JWT's own role claim. And **`works.source` had to exist before the
+import**, because the catalogue was 15 deliberate rows and became 6,044; without the
+column nobody could later tell a curated work from a scraped one.
+
+Result: 6,029 works (5,380 films, 649 series) and 30,170 submissions, all `pending`,
+reconciling exactly with the harvest — 30,386 links less 216 duplicate place keys. The 15
+curated rows kept their `wikidata_id` and `tmdb_id`; the works ingest inserts and never
+updates.
+
+**Updated**: `wiki/concepts/moviemaps-source.md` (new), `wiki/index.md`,
+`wiki/sources/source-evaluation.md`, `.gitignore`, `test/moviemaps-source.test.mjs`
+
 ## [2026-08-04] update | Two features that were finished and unreachable
 
 **Object**: `app/components/SceneMapApp.jsx`, `app/lib/location-search.mjs`,

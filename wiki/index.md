@@ -29,6 +29,7 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [personal-library](concepts/personal-library.md) — Letterboxd ZIP/CSV, privacy
 - [location-discovery](concepts/location-discovery.md) — three paths; a model may name a place, never locate one
 - [film-permits](concepts/film-permits.md) — the only primary source: the city that issued the permit
+- [moviemaps-source](concepts/moviemaps-source.md) — 18k geocoded places from a scrape; a lead, not a licence
 - [model-providers](concepts/model-providers.md) — which model answers, and the request shape both honour
 - [geocoding-cascade](concepts/geocoding-cascade.md) — names → points via Wikidata; refusing homonyms is the feature
 - [wikipedia-enrichment](concepts/wikipedia-enrichment.md) — Production prose → review queue, quote checked verbatim
