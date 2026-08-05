@@ -7,6 +7,98 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-05] incident | Security advisor: what was ours, and what we cannot touch
+
+**Object**: `supabase/migrations/20260805013939_security_advisor_findings.sql`
+**Scenario**: security · **Outcome**: ⚠️ partial — 1 ERROR left open, cannot be fixed from our role
+
+Two ERRORs and twenty warnings in the Supabase linter, which the owner was being
+notified about. Sorted by whether a stranger with the anon key can do anything with
+them, and fixed where the answer was yes.
+
+**Fixed and verified live.** `links_without_evidence` ran with its OWNER's rights —
+a view without `security_invoker` bypasses the caller's row-level rules, and nothing
+about that view needs it. Ten functions had no fixed `search_path`, and `map_points_in_view`
+and friends are called with the ANON key from the browser, so "whatever `places` the
+session points at" is a real question. `search_path` is `public, extensions, pg_catalog` —
+`extensions` is in the list against the day PostGIS is moved. Plus: the redundant
+SELECT policy on `user_library_items` dropped (the FOR ALL policy already covered it),
+`auth.uid()` wrapped in a subselect so it is evaluated once instead of per row, and the
+three foreign keys that had no covering index.
+
+Advisor after: security 2 ERROR + 19 WARN → **1 ERROR + 9 WARN**; performance 7 WARN → 0.
+Verified as `anon` after the change: map_points 17, map_works 14, clusters 11,
+remote_points 10, search_works 1 — and the same four routes answer 200 in production.
+
+**What we cannot touch, and did not pretend to.** `spatial_ref_sys` is PostGIS's own
+table, owned by `supabase_admin`. From `postgres` we cannot enable RLS on it, cannot
+revoke another grantor's grants, and cannot `set role supabase_admin` — all three
+attempted against the live database and verified afterwards to have changed nothing.
+So the remaining ERROR is real in a specific way worth writing down: **`anon` can
+DELETE from the SRID registry through PostgREST.** It is PostGIS reference data rather
+than ours, and it is still writable by anybody holding the public key.
+
+The one action that would clear it and the three `extension_in_public` warnings is
+getting the extensions out of `public` — and PostGIS does not support `ALTER EXTENSION
+… SET SCHEMA`, while dropping and recreating would take `places.centroid` (geography)
+and `places.frame_embedding` (vector) with it. That is a database for a linter score.
+Left for Supabase support, or for the next project to install extensions correctly.
+
+**Drift found on the way.** Two migrations — `moviemaps_source_kind` and
+`moviemaps_evidence` — were applied to the live database through the MCP by another
+session and exist in NO branch of this repo. Recovered from
+`supabase_migrations.schema_migrations` and committed, so a fresh environment is no
+longer missing a CHECK constraint the production database enforces.
+
+## [2026-08-05] update | Three finished modules reached the live path
+
+**Object**: `app/lib/inverted-places.mjs`, `app/api/access/route.js`,
+`app/api/locations/route.js`, `app/lib/place-search.mjs`, `app/lib/place-grade.mjs`,
+`app/lib/place-access.mjs`, `app/lib/timed-tour.mjs`, `app/components/SceneMapApp.jsx`
+**Scenario**: feature · **Outcome**: ✅ success
+**Code changes**: `a7b8ba0`, `bbf4f7a`, `d962a03`
+
+The handoff named the project's most repeated failure — finished, correct work that
+never reaches the live path, now five times over — and listed three modules in that
+state. All three are called now. 819 tests (was 788), production build clean, each
+change verified in a browser.
+
+**The inverted search finds Greyfriars.** Two ordering bugs, both invisible until it
+ran. A work's title is usually also its main character's name, so "Harry Potter"
+arrived twice and spent two of the six branches — pushing out Lord Voldemort, the ONE
+name that graveyard's article contains. And Wikidata returns characters in no order,
+so the budget went to the wrong ones in both directions: ranked now by class and by
+sitelink count, DESCENDING for invented names (Voldemort was ninth of eleven) and
+ASCENDING for real people, because George Washington is an Outlander character and his
+273 sitelinks are about him. `wikibase:sitelinks` rather than a COUNT: 698ms vs 2,765ms.
+Edinburgh, "Harry Potter": 4 places before, 18 after, 8 of them candidates.
+
+**Nothing arrives as a claim.** A hit says only that a place's article mentions the
+work — which is exactly what Thomas Riddell's grave is — so candidates get a hollow
+pin, an "unverified" note and a link to the article. Turning one into a claim needs a
+quoted sentence checked verbatim; that is still the next step.
+
+**A route now says whether you can get in**, and the design was decided by measuring
+first: of twelve stops from tours selling today, OSM knows about four, all in cities
+(3 of 4 in London, 0 of 5 in rural Scotland). So `isRoutable` was applied where it
+holds — closed is never routed to, confirmed beats unknown in the ranking — and an
+unconfirmed stop is carried with its own sentence rather than deleted. Two ways to read
+a neighbour's tags as this place's were found by running it: the nearest named feature
+to Greyfriars is a gravestone 8 m away, and `namesMatch` accepts one extra word, which
+printed "Notting Hill Bookshop" hours as Notting Hill's access.
+
+**A place located to an island is drawn as one.** GROUP_CONCAT over P31, finest type
+wins. Three gaps found by watching the live map: candidates have no P31 at all (fixed
+with Wikipedia's `pageterms`, so Edinburgh stops being a dot), everything after " in "
+is where a place is rather than what it is ("faculty in City of Edinburgh" made a
+university building a settlement), and four missing words — "area of", "kirkyard",
+"zoo", "market".
+
+**Corrected**: this project believed Greyfriars Kirkyard carried `opening_hours: 24/7`.
+It carries no access tag; that reading was the loose-name-match trap, measured twice.
+
+**Updated**: `wiki/concepts/three-axes.md`, `wiki/handoff.md`
+
 ## [2026-08-05] rule-change | Provenance is enforced by the database, not by habit
 
 **Object**: `supabase/migrations/20260805010000_provenance_is_required.sql`

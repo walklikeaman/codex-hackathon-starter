@@ -197,6 +197,55 @@ img {
   }
 }
 
+/* A place whose own article mentions the work, with nobody having stated why. Hollow
+   on purpose: the pin has to look like a question, not an answer. */
+.scene-pin.is-candidate::before {
+  background: transparent;
+  border-style: dashed;
+  border-color: rgba(247, 183, 51, 0.9);
+}
+
+.scene-pin.is-candidate span {
+  background: rgba(247, 183, 51, 0.9);
+}
+
+/* Access is stated in the muted voice by default — "we have not confirmed" is the
+   common case and must not shout — and brightens only when it is actually known. */
+.access-note {
+  display: block;
+  font-size: 0.76rem;
+  color: rgba(233, 226, 213, 0.55);
+}
+
+.access-note.is-known {
+  color: rgba(138, 209, 148, 0.92);
+}
+
+.place-access-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: rgba(233, 226, 213, 0.78);
+}
+
+.precision-caveat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: rgba(233, 226, 213, 0.7);
+}
+
+.evidence-caveat {
+  border-left: 3px solid rgba(247, 183, 51, 0.75);
+  background: rgba(247, 183, 51, 0.08);
+  padding: 8px 12px;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
 .scene-pin.kind-series::before {
   background: linear-gradient(135deg, #55b5f7, #516dd8);
 }

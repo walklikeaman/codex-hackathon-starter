@@ -6,6 +6,7 @@ import {
   gradePlace,
   isPinnable,
   precisionFromType,
+  precisionFromTypes,
   precisionOf,
   precisionRank,
 } from "../app/lib/place-grade.mjs";
@@ -116,4 +117,36 @@ test("precision is not access, and the two disagree on real tours", () => {
 
   assert.equal(culross.display, DISPLAY.area, "walkable, and still not a pin");
   assert.equal(midhope.display, DISPLAY.pin, "pinnable, and behind a locked gate");
+});
+
+// --- a place is several things at once ---------------------------------------------------
+
+test("the finest of a place's types decides, not whichever arrives first", () => {
+  // Wikidata gives the Isle of Skye "island" and "place with a Council area"; Greyfriars
+  // Kirkyard is a cemetery and a listed building. SAMPLE in the query would pick one at
+  // random, which is a coin toss over whether a place becomes a dot you could stand on.
+  assert.equal(precisionFromTypes(["island", "place with a Council area"]), "region");
+  assert.equal(precisionFromTypes(["listed building", "cemetery"]), "point");
+  assert.equal(precisionFromTypes(["human settlement", "castle"]), "building");
+  assert.equal(precisionFromTypes([]), "unknown");
+  assert.equal(precisionFromTypes(["obscure classification"]), "unknown");
+});
+
+test("what a place is, not where it is", () => {
+  // Live: Moray House School is described as "faculty in City of Edinburgh". Nothing in
+  // "faculty" is in the vocabulary, so "city" won and a university building was drawn as
+  // a settlement-sized area on the map.
+  assert.equal(precisionOf({ typeLabel: "faculty in City of Edinburgh" }), "unknown");
+  assert.equal(precisionOf({ typeLabel: "castle in West Lothian, Scotland" }), "building");
+  assert.equal(precisionOf({ typeLabel: "graveyard surrounding Greyfriars Kirk in Edinburgh" }), "point");
+  assert.equal(precisionOf({ typeLabel: "capital city of Scotland" }), "settlement");
+});
+
+test("the words a live run added, each because a real place was pinned as a doorway", () => {
+  // Kensington, Wandsworth and Notting Hill all carry Wikidata's "area of London" and
+  // were all drawn as dots; Greyfriars is a kirkyard, which "graveyard" does not catch.
+  assert.equal(precisionOf({ typeLabel: "area of London" }), "settlement");
+  assert.equal(precisionOf({ typeLabel: "kirkyard" }), "point");
+  assert.equal(precisionOf({ typeLabel: "zoo" }), "building");
+  assert.equal(precisionOf({ typeLabel: "market hall" }), "building");
 });
