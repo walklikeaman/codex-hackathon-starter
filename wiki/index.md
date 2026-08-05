@@ -23,6 +23,8 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [deployment-pipeline](entities/deployment-pipeline.md) — staging automatically, prod manually
 - [team](entities/team.md) — who does what per git history, access rights
 
+- [handoff](handoff.md) — read first in a new session: unwired modules, traps, keys, next steps
+
 ## Concepts (how it works)
 
 - [demo-path](concepts/demo-path.md) — the one sacred scenario
