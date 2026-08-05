@@ -7,6 +7,100 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-05] rule-change | Provenance is enforced by the database, not by habit
+
+**Object**: `supabase/migrations/20260805010000_provenance_is_required.sql`
+**Scenario**: rule-change · **Outcome**: ✅ success
+**Code changes**: `4032311`
+
+Owner's rule: when we enrich, we keep the source — which site, which page — so a claim
+can always be traced back. It was already the convention and it was already broken.
+Measured before writing anything: **92 links, 8 with no evidence row at all.** Checked
+against Wikidata, five correspond to real P840 statements and **three do not exist
+there** — Skyfall→Hashima Island, Skyfall→National Gallery, Harry Potter→London Zoo.
+
+Those three are probably TRUE — Hashima is the acknowledged model for Silva's island,
+the zoo is the snake scene — and that is the argument. With no recorded source there is
+no way to tell a right row from a wrong one, and "probably true" is the state this
+project exists to refuse.
+
+`place_evidence` now requires an identifiable source (a URL or a statement ref; a
+snippet describes a source and cannot replace one), and `work_place_links` requires at
+least one evidence row via a **deferred** constraint trigger, so link and evidence write
+in one transaction as they actually do. Verified live both ways. Both are `not valid`
+rather than retroactive and `links_without_evidence` lists the debt: validating would
+fail on rows nobody can now source, deleting them would destroy probably-correct facts,
+and an invented citation is worse than visible debt.
+
+Subtlety worth the entry: a deferrable-initially-deferred trigger fires at COMMIT and
+cannot be caught by an exception block in the same transaction. The first test reported
+the rule was not working when it was.
+
+**Updated**: `wiki/concepts/place-precision.md`
+
+## [2026-08-05] update | Three axes for judging a place, and two relations it could not express
+
+**Object**: `app/lib/place-grade.mjs`, `app/lib/place-access.mjs`,
+`app/lib/work-profile.mjs`, `app/lib/scene-frame-match.mjs`,
+`supabase/migrations/20260805000000_inspiration_and_replica.sql`
+**Scenario**: feature · **Outcome**: ✅ success
+**Code changes**: `f31316b`, `f214602`, `68c8f0d`
+
+**Precision became its own axis** (owner, 2026-08-04): a source saying a film was shot
+on an island does not put the island on the map as a point, but as an area where the
+exact spot is unknown. Evidence and precision are orthogonal and are never multiplied —
+a single number cannot say which is missing, and the fixes are opposite. Fan knowledge
+is kept: thin evidence marks a precise place unconfirmed, never hides it.
+
+**Then access became a third axis**, because precision and access disagree in BOTH
+directions. Culross and Falkland are villages — coarse precision — and are the two most
+walkable stops on a real Outlander itinerary. Midhope Castle is building-precision and
+is a ticketed gate on a private estate with an interior shut to everyone. Showing and
+routing are therefore different promises: `canShow` admits an unknown, `isRoutable`
+refuses it, aimed at the one case where a self-guided map is worse than a coach.
+
+**Two relations the map had to lie about.** `inspiration_for` — Thomas Riddell's grave
+is not a filming location and is not where the story is set; the inverted search already
+found it and there was nowhere to put the answer. `replica` — the Green Dragon and
+Bagshot Row's interior were built for visitors and never shot in. Carried through to
+`placeRole` rather than stopping at the schema, and `isMatchablePlace` now refuses all
+three never-filmed kinds: a vision model comparing a frame to the Green Dragon would
+agree enthusiastically and be entirely wrong, because it was built to look like that.
+
+Three services this session have now reported failure inside a success: Wikimedia's
+error in a 200 body, OpenRouter's silently ignored schema, and Overpass answering "the
+server is probably too busy" with HTTP 200 and an HTML page.
+
+**Updated**: `wiki/concepts/three-axes.md` (new), `wiki/index.md`
+
+## [2026-08-05] update | The viewport is the question, and the inverted search
+
+**Object**: `app/lib/place-search.mjs`, `app/lib/nearby.mjs`,
+`app/api/locations/route.js`, `app/components/SceneMapApp.jsx`
+**Scenario**: feature · **Outcome**: ✅ success
+**Code changes**: `cf204f9`, `2ee4984`
+
+**The inverted search** finds places whose OWN article mentions a work — the category
+that lives on the place's page and nowhere else. Three things had to be right and each
+was found by measurement: filter geographically inside the query (`nearcoord:` gave 10
+of 10 results with coordinates where a plain search gave 2 of 50), use the REGEX form of
+`insource` (the quoted form misses "Rowling's"), and fan out to the work's characters
+(neither "Harry Potter" nor "Rowling" reaches Greyfriars — the article links only to
+[[Lord Voldemort]]). And one trap: CirrusSearch's own `OR` between insource clauses
+returns ZERO rather than erroring, so the alternation lives inside one regex.
+
+Verified general: Dracula in Whitby returns the Abbey, St Mary's Church and the 199
+Steps; The Hound of the Baskervilles in London returns Scotland Yard and Highgate
+Cemetery.
+
+**Zooming out now widens the search**, which needed four separate fixes: minZoom was 11
+so a country could not be shown at all; the search refreshed on drag and not on zoom;
+the radius capped at 50km and the API rejected more; and a viewport change cleared the
+work query, so searching a film and zooming dropped the film. Measured on Edinburgh:
+15km→8 places, 120km→10, 500km→15.
+
+**Updated**: `wiki/concepts/three-axes.md`
+
 ## [2026-08-04] update | Two features that were finished and unreachable
 
 **Object**: `app/components/SceneMapApp.jsx`, `app/lib/location-search.mjs`,
