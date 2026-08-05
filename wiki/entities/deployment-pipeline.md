@@ -4,13 +4,25 @@ Vercel project `codex-hackathon-starter` (id `prj_FM31BOAjGEmwLlOFFK0zcpzcqStE`,
 account `walklikeaman1904`), linked to the GitHub repo. The framework is forced by
 `vercel.json` (otherwise it built as static).
 
-## Current scheme (decision 21.07, PR ef1fecd)
+## Corrected 05.08 — a merge into `main` ships to PRODUCTION
+
+Measured on PR #122, not assumed. Merging created **two** things within seconds: the
+`Deploy staging` workflow run, and a Vercel deployment in the GitHub environment
+**`Production`** (`gh api repos/…/deployments?sha=<merge>` → `{"env":"Production"}`).
+The production URL served the merged code immediately — `/api/access`, a route that did
+not exist before the merge, answered 200.
+
+So the Vercel Git integration is connected now and `main` is a production branch. The
+manual workflow below still exists and still works; it is no longer the only path, and
+**anyone merging a PR is shipping to users.** Nothing gates it.
+
+## Original scheme (decision 21.07, PR ef1fecd) — the manual path
 
 - Push a branch → Vercel Preview for that branch (link in the PR).
-- **Merge into `main` → staging**: GitHub environment `staging`, Vercel Preview.
-- **Production — manual only**: GitHub Actions workflow with explicit
-  confirmation via the `production` environment. Credentials (`VERCEL_TOKEN`,
-  `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`) — in GitHub environment secrets.
+- Merge into `main` → staging: GitHub environment `staging`, Vercel Preview.
+- Production via GitHub Actions workflow with explicit confirmation through the
+  `production` environment. Credentials (`VERCEL_TOKEN`, `VERCEL_ORG_ID`,
+  `VERCEL_PROJECT_ID`) — in GitHub environment secrets.
 - Prod URL: https://codex-hackathon-starter.vercel.app
 - The GitHub Actions path needs three secrets. `VERCEL_ORG_ID`
   (`team_oulXyCQDRVVkXELdoJuaaVEE`) and `VERCEL_PROJECT_ID`
@@ -29,6 +41,11 @@ to production. For a newly linked project you must use
 
 ## Gotchas
 
+- **The Vercel CLI on this machine cannot see this project.** It is logged in as
+  `nikita-8024` with the team `kitpos`; GloryMap lives under the personal account
+  `walklikeaman1904`. `vercel ls … --scope walklikeaman1904` answers "the specified
+  scope does not exist", which reads like a missing project and is a missing login.
+  Deploys go through the GitHub integration; the CLI path needs a different account.
 - **`vercel env add` defaults to SENSITIVE on Production and Preview.** A sensitive
   variable is withheld from the *build*, so a `NEXT_PUBLIC_*` value never gets inlined
   into the client bundle — the browser Supabase client silently became `null` (no
