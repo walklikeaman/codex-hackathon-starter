@@ -7,6 +7,49 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-05] incident | Security advisor: what was ours, and what we cannot touch
+
+**Object**: `supabase/migrations/20260805013939_security_advisor_findings.sql`
+**Scenario**: security · **Outcome**: ⚠️ partial — 1 ERROR left open, cannot be fixed from our role
+
+Two ERRORs and twenty warnings in the Supabase linter, which the owner was being
+notified about. Sorted by whether a stranger with the anon key can do anything with
+them, and fixed where the answer was yes.
+
+**Fixed and verified live.** `links_without_evidence` ran with its OWNER's rights —
+a view without `security_invoker` bypasses the caller's row-level rules, and nothing
+about that view needs it. Ten functions had no fixed `search_path`, and `map_points_in_view`
+and friends are called with the ANON key from the browser, so "whatever `places` the
+session points at" is a real question. `search_path` is `public, extensions, pg_catalog` —
+`extensions` is in the list against the day PostGIS is moved. Plus: the redundant
+SELECT policy on `user_library_items` dropped (the FOR ALL policy already covered it),
+`auth.uid()` wrapped in a subselect so it is evaluated once instead of per row, and the
+three foreign keys that had no covering index.
+
+Advisor after: security 2 ERROR + 19 WARN → **1 ERROR + 9 WARN**; performance 7 WARN → 0.
+Verified as `anon` after the change: map_points 17, map_works 14, clusters 11,
+remote_points 10, search_works 1 — and the same four routes answer 200 in production.
+
+**What we cannot touch, and did not pretend to.** `spatial_ref_sys` is PostGIS's own
+table, owned by `supabase_admin`. From `postgres` we cannot enable RLS on it, cannot
+revoke another grantor's grants, and cannot `set role supabase_admin` — all three
+attempted against the live database and verified afterwards to have changed nothing.
+So the remaining ERROR is real in a specific way worth writing down: **`anon` can
+DELETE from the SRID registry through PostgREST.** It is PostGIS reference data rather
+than ours, and it is still writable by anybody holding the public key.
+
+The one action that would clear it and the three `extension_in_public` warnings is
+getting the extensions out of `public` — and PostGIS does not support `ALTER EXTENSION
+… SET SCHEMA`, while dropping and recreating would take `places.centroid` (geography)
+and `places.frame_embedding` (vector) with it. That is a database for a linter score.
+Left for Supabase support, or for the next project to install extensions correctly.
+
+**Drift found on the way.** Two migrations — `moviemaps_source_kind` and
+`moviemaps_evidence` — were applied to the live database through the MCP by another
+session and exist in NO branch of this repo. Recovered from
+`supabase_migrations.schema_migrations` and committed, so a fresh environment is no
+longer missing a CHECK constraint the production database enforces.
+
 ## [2026-08-05] update | Three finished modules reached the live path
 
 **Object**: `app/lib/inverted-places.mjs`, `app/api/access/route.js`,
