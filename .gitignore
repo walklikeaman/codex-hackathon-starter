@@ -6,6 +6,8 @@
 *.pem
 
 # deps / build
+tools/scraperai/.venv/
+__pycache__/
 node_modules/
 .next/
 dist/
@@ -22,6 +24,11 @@ tmp/
 
 # scratch
 _probe_*
+
+# scraped MovieMaps pages and output — regenerate with tools/scraperai/harvest.py.
+# The recipes the model produced are tracked; the 24k pages it replays are not.
+tools/scraperai/.cache/
+data/moviemaps/*.ndjson
 
 # Obsidian per-user state (shared config stays tracked)
 .obsidian/workspace.json

@@ -1,0 +1,35 @@
+{
+  "source": "https://moviemaps.org",
+  "robots_txt": "Disallow: /search only (checked 2026-08-05)",
+  "runs": [
+    {
+      "kind": "movie",
+      "total": 6041,
+      "harvested": 6041,
+      "new": 6041,
+      "errors": 0,
+      "error_sample": [],
+      "seconds": 4.9
+    }
+  ],
+  "http": {
+    "fetched": 0,
+    "cached": 6043,
+    "failed": 0
+  },
+  "stats": {
+    "locations": {
+      "records": 18048,
+      "with_coordinates": 18048,
+      "with_address": 18048,
+      "with_frames": 9458,
+      "frames_total": 90764
+    },
+    "movies": {
+      "records": 6041,
+      "with_imdb_id": 6041,
+      "with_locations": 6041,
+      "location_links_total": 30386
+    }
+  }
+}
