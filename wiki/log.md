@@ -7,6 +7,29 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-05] decision | Shipped, and a merge turns out to be a release
+
+**Object**: `wiki/entities/deployment-pipeline.md`
+**Scenario**: deploy · **Outcome**: ✅ success
+
+PR #122 merged into `main` (`ea91220`) and the three wired modules are live at
+https://codex-hackathon-starter.vercel.app — verified on production, not on a preview:
+"Harry Potter" from Edinburgh returns 18 places, 8 candidates including Greyfriars
+Kirkyard, 15 pins and 3 areas; `/api/access` answers the V&A "open" with its hours and
+Doune Castle "unknown".
+
+**The wiki was wrong about what a merge does.** It said production was manual only,
+behind a GitHub Actions workflow with a confirmation environment. Measured on this
+merge: within seconds GitHub recorded a Vercel deployment in the environment
+**`Production`**, and the production URL served a route that did not exist before the
+merge. The Git integration is connected, `main` is a production branch, and anyone
+merging a PR is shipping to users with nothing gating it.
+
+Also recorded: the Vercel CLI on this machine is logged into a different account
+(`nikita-8024`, team `kitpos`) than the one that owns this project
+(`walklikeaman1904`), so `vercel ls --scope walklikeaman1904` answers "scope does not
+exist" — which reads like a missing project and is a missing login.
+
 ## [2026-08-05] incident | Security advisor: what was ours, and what we cannot touch
 
 **Object**: `supabase/migrations/20260805013939_security_advisor_findings.sql`
