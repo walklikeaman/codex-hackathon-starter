@@ -132,3 +132,100 @@ export function isClosedOn(record, isoDate) {
   const closures = Array.isArray(record?.closures) ? record.closures : [];
   return closures.includes(String(isoDate ?? "").slice(0, 10));
 }
+
+// --- asking OpenStreetMap ------------------------------------------------------------
+
+// How far from our coordinate the place itself may be mapped. Wide, because the two
+// points come from different sources for different things — measured, St Paul's is 3 m
+// away and London Zoo's own way is 134 m — and the NAME does the identifying here, not
+// the distance.
+export const ACCESS_SEARCH_RADIUS_M = 250;
+
+// One query for a whole tour's worth of stops. Overpass is donated hardware and asks
+// callers to bound their own queries; a serial call per stop is exactly the pace that
+// gets a client blocked.
+export const MAX_PLACES_PER_QUERY = 10;
+
+function escapeOverpassRegex(value) {
+  return String(value ?? "").replace(/["\\]/g, "").replace(/[.*+?^${}()|[\]]/g, "\\$&");
+}
+
+// The name goes INSIDE the query, and the first measurement is why. Asking for every
+// named feature around twelve points returned 200 elements against a shared output cap,
+// so half the places got no answer at all — and the nearest named thing to a place is
+// routinely not the place: Greyfriars Kirkyard's nearest neighbour is a gravestone
+// ("Anne and Robert Potter", 8 m), Alnwick Castle's is the Diana Gift Shop.
+//
+// Two words rather than the whole name, because OSM rarely spells a name the way
+// Wikidata does and a full-string regex is how you get zero.
+export function overpassAccessQuery(places, { radiusM = ACCESS_SEARCH_RADIUS_M } = {}) {
+  const wanted = (Array.isArray(places) ? places : [])
+    .filter((place) => Number.isFinite(place?.lat) && Number.isFinite(place?.lng)
+      && String(place?.name ?? "").trim())
+    .slice(0, MAX_PLACES_PER_QUERY);
+  if (wanted.length === 0) return null;
+
+  const statements = wanted.map((place) => {
+    const words = String(place.name).trim().split(/\s+/).slice(0, 2).join(" ");
+    return `nwr(around:${radiusM},${place.lat},${place.lng})["name"~"${escapeOverpassRegex(words)}",i];`;
+  }).join("\n  ");
+
+  return `[out:json][timeout:25];\n(\n  ${statements}\n);\nout tags center;`;
+}
+
+function elementPoint(element) {
+  const point = element?.center ?? { lat: element?.lat, lon: element?.lon };
+  return Number.isFinite(point?.lat) && Number.isFinite(point?.lon)
+    ? { lat: point.lat, lng: point.lon }
+    : null;
+}
+
+// Access per place, keyed by the caller's own id.
+//
+// `matchesName` is injected rather than imported so the comparison stays the project's
+// one place-name comparison (`place-dedup`) without this module depending on it.
+//
+// THE NAME TEST IS NOT OPTIONAL, even though the query already filtered by name: a
+// union returns ONE result set, so an element fetched for another place is still in the
+// list. Measured, that is not theoretical — Greyfriars Kirkyard picked up The Elephant
+// House 87 m away and reported a café's opening hours as the graveyard's, which is
+// precisely the invented promise this module exists to refuse.
+export function accessRecordsFromOverpass(payload, places, {
+  matchesName = (a, b) => String(a ?? "").toLowerCase() === String(b ?? "").toLowerCase(),
+  radiusM = ACCESS_SEARCH_RADIUS_M,
+  distanceM,
+} = {}) {
+  const elements = Array.isArray(payload?.elements) ? payload.elements : [];
+  const records = new Map();
+
+  for (const place of Array.isArray(places) ? places : []) {
+    const matches = elements
+      .map((element) => {
+        const point = elementPoint(element);
+        if (!point) return null;
+        const distance = distanceM(place, point);
+        return Number.isFinite(distance) ? { element, distance } : null;
+      })
+      .filter((entry) => entry
+        && entry.distance <= radiusM
+        && matchesName(entry.element.tags?.name, place.name))
+      // Richest tagging first among the matches. A castle is usually mapped several
+      // times — a way with the fee and the hours, a node with nothing but a name — and
+      // the sparse one would report "unknown" for a place we actually know about.
+      .sort((left, right) =>
+        Object.keys(right.element.tags ?? {}).length - Object.keys(left.element.tags ?? {}).length
+        || left.distance - right.distance);
+
+    const chosen = matches[0];
+    records.set(place.id, {
+      id: place.id,
+      name: place.name,
+      ...(chosen
+        ? { ...accessFromOsmTags(chosen.element.tags), osm_name: chosen.element.tags?.name,
+            osm_type: chosen.element.type, osm_id: chosen.element.id }
+        : { access: ACCESS.unknown, interior: INTERIOR.unknown, source: null }),
+    });
+  }
+
+  return records;
+}

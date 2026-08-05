@@ -7,6 +7,7 @@ import {
   createTimedTourCandidates,
   routeFitsBudget,
 } from "../app/lib/timed-tour.mjs";
+import { ACCESS } from "../app/lib/place-access.mjs";
 
 const locations = [
   { id: "a", place: "A", film: "Film A", description: "A story", position: [51.5000, -0.1000] },
@@ -89,4 +90,74 @@ test("builds a verified-description fallback guide", () => {
     ["a", "b", "c"],
   );
   assert.equal(guide.stops[0].narration, "A story");
+});
+
+// --- access: showing a place and routing to it are different promises -------------------
+
+test("a place OpenStreetMap says is closed is never routed to", () => {
+  // The one verdict that removes a stop outright. Everything else is a preference,
+  // because access coverage is thin; "closed" is not thin, it is an answer.
+  const candidates = createTimedTourCandidates(locations, [51.5, -0.1], 30, {
+    access: { c: { access: ACCESS.closed } },
+  });
+
+  assert.ok(candidates.length > 0);
+  for (const candidate of candidates) {
+    assert.ok(!candidate.stops.some((stop) => stop.id === "c"));
+  }
+});
+
+test("among equal-length tours, the one we can vouch for wins", () => {
+  // Measured against twelve real tour stops, OSM knows about four — and all four are in
+  // cities. Excluding every unknown would produce no Scottish tour at all, so an
+  // unknown is ranked BELOW a confirmed stop rather than deleted.
+  const confirmed = createTimedTourCandidates(locations, [51.5, -0.1], 30, {
+    access: {
+      c: { access: ACCESS.open },
+      d: { access: ACCESS.ticketed },
+      e: { access: ACCESS.view_only },
+    },
+  });
+
+  const best = confirmed[0];
+  assert.equal(best.confirmedStops, 3);
+  // Every three-stop tour that could have been all-confirmed is ranked above one that
+  // could not — the comparison the ordering exists to make.
+  const threeStop = confirmed.filter((candidate) => candidate.stops.length === 3);
+  assert.deepEqual(
+    [...threeStop].sort((left, right) => right.confirmedStops - left.confirmedStops)
+      .map((candidate) => candidate.stops.map((stop) => stop.id).join("")),
+    threeStop.map((candidate) => candidate.stops.map((stop) => stop.id).join("")),
+  );
+});
+
+test("no access knowledge plans exactly the tour it planned before", () => {
+  // The degraded path is the common one — a busy Overpass, a stop nobody has tagged —
+  // and it must cost the labels, never the tour.
+  const withNothing = createTimedTourCandidates(locations, [51.5, -0.1], 30, { access: null });
+  const original = createTimedTourCandidates(locations, [51.5, -0.1], 30);
+
+  assert.deepEqual(
+    withNothing.map((candidate) => candidate.stops.map((stop) => stop.id).join("")),
+    original.map((candidate) => candidate.stops.map((stop) => stop.id).join("")),
+  );
+  assert.equal(withNothing[0].confirmedStops, 0);
+});
+
+test("access is looked up by the place id the map carries, not the row id", () => {
+  // A location's `locationId` is the place; `id` is the work-and-place pair. Two films
+  // shot at one address share the place and must share its access.
+  const shared = [
+    { ...locations[0], id: "film1-Q1", locationId: "Q1" },
+    { ...locations[1], id: "film2-Q1", locationId: "Q1" },
+    { ...locations[2], id: "film3-Q2", locationId: "Q2" },
+    { ...locations[3], id: "film4-Q3", locationId: "Q3" },
+  ];
+  const candidates = createTimedTourCandidates(shared, [51.5, -0.1], 60, {
+    access: { Q1: { access: ACCESS.closed } },
+  });
+
+  for (const candidate of candidates) {
+    assert.ok(!candidate.stops.some((stop) => stop.locationId === "Q1"));
+  }
 });

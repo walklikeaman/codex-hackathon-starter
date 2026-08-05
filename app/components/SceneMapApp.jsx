@@ -18,6 +18,7 @@ import {
   Cloud,
   Clock3,
   Crosshair,
+  DoorOpen,
   ExternalLink,
   Film,
   Info,
@@ -63,6 +64,7 @@ import {
   createTimedTourCandidates,
   routeFitsBudget,
 } from "../lib/timed-tour.mjs";
+import { ACCESS, accessNote, isRoutable, MAX_PLACES_PER_QUERY } from "../lib/place-access.mjs";
 import VoiceGuide from "./VoiceGuide";
 import GraphLayer from "./GraphLayer";
 import WorkSearchBox from "./WorkSearchBox";
@@ -832,6 +834,10 @@ export default function SceneMapApp() {
   const [timedTour, setTimedTour] = useState(null);
   const [timedTourStatus, setTimedTourStatus] = useState("idle");
   const [timedTourMessage, setTimedTourMessage] = useState("");
+  // What OSM knows about getting into the places around here, keyed by place id. Kept
+  // beside the tour rather than inside it so the location card can say the same thing
+  // the tour says about a stop.
+  const [tourAccess, setTourAccess] = useState(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const [accountUser, setAccountUser] = useState(null);
@@ -1496,11 +1502,53 @@ export default function SceneMapApp() {
     }
   }
 
+  // What OSM says about getting in, for the stops a tour might use. Asked once per
+  // build and never per pin: Overpass runs on donated hardware, and the answer only
+  // changes a route, which is the only place we make a promise about a door.
+  //
+  // Every failure — a busy Overpass, a rejected batch, a network drop — resolves to no
+  // knowledge rather than to "open". The tour then reads exactly as it did before this
+  // existed, with the stops marked unconfirmed.
+  async function loadAccess(locations) {
+    const places = locations.slice(0, MAX_PLACES_PER_QUERY).map((location) => ({
+      id: location.locationId ?? location.id,
+      name: location.place,
+      lat: location.position[0],
+      lng: location.position[1],
+    }));
+    if (places.length === 0) return null;
+
+    try {
+      const response = await fetch("/api/access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ places }),
+      });
+      if (!response.ok) throw new Error(`access responded ${response.status}`);
+      const payload = await response.json();
+      return Object.fromEntries((payload.places ?? []).map((record) => [record.id, record]));
+    } catch {
+      return null;
+    }
+  }
+
   async function buildTimedTour() {
+    setTimedTour(null);
+    setTimedTourStatus("loading");
+    setTimedTourMessage("Checking which of these you can actually get into...");
+
+    // Only the places a walk could plausibly use are worth asking about — the batch is
+    // bounded, and a stop 300 km away was never going to be in a 60-minute tour.
+    const nearestFirst = [...visibleLocations].sort((left, right) =>
+      haversineKm(browseCenter, left.position) - haversineKm(browseCenter, right.position));
+    const access = await loadAccess(nearestFirst);
+    setTourAccess(access);
+
     const candidates = createTimedTourCandidates(
       visibleLocations,
       browseCenter,
       tourBudget,
+      { access },
     );
 
     if (candidates.length === 0) {
@@ -1604,6 +1652,10 @@ export default function SceneMapApp() {
       usedAiFallback = true;
     }
 
+    const unconfirmed = selectedPlan.stops.filter(
+      (stop) => !isRoutable(access?.[stop.locationId ?? stop.id]),
+    ).length;
+
     setTimedTour({
       budgetMinutes: tourBudget,
       guide,
@@ -1611,10 +1663,17 @@ export default function SceneMapApp() {
       stops: selectedPlan.stops,
       usedAiFallback,
       usedRouteFallback,
+      unconfirmed,
     });
     setTimedTourStatus("ready");
     setTimedTourMessage(
       [
+        // Said before the pleasantries, because it is the sentence that decides whether
+        // somebody walks half an hour to a locked gate. A route is a promise about a
+        // specific day, and this is the part of it we cannot make.
+        unconfirmed
+          ? `${unconfirmed} of ${selectedPlan.stops.length} stops: we have not confirmed you can get in. Check before you go.`
+          : null,
         usedAiFallback ? "AI was unavailable, so verified location descriptions were used." : null,
         usedRouteFallback ? "Walking directions were estimated because the router was unavailable." : null,
       ].filter(Boolean).join(" "),
@@ -2508,12 +2567,21 @@ export default function SceneMapApp() {
                 <span>{timedTour.stops.length} stops</span>
               </div>
               <ol>
-                {timedTour.stops.map((stop) => (
-                  <li key={stop.id}>
-                    <strong>{stop.place}</strong>
-                    <span>{stop.film}</span>
-                  </li>
-                ))}
+                {timedTour.stops.map((stop) => {
+                  const record = tourAccess?.[stop.locationId ?? stop.id];
+                  return (
+                    <li key={stop.id}>
+                      <strong>{stop.place}</strong>
+                      <span>{stop.film}</span>
+                      {/* Per stop, not only in the summary: "2 of 4 unconfirmed" does
+                          not tell you WHICH two, and that is the whole question when
+                          you are standing at the bus stop deciding. */}
+                      <span className={`access-note${record && isRoutable(record) ? " is-known" : ""}`}>
+                        {accessNote(record)}
+                      </span>
+                    </li>
+                  );
+                })}
               </ol>
               <button className="start-tour-button" type="button" onClick={startTimedTour}>
                 <Route size={17} />
@@ -2724,6 +2792,15 @@ export default function SceneMapApp() {
                 <span>{activeLocation.position[0].toFixed(4)}, {activeLocation.position[1].toFixed(4)}</span>
               </div>
             </div>
+            {/* Only once a tour has asked. Printing "we have not confirmed" beside
+                every pin on the map would say nothing, since nothing has been checked
+                — the sentence is only worth reading where it was actually looked up. */}
+            {tourAccess?.[activeLocation.locationId ?? activeLocation.id] && (
+              <p className="place-access-row">
+                <DoorOpen size={16} aria-hidden="true" />
+                {accessNote(tourAccess[activeLocation.locationId ?? activeLocation.id])}
+              </p>
+            )}
             {activeLocation.isCandidate && (
               <p className="evidence-caveat" role="note">
                 <strong>Unverified.</strong> Found by reading this place&rsquo;s own article,

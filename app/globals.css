@@ -209,6 +209,26 @@ img {
   background: rgba(247, 183, 51, 0.9);
 }
 
+/* Access is stated in the muted voice by default — "we have not confirmed" is the
+   common case and must not shout — and brightens only when it is actually known. */
+.access-note {
+  display: block;
+  font-size: 0.76rem;
+  color: rgba(233, 226, 213, 0.55);
+}
+
+.access-note.is-known {
+  color: rgba(138, 209, 148, 0.92);
+}
+
+.place-access-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: rgba(233, 226, 213, 0.78);
+}
+
 .evidence-caveat {
   border-left: 3px solid rgba(247, 183, 51, 0.75);
   background: rgba(247, 183, 51, 0.08);
