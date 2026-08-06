@@ -31,6 +31,36 @@ export function workKindConfig(kind) {
   return WORK_KIND_CONFIG[kind] ?? null;
 }
 
+// What to say about a work that has no filming locations at all.
+//
+// An empty map does not read as "nobody has recorded where this was shot". It reads as
+// "we do not have that film" — which is the one impression this product cannot afford,
+// and measured on 24 famous titles it happened to three of them. Two were animation:
+// Spirited Away and Parasite carry no P915 because there was nothing to film on location
+// (and in Parasite's case the sets were built), but both state where the story is set
+// and where they were made.
+//
+// So the fallback is ordered by how much it claims, weakest last, and each rung says
+// plainly what it is. A country is not a stop on a walk — `place-grade` renders it as an
+// area — but it is an honest answer, and honest beats blank.
+const LOCATION_FALLBACKS = {
+  film: [
+    { property: "P840", relationKind: "narrative_location", relationLabel: "Story setting" },
+    { property: "P495", relationKind: "origin_country", relationLabel: "Country of origin" },
+  ],
+  series: [
+    { property: "P840", relationKind: "narrative_location", relationLabel: "Story setting" },
+    { property: "P495", relationKind: "origin_country", relationLabel: "Country of origin" },
+  ],
+  book: [
+    { property: "P495", relationKind: "origin_country", relationLabel: "Country of origin" },
+  ],
+};
+
+export function locationFallbacks(kind) {
+  return LOCATION_FALLBACKS[kind] ?? [];
+}
+
 export function isWorkKind(kind) {
   return Boolean(workKindConfig(kind));
 }
@@ -146,7 +176,16 @@ WHERE {
 GROUP BY ?work ?workLabel ?location ?locationLabel ?coord ?locationDescription`;
 }
 
-export function buildWikidataSearchUrl(query, limit = 8) {
+// How many title candidates to consider before deciding which work was meant.
+//
+// It was 8, and 8 is where the demo breaks. Measured on the live search: "Skyfall"
+// returns Adele's song, her lyric video and the soundtrack before the film — the film
+// is not in the top eight at all — and "Parasite" returns a parasitology journal, two
+// video games and the biological concept. `wbsearchentities` ranks by how well a label
+// matches the string, and nothing else.
+export const WORK_SEARCH_CANDIDATES = 15;
+
+export function buildWikidataSearchUrl(query, limit = WORK_SEARCH_CANDIDATES) {
   const endpoint = new URL("https://www.wikidata.org/w/api.php");
   endpoint.searchParams.set("action", "wbsearchentities");
   endpoint.searchParams.set("search", query);
@@ -157,6 +196,48 @@ export function buildWikidataSearchUrl(query, limit = 8) {
   endpoint.searchParams.set("format", "json");
   endpoint.searchParams.set("origin", "*");
   return endpoint;
+}
+
+// Which of the candidates is the one somebody meant.
+//
+// A label match cannot tell "Skyfall the film" from "Skyfall the lyric video", and the
+// type check alone does not either — a music video IS a film in Wikidata's hierarchy, so
+// the video passes and answers with no filming locations. What separates them is how
+// many Wikipedias bothered to write about the thing:
+//
+//   Skyfall        film 78 · song 36 · soundtrack 9 · literary work 1
+//   Parasite       film 81 · the biological concept 46 · video games 14
+//   Spirited Away  film 109 · album 4 · a TV episode 2
+//
+// Measured, all three. The same signal that orders the character fan-out in
+// `place-search.mjs`, used here for the question it answers best: of several things
+// with one name, which is the famous one.
+export function buildWorkFameQuery(ids) {
+  const valid = [...new Set(ids ?? [])].filter(isWikidataId);
+  if (!valid.length) return null;
+  return `SELECT ?item ?sitelinks WHERE {
+  VALUES ?item { ${valid.map((id) => `wd:${id}`).join(" ")} }
+  OPTIONAL { ?item wikibase:sitelinks ?sitelinks . }
+}`;
+}
+
+export function fameFromBindings(payload) {
+  const fame = new Map();
+  for (const row of payload?.results?.bindings ?? []) {
+    const id = String(row?.item?.value ?? "").split("/").pop();
+    const count = Number(row?.sitelinks?.value);
+    if (isWikidataId(id)) fame.set(id, Number.isFinite(count) ? count : 0);
+  }
+  return fame;
+}
+
+// Fame decides the ORDER, never the answer: the type check still has the last word, so
+// a famous song can outrank a film in this list and still be refused for not being one.
+// A candidate whose count we could not read sorts last rather than first.
+export function rankWorksByFame(matches, fame) {
+  const counts = fame instanceof Map ? fame : new Map(Object.entries(fame ?? {}));
+  return [...(matches ?? [])].sort((left, right) =>
+    (counts.get(right.id) ?? 0) - (counts.get(left.id) ?? 0));
 }
 
 export function buildWikidataEntitiesUrl(ids) {
@@ -252,9 +333,19 @@ export function workMatchesTypeGraph(workEntity, typeEntities, kind) {
   return typeAncestry(workEntity, typeEntities).has(rootType);
 }
 
-export function normalizeWikidataEntityLocations(workEntity, locationEntities, { kind, typeLabels = null } = {}) {
+// `via` reads a DIFFERENT property than the kind's own, for a work that has none of its
+// own — see `locationFallbacks`. It carries its own relation kind and label so the map
+// never presents a country of origin as though somebody filmed there.
+export function normalizeWikidataEntityLocations(
+  workEntity,
+  locationEntities,
+  { kind, typeLabels = null, via = null } = {},
+) {
   const config = workKindConfig(kind);
   if (!config || !isWikidataId(workEntity?.id)) return [];
+  const property = via?.property ?? config.locationProperty;
+  const relationKind = via?.relationKind ?? config.relationKind;
+  const relationLabel = via?.relationLabel ?? config.relationLabel;
 
   const entities = locationEntities instanceof Map
     ? locationEntities
@@ -263,7 +354,7 @@ export function normalizeWikidataEntityLocations(workEntity, locationEntities, {
   if (isPlaceholderLabel(workTitle)) return [];
   const workYear = entityReleaseYear(workEntity);
 
-  return entityClaimIds(workEntity, config.locationProperty).flatMap((locationId) => {
+  return entityClaimIds(workEntity, property).flatMap((locationId) => {
     const locationEntity = entities.get(locationId);
     const point = entityCoordinate(locationEntity);
     if (!point) return [];
@@ -283,13 +374,14 @@ export function normalizeWikidataEntityLocations(workEntity, locationEntities, {
       film_tmdb_id: kind === "film"
         ? entityClaimValues(workEntity, "P4947")[0] ?? null
         : null,
-      relation_kind: config.relationKind,
-      relation_property: config.locationProperty,
-      relation_label: config.relationLabel,
+      relation_kind: relationKind,
+      relation_property: property,
+      relation_label: relationLabel,
       relation_description: relationDescription({
         workTitle,
         place,
         kind,
+        via,
         locationDescription: entityText(locationEntity, "descriptions"),
       }),
       // The entity path knows the place's P31 ids; their labels come from a second
@@ -323,12 +415,20 @@ export function cityRadiusKm({ lat, lng, boundingBox }) {
   return Math.min(50, Math.max(5, Math.ceil(radius)));
 }
 
-function relationDescription({ workTitle, place, kind, locationDescription }) {
-  const relation = kind === "book"
-    ? `The story of ${workTitle} is set in ${place}.`
-    : kind === "series"
-      ? `${place} is listed as a filming location for the series ${workTitle}.`
-      : `${place} is listed as a filming location for ${workTitle}.`;
+function relationDescription({ workTitle, place, kind, locationDescription, via = null }) {
+  // A fallback rung must say what it is AND what is missing, in the same breath. "South
+  // Korea" under a film with no caveat looks like a filming location the size of a
+  // country; with the second sentence it is an honest answer to a question nobody else
+  // could answer.
+  const relation = via?.relationKind === "origin_country"
+    ? `${workTitle} was made in ${place}. No exact filming locations are recorded for it yet.`
+    : via?.relationKind === "narrative_location"
+      ? `${workTitle} is set in ${place}. No exact filming locations are recorded for it yet.`
+      : kind === "book"
+        ? `The story of ${workTitle} is set in ${place}.`
+        : kind === "series"
+          ? `${place} is listed as a filming location for the series ${workTitle}.`
+          : `${place} is listed as a filming location for ${workTitle}.`;
 
   if (!locationDescription) return relation;
   const detail = locationDescription.trim().replace(/^[a-z]/, (letter) => letter.toUpperCase());

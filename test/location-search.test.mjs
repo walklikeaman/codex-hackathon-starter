@@ -12,6 +12,10 @@ import {
   rankNearbyLocations,
   selectFirstMatchingWork,
   workMatchesTypeGraph,
+  buildWorkFameQuery,
+  fameFromBindings,
+  rankWorksByFame,
+  WORK_SEARCH_CANDIDATES,
 } from "../app/lib/location-search.mjs";
 
 function binding({
@@ -236,4 +240,54 @@ test("filters unresolved QID labels from Wikidata entity locations", () => {
     normalizeWikidataEntityLocations(work, new Map([["Q20", place]]), { kind: "series" }),
     [],
   );
+});
+
+// --- which of several things with one name did they mean ---------------------------------
+
+test("the famous one wins, because a label match cannot tell a film from a lyric video", () => {
+  // Measured on the live search. "Skyfall" returns Adele's song, her lyric video and the
+  // soundtrack before the film — and a music video IS a film in Wikidata's hierarchy, so
+  // the type check passes it and the answer is a work with no filming locations. Sitelink
+  // counts are the separator: film 78, song 36, soundtrack 9.
+  const matches = [
+    { id: "Q326790", label: "Skyfall", description: "song by Adele" },
+    { id: "Q57840000", label: "Skyfall", description: "lyric video" },
+    { id: "Q4941", label: "Skyfall", description: "2012 film" },
+  ];
+  const ranked = rankWorksByFame(matches, new Map([["Q326790", 36], ["Q57840000", 2], ["Q4941", 78]]));
+
+  assert.deepEqual(ranked.map((work) => work.id), ["Q4941", "Q326790", "Q57840000"]);
+});
+
+test("a candidate nobody has written about sorts last, not first", () => {
+  const ranked = rankWorksByFame(
+    [{ id: "Q1" }, { id: "Q2" }, { id: "Q3" }],
+    new Map([["Q2", 40]]),
+  );
+  assert.equal(ranked[0].id, "Q2");
+});
+
+test("the fame query asks about every candidate and nothing else", () => {
+  const query = buildWorkFameQuery(["Q4941", "Q326790", "Q4941", "not-a-qid"]);
+  assert.match(query, /wd:Q4941 wd:Q326790/);
+  assert.match(query, /wikibase:sitelinks/);
+  assert.equal(buildWorkFameQuery([]), null);
+  assert.equal(buildWorkFameQuery(null), null);
+});
+
+test("fame is read from the binding, and an unreadable count is zero rather than NaN", () => {
+  const fame = fameFromBindings({ results: { bindings: [
+    { item: { value: "http://www.wikidata.org/entity/Q4941" }, sitelinks: { value: "78" } },
+    { item: { value: "http://www.wikidata.org/entity/Q7537701" } },
+    { item: { value: "not-an-entity" }, sitelinks: { value: "9" } },
+  ] } });
+
+  assert.equal(fame.get("Q4941"), 78);
+  assert.equal(fame.get("Q7537701"), 0);
+  assert.equal(fame.size, 2, "a row without a q-id is dropped");
+});
+
+test("fifteen candidates, because the film was not in the top eight", () => {
+  assert.equal(WORK_SEARCH_CANDIDATES, 15);
+  assert.match(String(buildWikidataSearchUrl("Skyfall")), /limit=15/);
 });
