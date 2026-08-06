@@ -1,0 +1,71 @@
+{
+ "version": 1,
+ "source": "moviemaps-movie",
+ "updated_at": "2026-08-06T14:39:49+00:00",
+ "runs": [
+  {
+   "at": "2026-08-06T14:39:30+00:00",
+   "fetched": 5,
+   "changed": 5,
+   "errors": 0
+  },
+  {
+   "at": "2026-08-06T14:39:49+00:00",
+   "fetched": 5,
+   "changed": 5,
+   "errors": 0
+  }
+ ],
+ "records": {
+  "1": {
+   "modified": "2017-10-24",
+   "seen_at": "2026-08-06T14:39:30+00:00",
+   "fingerprint": "b247a1f5e54e4da0"
+  },
+  "4": {
+   "modified": "2017-10-09",
+   "seen_at": "2026-08-06T14:39:30+00:00",
+   "fingerprint": "290d09b16ed43103"
+  },
+  "3": {
+   "modified": "2021-08-13",
+   "seen_at": "2026-08-06T14:39:30+00:00",
+   "fingerprint": "3ef107174a403c47"
+  },
+  "5": {
+   "modified": "2017-08-15",
+   "seen_at": "2026-08-06T14:39:30+00:00",
+   "fingerprint": "c8822268cf3ac6a5"
+  },
+  "2": {
+   "modified": "2017-10-24",
+   "seen_at": "2026-08-06T14:39:30+00:00",
+   "fingerprint": "bf78ce8c3f684377"
+  },
+  "7": {
+   "modified": "2017-10-09",
+   "seen_at": "2026-08-06T14:39:49+00:00",
+   "fingerprint": "f3426a417e8a90c5"
+  },
+  "8": {
+   "modified": "2017-10-01",
+   "seen_at": "2026-08-06T14:39:49+00:00",
+   "fingerprint": "3cc7491aa89f0e41"
+  },
+  "6": {
+   "modified": "2021-08-19",
+   "seen_at": "2026-08-06T14:39:49+00:00",
+   "fingerprint": "0cc05e65f955a4cc"
+  },
+  "9": {
+   "modified": "2018-01-10",
+   "seen_at": "2026-08-06T14:39:49+00:00",
+   "fingerprint": "87aaa15ef2cbcdaf"
+  },
+  "a": {
+   "modified": "2018-09-05",
+   "seen_at": "2026-08-06T14:39:49+00:00",
+   "fingerprint": "c5c7d6861b883bc9"
+  }
+ }
+}

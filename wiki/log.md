@@ -7,6 +7,58 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-06] ingest | ReelStreets: prose a model had to read, and a 20/min ceiling
+
+**Object**: `tools/scraperai/{reelstreets,extract_places,state}.py`,
+`app/lib/reelstreets-source.mjs`, `scripts/ingest-reelstreets{,-works}.mjs`,
+`supabase/migrations/20260806143719|143733`
+**Scenario**: ingest · **Outcome**: ⚠️ partial — 465 of 3,536 films extracted so far
+**Code changes**: this commit
+
+**A fourth source, and the first whose addresses are sentences.** ReelStreets
+gives 3,536 films and 95,258 captures with no IMDb id and no coordinate; only
+1.5% of captions end in anything postcode-shaped, and one of the samples is a
+studio set rather than a place. So a model reads the place out of each caption —
+once per film, batching ~25, so 3,536 calls rather than 95,258 — and names it
+only. The geocoding cascade locates, separately. What ReelStreets has that
+nothing else does is 53,126 photographs of the place as it is today.
+
+**Three failures worth writing down, all of which only appear at scale.** An
+early prompt asked for a `kind` field beside the place; on films with 40+
+captions the free model silently stopped emitting it and every real place was
+recorded as unknown — 0% real, and it looked like a working run. Removing the
+redundancy rather than working around it took it to 89%. Malformed JSON
+reproduced byte for byte on retry at temperature 0, so batches now **split**
+instead of repeat. And `Connection error` was landing in the "model could not
+serialise this" branch, discarding 110 captions across 8 films before anyone
+noticed; transient errors now back off and retry.
+
+**The 20/min ceiling is per account, not per model.** OpenRouter's
+`free-models-per-min` is a shared bucket, so switching to another free model —
+including the cheap Chinese ones — changes nothing. Paid options were measured
+rather than chosen off the price list: `ling-2.6-flash` is twenty times cheaper
+than `qwen3.7-flash` and matches its recall, but drops the postcode, which is the
+difference between an address a geocoder resolves and a street name repeated
+across a city. The free model keeps it, so free won on quality as well as cost —
+at 4 films a minute, 14 hours.
+
+**Incremental collection, per Nikita 2026-08-06.** Both sites expose the right
+signal — MovieMaps dates every sitemap entry, ReelStreets' API takes
+`modified_after` — but timestamps lie in both directions, so `state.py` also
+fingerprints what was extracted. The ReelStreets fingerprint covers the captions
+alone, so a film that merely gained a photograph is not re-read by the model.
+That is where it pays: a full pass is 14 hours, forty changed captions is
+seconds.
+
+Result: 354 works created, 8,063 submissions across 380 works, all `pending`,
+every one with imagery. The works ingest creates only where no work with that
+title exists, because with no external id there is no unique index to lean on —
+verified after the fact that none of the catalogue's 159 duplicate
+`(title_norm, year)` groups involves a row it created.
+
+**Updated**: `wiki/concepts/reelstreets-source.md` (new), `wiki/index.md`,
+`.gitignore`, `test/reelstreets-source.test.mjs`, `scripts/set-openrouter-key.sh`
+
 ## [2026-08-05] ingest | MovieMaps: 18k geocoded places, and a licence nobody wrote
 
 **Object**: `tools/scraperai/`, `app/lib/moviemaps-source.mjs`,

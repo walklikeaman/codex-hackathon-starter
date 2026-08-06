@@ -44,7 +44,14 @@ class Blocked(RuntimeError):
 class MovieMapsCrawler(BaseCrawler):
     """Cached, rate-limited GET. Satisfies ScraperAI's BaseCrawler interface."""
 
-    def __init__(self, delay: float = 0.7, cache_dir: Path = CACHE_DIR, use_cache: bool = True):
+    def __init__(self, delay: float = 0.7, cache_dir: Path = CACHE_DIR, use_cache: bool = True,
+                 base: str = BASE, blocked_paths: tuple[str, ...] = ('/search',)):
+        # `base` and `blocked_paths` exist so a second site can reuse the pacing,
+        # caching and retry without inheriting MovieMaps' robots.txt. Each site
+        # states its own disallow list; assuming one site's is another's is how a
+        # crawler ends up somewhere it was asked not to go.
+        self.base = base
+        self.blocked_paths = blocked_paths
         self.delay = delay
         self.cache_dir = Path(cache_dir)
         self.use_cache = use_cache
@@ -72,8 +79,10 @@ class MovieMapsCrawler(BaseCrawler):
             self._last_request_at = time.monotonic()
 
     def fetch(self, url: str, retries: int = 3) -> str:
-        if urlsplit(url).path.startswith('/search'):
-            raise Blocked(f'robots.txt disallows /search: {url}')
+        path = urlsplit(url).path
+        for blocked in self.blocked_paths:
+            if path.startswith(blocked):
+                raise Blocked(f'robots.txt disallows {blocked}: {url}')
 
         cached = self._cache_path(url)
         if self.use_cache and cached.exists():
@@ -121,15 +130,40 @@ class MovieMapsCrawler(BaseCrawler):
         raise NotImplementedError('MovieMaps is server-rendered; no screenshots needed')
 
 
-def sitemap_urls(crawler: MovieMapsCrawler, name: str) -> list[str]:
+def sitemap_urls(crawler: MovieMapsCrawler, name: str, index_url: str = None) -> list[str]:
     """Every <loc> in a MovieMaps sitemap, following its ?p= pages."""
     import re
 
     urls: list[str] = []
-    index = crawler.fetch(f'{BASE}/sitemap.xml')
+    index = crawler.fetch(index_url or f'{crawler.base}/sitemap.xml')
     pages = [loc for loc in re.findall(r'<loc>([^<]+)</loc>', index) if name in loc]
     if not pages:
         raise ValueError(f'no sitemap named {name!r}; index lists: {re.findall(r"sitemap-([a-z]+)", index)}')
     for page in pages:
         urls.extend(re.findall(r'<loc>([^<]+)</loc>', crawler.fetch(page)))
     return urls
+
+
+def sitemap_entries(crawler: MovieMapsCrawler, name: str,
+                    index_url: str = None) -> list[tuple[str, str | None]]:
+    """(url, lastmod) for every entry, so a run can skip what has not moved.
+
+    MovieMaps dates every sitemap entry -- most say 2021, a few say this year --
+    and sitemap_urls threw that away. It is the only signal that lets a repeat
+    run avoid fetching 18,048 pages to learn that 18,000 are unchanged.
+    """
+    import re
+
+    entries: list[tuple[str, str | None]] = []
+    index = crawler.fetch(index_url or f'{crawler.base}/sitemap.xml')
+    pages = [loc for loc in re.findall(r'<loc>([^<]+)</loc>', index) if name in loc]
+    if not pages:
+        raise ValueError(f'no sitemap named {name!r}')
+    for page in pages:
+        for block in re.findall(r'<url>(.*?)</url>', crawler.fetch(page), re.S):
+            loc = re.search(r'<loc>([^<]+)</loc>', block)
+            if not loc:
+                continue
+            lastmod = re.search(r'<lastmod>([^<]+)</lastmod>', block)
+            entries.append((loc.group(1), lastmod.group(1) if lastmod else None))
+    return entries

@@ -5,16 +5,17 @@
     {
       "kind": "movie",
       "total": 6041,
-      "harvested": 6041,
-      "new": 6041,
+      "harvested": 6046,
+      "new": 5,
+      "changed": 5,
       "errors": 0,
       "error_sample": [],
-      "seconds": 4.9
+      "seconds": 0.0
     }
   ],
   "http": {
     "fetched": 0,
-    "cached": 6043,
+    "cached": 7,
     "failed": 0
   },
   "stats": {
@@ -26,10 +27,10 @@
       "frames_total": 90764
     },
     "movies": {
-      "records": 6041,
-      "with_imdb_id": 6041,
-      "with_locations": 6041,
-      "location_links_total": 30386
+      "records": 6051,
+      "with_imdb_id": 6051,
+      "with_locations": 6051,
+      "location_links_total": 30556
     }
   }
 }

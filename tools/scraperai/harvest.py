@@ -21,7 +21,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from crawler import MovieMapsCrawler, sitemap_urls
+from crawler import MovieMapsCrawler, sitemap_entries
+from state import ScrapeState, fingerprint
 from extract import entity_id, parse_location, parse_movie
 
 OUT_DIR = Path(__file__).resolve().parents[2] / 'data' / 'moviemaps'
@@ -53,20 +54,28 @@ def harvest(kind: str, crawler: MovieMapsCrawler, out_dir: Path,
             limit: int | None, workers: int) -> dict:
     spec = KINDS[kind]
     out_path = out_dir / spec['file']
-    urls = sitemap_urls(crawler, spec['sitemap'])
+    entries = sitemap_entries(crawler, spec['sitemap'])
+    urls = [url for url, _ in entries]
 
     done = already_done(out_path)
-    todo = [u for u in urls if entity_id(u) not in done]
+    state = ScrapeState(out_dir, f'moviemaps-{kind}')
+    # A page is fetched when we have never had it, OR when the sitemap says it
+    # moved since we last stored it. Both halves matter: the first is a resume,
+    # the second is what makes a scheduled re-run worth running.
+    todo = [url for url, lastmod in entries
+            if entity_id(url) not in done or not state.is_unchanged(entity_id(url), lastmod)]
+    lastmod_by_url = dict(entries)
     if limit:
         todo = todo[:limit]
 
-    print(f'[{kind}] {len(urls)} in sitemap, {len(done)} already harvested, {len(todo)} to fetch')
+    print(f'[{kind}] {len(urls)} in sitemap, {len(done)} on disk, {len(todo)} new or changed'
+          + (f'  (last run {state.last_run})' if state.last_run else '  (first run)'))
     if not todo:
         return {'kind': kind, 'total': len(urls), 'harvested': len(done), 'new': 0, 'errors': 0}
 
     started = time.monotonic()
     errors: list[dict] = []
-    written = 0
+    written = changed = 0
 
     def fetch_one(url: str):
         return url, crawler.fetch(url)
@@ -84,6 +93,8 @@ def harvest(kind: str, crawler: MovieMapsCrawler, out_dir: Path,
 
             handle.write(json.dumps(record, ensure_ascii=False) + '\n')
             written += 1
+            if state.record(record['id'], lastmod_by_url.get(url), fingerprint(record)):
+                changed += 1
             if index % 250 == 0:
                 handle.flush()
                 rate = index / max(time.monotonic() - started, 1e-9)
@@ -92,13 +103,15 @@ def harvest(kind: str, crawler: MovieMapsCrawler, out_dir: Path,
                       f'({len(errors)} errors)')
 
     elapsed = time.monotonic() - started
-    print(f'[{kind}] done: {written} records in {elapsed / 60:.1f} min, {len(errors)} errors '
-          f'-> {out_path}')
+    state.save(fetched=written, changed=changed, errors=len(errors))
+    print(f'[{kind}] done: {written} records ({changed} with changed content) '
+          f'in {elapsed / 60:.1f} min, {len(errors)} errors -> {out_path}')
     return {
         'kind': kind,
         'total': len(urls),
         'harvested': len(done) + written,
         'new': written,
+        'changed': changed,
         'errors': len(errors),
         'error_sample': errors[:5],
         'seconds': round(elapsed, 1),

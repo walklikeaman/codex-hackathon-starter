@@ -25,10 +25,12 @@ tmp/
 # scratch
 _probe_*
 
-# scraped MovieMaps pages and output — regenerate with tools/scraperai/harvest.py.
-# The recipes the model produced are tracked; the 24k pages it replays are not.
+# Scraped pages and harvest output — regenerate with the tools in
+# tools/scraperai/. The watermark (state.json) and the counts (summary.json) ARE
+# tracked: they are what a scheduled run reads to know where it got to, and a
+# machine that lacks them redoes a full pass for nothing.
 tools/scraperai/.cache/
-data/moviemaps/*.ndjson
+data/*/*.ndjson
 
 # Obsidian per-user state (shared config stays tracked)
 .obsidian/workspace.json
