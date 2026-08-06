@@ -6,6 +6,7 @@ import {
   buildWikidataSearchUrl,
   buildWorkFameQuery,
   entityClaimIds,
+  entityClaimValues,
   entityText,
   fameFromBindings,
   rankWorksByFame,
@@ -29,6 +30,49 @@ import {
 } from "../../lib/scene-match-token.mjs";
 import { findInvertedPlaces } from "../../lib/inverted-places.mjs";
 import { DISPLAY, gradePlace } from "../../lib/place-grade.mjs";
+import { createClient } from "@supabase/supabase-js";
+import { REFUSED_SOURCES, selectSubmissionPlaces } from "../../lib/submission-places.mjs";
+
+// How many queue rows one work may contribute. Person of Interest alone has 961.
+const MAX_SUBMISSION_PLACES = 12;
+const SUBMISSION_FETCH_LIMIT = 200;
+
+// Everything the ingest found, reachable from a title search.
+//
+// The bridge is the IMDb id: a work matched in Wikidata carries P345, and the ingested
+// works carry `imdb_id` — 6,041 of them, covering 30,189 geolocated rows. Wikidata q-ids
+// would not work; only 15 of our works have one.
+//
+// Read with the anon key, like the rest of the graph: the queue is public-read under RLS
+// already. A failure costs the candidates and never the map.
+async function findSubmissionPlaces({ imdbId, work, kind, center, exclude, env = process.env }) {
+  if (!imdbId) return [];
+  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return [];
+
+  try {
+    const client = createClient(url, anonKey, { auth: { persistSession: false } });
+    const { data, error } = await client
+      .from("location_submissions")
+      .select("id, place_name, area_hint, lat, lng, source_url, source_sentence, source_kind, works!inner(imdb_id)")
+      .eq("works.imdb_id", imdbId)
+      .eq("status", "pending")
+      .not("lat", "is", null)
+      // Filtered in the query as well as in the module: a refused source should not even
+      // travel over the wire.
+      .not("source_kind", "in", `(${REFUSED_SOURCES.join(",")})`)
+      .limit(SUBMISSION_FETCH_LIMIT);
+
+    if (error) throw new Error(error.message);
+    return selectSubmissionPlaces(data ?? [], {
+      work, kind, center, limit: MAX_SUBMISSION_PLACES, exclude,
+    });
+  } catch (error) {
+    console.warn("submission queue unavailable", error?.message);
+    return [];
+  }
+}
 
 // Precision is an axis of its own, and it is the one that decides what a pin may claim.
 // "Skyfall was shot in Istanbul" can be perfectly evidenced and is still not a doorway;
@@ -267,12 +311,14 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
   // It runs AFTER the statement search rather than beside it, and is given what that
   // search already found, so the same place cannot arrive twice. Its cost is bounded
   // and its failures are swallowed: these are extra places, never the answer.
+  const work = {
+    id: matchedWorkId,
+    title: matchedWork?.label ?? entityText(workEntity, "labels"),
+    year: stated[0]?.work_year ?? null,
+  };
+
   const candidates = await findInvertedPlaces({
-    work: {
-      id: matchedWorkId,
-      title: matchedWork?.label ?? entityText(workEntity, "labels"),
-      year: stated[0]?.work_year ?? null,
-    },
+    work,
     kind,
     center,
     radiusKm: radius,
@@ -281,15 +327,30 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
     onError: (error) => console.warn("inverted place search failed", error?.message),
   });
 
+  // And the queue: everything our own ingest found for this work. Read last so it can be
+  // deduplicated against both of the above, and so a slow database never delays the
+  // answer that Wikidata already gave.
+  const queued = await findSubmissionPlaces({
+    imdbId: entityClaimValues(workEntity, "P345")[0] ?? null,
+    work,
+    kind,
+    center,
+    exclude: [...stated, ...candidates],
+  });
+
   // Every inverted hit is inside `nearcoord:`, so it is here by construction — but the
   // distance is still measured rather than assumed, because the client sorts on it.
-  const locations = [...stated, ...locationsByDistance(candidates, center, radius)];
+  const locations = [
+    ...stated,
+    ...locationsByDistance([...candidates, ...queued], center, radius),
+  ];
 
   return {
     matchedWork,
     locations,
     here: locations.filter((location) => location.in_radius).length,
-    candidate_count: candidates.length,
+    candidate_count: candidates.length + queued.length,
+    queued_count: queued.length,
   };
 }
 
@@ -353,6 +414,9 @@ export async function GET(request) {
           // How many of them are candidates rather than statements. The client says so
           // on the card; a count here lets it say so before opening one.
           candidates: result.candidate_count ?? 0,
+          // How many of them came from our own ingest queue rather than from a live
+          // service. Useful in one glance when the map looks thinner than it should.
+          queued: result.queued_count ?? 0,
           locations: addSceneMatchTokens(gradeLocations(result.locations)),
         },
         { headers: { "Cache-Control": SCENE_MATCH_TOKEN_CACHE_CONTROL } },
