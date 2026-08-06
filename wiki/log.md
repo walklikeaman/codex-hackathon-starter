@@ -11,7 +11,7 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 **Object**: `tools/scraperai/`, `app/lib/moviemaps-source.mjs`,
 `scripts/ingest-moviemaps.mjs`, `scripts/ingest-moviemaps-works.mjs`,
-`scripts/check-service-key.mjs`, `supabase/migrations/2026080502–04*`
+`scripts/check-service-key.mjs`, `supabase/migrations/20260805003943|003954|120555`
 **Scenario**: ingest · **Outcome**: ✅ success
 **Code changes**: `d1d9077`, `b5720e6`, `9f8540b`, `cbffe3f`
 
@@ -51,6 +51,214 @@ updates.
 
 **Updated**: `wiki/concepts/moviemaps-source.md` (new), `wiki/index.md`,
 `wiki/sources/source-evaluation.md`, `.gitignore`, `test/moviemaps-source.test.mjs`
+## [2026-08-05] decision | Shipped, and a merge turns out to be a release
+
+**Object**: `wiki/entities/deployment-pipeline.md`
+**Scenario**: deploy · **Outcome**: ✅ success
+
+PR #122 merged into `main` (`ea91220`) and the three wired modules are live at
+https://codex-hackathon-starter.vercel.app — verified on production, not on a preview:
+"Harry Potter" from Edinburgh returns 18 places, 8 candidates including Greyfriars
+Kirkyard, 15 pins and 3 areas; `/api/access` answers the V&A "open" with its hours and
+Doune Castle "unknown".
+
+**The wiki was wrong about what a merge does.** It said production was manual only,
+behind a GitHub Actions workflow with a confirmation environment. Measured on this
+merge: within seconds GitHub recorded a Vercel deployment in the environment
+**`Production`**, and the production URL served a route that did not exist before the
+merge. The Git integration is connected, `main` is a production branch, and anyone
+merging a PR is shipping to users with nothing gating it.
+
+Also recorded: the Vercel CLI on this machine is logged into a different account
+(`nikita-8024`, team `kitpos`) than the one that owns this project
+(`walklikeaman1904`), so `vercel ls --scope walklikeaman1904` answers "scope does not
+exist" — which reads like a missing project and is a missing login.
+
+## [2026-08-05] incident | Security advisor: what was ours, and what we cannot touch
+
+**Object**: `supabase/migrations/20260805013939_security_advisor_findings.sql`
+**Scenario**: security · **Outcome**: ⚠️ partial — 1 ERROR left open, cannot be fixed from our role
+
+Two ERRORs and twenty warnings in the Supabase linter, which the owner was being
+notified about. Sorted by whether a stranger with the anon key can do anything with
+them, and fixed where the answer was yes.
+
+**Fixed and verified live.** `links_without_evidence` ran with its OWNER's rights —
+a view without `security_invoker` bypasses the caller's row-level rules, and nothing
+about that view needs it. Ten functions had no fixed `search_path`, and `map_points_in_view`
+and friends are called with the ANON key from the browser, so "whatever `places` the
+session points at" is a real question. `search_path` is `public, extensions, pg_catalog` —
+`extensions` is in the list against the day PostGIS is moved. Plus: the redundant
+SELECT policy on `user_library_items` dropped (the FOR ALL policy already covered it),
+`auth.uid()` wrapped in a subselect so it is evaluated once instead of per row, and the
+three foreign keys that had no covering index.
+
+Advisor after: security 2 ERROR + 19 WARN → **1 ERROR + 9 WARN**; performance 7 WARN → 0.
+Verified as `anon` after the change: map_points 17, map_works 14, clusters 11,
+remote_points 10, search_works 1 — and the same four routes answer 200 in production.
+
+**What we cannot touch, and did not pretend to.** `spatial_ref_sys` is PostGIS's own
+table, owned by `supabase_admin`. From `postgres` we cannot enable RLS on it, cannot
+revoke another grantor's grants, and cannot `set role supabase_admin` — all three
+attempted against the live database and verified afterwards to have changed nothing.
+So the remaining ERROR is real in a specific way worth writing down: **`anon` can
+DELETE from the SRID registry through PostgREST.** It is PostGIS reference data rather
+than ours, and it is still writable by anybody holding the public key.
+
+The one action that would clear it and the three `extension_in_public` warnings is
+getting the extensions out of `public` — and PostGIS does not support `ALTER EXTENSION
+… SET SCHEMA`, while dropping and recreating would take `places.centroid` (geography)
+and `places.frame_embedding` (vector) with it. That is a database for a linter score.
+Left for Supabase support, or for the next project to install extensions correctly.
+
+**Drift found on the way.** Two migrations — `moviemaps_source_kind` and
+`moviemaps_evidence` — were applied to the live database through the MCP by another
+session and exist in NO branch of this repo. Recovered from
+`supabase_migrations.schema_migrations` and committed, so a fresh environment is no
+longer missing a CHECK constraint the production database enforces.
+
+## [2026-08-05] update | Three finished modules reached the live path
+
+**Object**: `app/lib/inverted-places.mjs`, `app/api/access/route.js`,
+`app/api/locations/route.js`, `app/lib/place-search.mjs`, `app/lib/place-grade.mjs`,
+`app/lib/place-access.mjs`, `app/lib/timed-tour.mjs`, `app/components/SceneMapApp.jsx`
+**Scenario**: feature · **Outcome**: ✅ success
+**Code changes**: `a7b8ba0`, `bbf4f7a`, `d962a03`
+
+The handoff named the project's most repeated failure — finished, correct work that
+never reaches the live path, now five times over — and listed three modules in that
+state. All three are called now. 819 tests (was 788), production build clean, each
+change verified in a browser.
+
+**The inverted search finds Greyfriars.** Two ordering bugs, both invisible until it
+ran. A work's title is usually also its main character's name, so "Harry Potter"
+arrived twice and spent two of the six branches — pushing out Lord Voldemort, the ONE
+name that graveyard's article contains. And Wikidata returns characters in no order,
+so the budget went to the wrong ones in both directions: ranked now by class and by
+sitelink count, DESCENDING for invented names (Voldemort was ninth of eleven) and
+ASCENDING for real people, because George Washington is an Outlander character and his
+273 sitelinks are about him. `wikibase:sitelinks` rather than a COUNT: 698ms vs 2,765ms.
+Edinburgh, "Harry Potter": 4 places before, 18 after, 8 of them candidates.
+
+**Nothing arrives as a claim.** A hit says only that a place's article mentions the
+work — which is exactly what Thomas Riddell's grave is — so candidates get a hollow
+pin, an "unverified" note and a link to the article. Turning one into a claim needs a
+quoted sentence checked verbatim; that is still the next step.
+
+**A route now says whether you can get in**, and the design was decided by measuring
+first: of twelve stops from tours selling today, OSM knows about four, all in cities
+(3 of 4 in London, 0 of 5 in rural Scotland). So `isRoutable` was applied where it
+holds — closed is never routed to, confirmed beats unknown in the ranking — and an
+unconfirmed stop is carried with its own sentence rather than deleted. Two ways to read
+a neighbour's tags as this place's were found by running it: the nearest named feature
+to Greyfriars is a gravestone 8 m away, and `namesMatch` accepts one extra word, which
+printed "Notting Hill Bookshop" hours as Notting Hill's access.
+
+**A place located to an island is drawn as one.** GROUP_CONCAT over P31, finest type
+wins. Three gaps found by watching the live map: candidates have no P31 at all (fixed
+with Wikipedia's `pageterms`, so Edinburgh stops being a dot), everything after " in "
+is where a place is rather than what it is ("faculty in City of Edinburgh" made a
+university building a settlement), and four missing words — "area of", "kirkyard",
+"zoo", "market".
+
+**Corrected**: this project believed Greyfriars Kirkyard carried `opening_hours: 24/7`.
+It carries no access tag; that reading was the loose-name-match trap, measured twice.
+
+**Updated**: `wiki/concepts/three-axes.md`, `wiki/handoff.md`
+
+## [2026-08-05] rule-change | Provenance is enforced by the database, not by habit
+
+**Object**: `supabase/migrations/20260805010000_provenance_is_required.sql`
+**Scenario**: rule-change · **Outcome**: ✅ success
+**Code changes**: `4032311`
+
+Owner's rule: when we enrich, we keep the source — which site, which page — so a claim
+can always be traced back. It was already the convention and it was already broken.
+Measured before writing anything: **92 links, 8 with no evidence row at all.** Checked
+against Wikidata, five correspond to real P840 statements and **three do not exist
+there** — Skyfall→Hashima Island, Skyfall→National Gallery, Harry Potter→London Zoo.
+
+Those three are probably TRUE — Hashima is the acknowledged model for Silva's island,
+the zoo is the snake scene — and that is the argument. With no recorded source there is
+no way to tell a right row from a wrong one, and "probably true" is the state this
+project exists to refuse.
+
+`place_evidence` now requires an identifiable source (a URL or a statement ref; a
+snippet describes a source and cannot replace one), and `work_place_links` requires at
+least one evidence row via a **deferred** constraint trigger, so link and evidence write
+in one transaction as they actually do. Verified live both ways. Both are `not valid`
+rather than retroactive and `links_without_evidence` lists the debt: validating would
+fail on rows nobody can now source, deleting them would destroy probably-correct facts,
+and an invented citation is worse than visible debt.
+
+Subtlety worth the entry: a deferrable-initially-deferred trigger fires at COMMIT and
+cannot be caught by an exception block in the same transaction. The first test reported
+the rule was not working when it was.
+
+**Updated**: `wiki/concepts/place-precision.md`
+
+## [2026-08-05] update | Three axes for judging a place, and two relations it could not express
+
+**Object**: `app/lib/place-grade.mjs`, `app/lib/place-access.mjs`,
+`app/lib/work-profile.mjs`, `app/lib/scene-frame-match.mjs`,
+`supabase/migrations/20260805000000_inspiration_and_replica.sql`
+**Scenario**: feature · **Outcome**: ✅ success
+**Code changes**: `f31316b`, `f214602`, `68c8f0d`
+
+**Precision became its own axis** (owner, 2026-08-04): a source saying a film was shot
+on an island does not put the island on the map as a point, but as an area where the
+exact spot is unknown. Evidence and precision are orthogonal and are never multiplied —
+a single number cannot say which is missing, and the fixes are opposite. Fan knowledge
+is kept: thin evidence marks a precise place unconfirmed, never hides it.
+
+**Then access became a third axis**, because precision and access disagree in BOTH
+directions. Culross and Falkland are villages — coarse precision — and are the two most
+walkable stops on a real Outlander itinerary. Midhope Castle is building-precision and
+is a ticketed gate on a private estate with an interior shut to everyone. Showing and
+routing are therefore different promises: `canShow` admits an unknown, `isRoutable`
+refuses it, aimed at the one case where a self-guided map is worse than a coach.
+
+**Two relations the map had to lie about.** `inspiration_for` — Thomas Riddell's grave
+is not a filming location and is not where the story is set; the inverted search already
+found it and there was nowhere to put the answer. `replica` — the Green Dragon and
+Bagshot Row's interior were built for visitors and never shot in. Carried through to
+`placeRole` rather than stopping at the schema, and `isMatchablePlace` now refuses all
+three never-filmed kinds: a vision model comparing a frame to the Green Dragon would
+agree enthusiastically and be entirely wrong, because it was built to look like that.
+
+Three services this session have now reported failure inside a success: Wikimedia's
+error in a 200 body, OpenRouter's silently ignored schema, and Overpass answering "the
+server is probably too busy" with HTTP 200 and an HTML page.
+
+**Updated**: `wiki/concepts/three-axes.md` (new), `wiki/index.md`
+
+## [2026-08-05] update | The viewport is the question, and the inverted search
+
+**Object**: `app/lib/place-search.mjs`, `app/lib/nearby.mjs`,
+`app/api/locations/route.js`, `app/components/SceneMapApp.jsx`
+**Scenario**: feature · **Outcome**: ✅ success
+**Code changes**: `cf204f9`, `2ee4984`
+
+**The inverted search** finds places whose OWN article mentions a work — the category
+that lives on the place's page and nowhere else. Three things had to be right and each
+was found by measurement: filter geographically inside the query (`nearcoord:` gave 10
+of 10 results with coordinates where a plain search gave 2 of 50), use the REGEX form of
+`insource` (the quoted form misses "Rowling's"), and fan out to the work's characters
+(neither "Harry Potter" nor "Rowling" reaches Greyfriars — the article links only to
+[[Lord Voldemort]]). And one trap: CirrusSearch's own `OR` between insource clauses
+returns ZERO rather than erroring, so the alternation lives inside one regex.
+
+Verified general: Dracula in Whitby returns the Abbey, St Mary's Church and the 199
+Steps; The Hound of the Baskervilles in London returns Scotland Yard and Highgate
+Cemetery.
+
+**Zooming out now widens the search**, which needed four separate fixes: minZoom was 11
+so a country could not be shown at all; the search refreshed on drag and not on zoom;
+the radius capped at 50km and the API rejected more; and a viewport change cleared the
+work query, so searching a film and zooming dropped the film. Measured on Edinburgh:
+15km→8 places, 120km→10, 500km→15.
+
+**Updated**: `wiki/concepts/three-axes.md`
 
 ## [2026-08-04] update | Two features that were finished and unreachable
 

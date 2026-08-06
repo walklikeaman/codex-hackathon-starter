@@ -15,13 +15,16 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 
 - [glorymap-app](entities/glorymap-app.md) — the product, the graph hub
 - [frontend](entities/frontend.md) — the SceneMapApp + VoiceGuide monolith, patterns and gotchas
-- [api-layer](entities/api-layer.md) — 7 BFF routes: contracts, timeouts, caches
+- [api-layer](entities/api-layer.md) — the BFF routes: contracts, timeouts, caches
+  (+ `POST /api/access` since 05.08 — one Overpass call per tour, see [[three-axes]])
 - [wikidata](entities/wikidata.md) — P915/P840/P4947, SPARQL, limits, gotchas
 - [openai](entities/openai.md) — 4 model roles, principles of distrust, incidents
 - [external-services](entities/external-services.md) — Nominatim, OSRM, TMDB, Commons
 - [supabase](entities/supabase.md) — auth + cloud libraries; locations stay live
 - [deployment-pipeline](entities/deployment-pipeline.md) — staging automatically, prod manually
 - [team](entities/team.md) — who does what per git history, access rights
+
+- [handoff](handoff.md) — read first in a new session: unwired modules, traps, keys, next steps
 
 ## Concepts (how it works)
 
@@ -37,6 +40,7 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [film-imagery](concepts/film-imagery.md) — HMAC token → vision → only high confidence
 - [tours-and-voice](concepts/tours-and-voice.md) — route, timed tour, AI tour, TTS
 - [nearby-geolocation](concepts/nearby-geolocation.md) — "what's nearby", radii, demo fallback
+- [three-axes](concepts/three-axes.md) — evidence, precision, access: never one number
 - [place-precision](concepts/place-precision.md) — when a pin may move, when two pins are one place
 - [testing-conventions](concepts/testing-conventions.md) — node:test, zero network, DI pattern
 

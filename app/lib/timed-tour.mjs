@@ -1,4 +1,5 @@
 import { WALKING_SPEED_KMH, haversineKm, isFinitePair } from "./geo.mjs";
+import { canShow, isRoutable } from "./place-access.mjs";
 
 export const TOUR_BUDGETS = [30, 60, 120];
 const TOUR_MIN_STOPS = 3;
@@ -102,7 +103,40 @@ function combineLocationWorks(locations) {
   return [...combined.values()];
 }
 
-export function createTimedTourCandidates(locations, origin, budgetMinutes) {
+// A route is a different promise from a pin.
+//
+// Showing a place says "this is connected to the work" — true whether or not the gate
+// is open. A generated route says "go here, in this order, and it will be worth it",
+// which is a claim about the world on a particular day. Midhope Castle is the case the
+// whole axis exists for: building-precision, passes every other rule, and it is a
+// ticketed gate on a private estate with 13+ closure days a year that the coach
+// operator reroutes around on the morning.
+//
+// So access enters the tour in two ways, and the split is deliberate:
+//
+//   * A place OSM says is closed is not routed to at all. That is not a preference.
+//   * Confirmed access WINS over unknown access when tours are ranked, rather than
+//     unknown being excluded outright — because measured against twelve real tour stops
+//     OSM knows about four, and all four are in cities. Refusing every unknown would
+//     produce no Scottish tour at all, which is not a safer map, only an empty one.
+//
+// What must never happen is the third option: routing to an unknown and letting the
+// wording imply it is open. The caller carries `accessNote` to every stop it shows.
+function accessOf(access, location) {
+  if (!access) return null;
+  const key = location?.locationId ?? location?.id;
+  return (access instanceof Map ? access.get(key) : access?.[key]) ?? null;
+}
+
+export function confirmedStopCount(stops, access) {
+  if (!access) return 0;
+  return stops.filter((stop) => {
+    const record = accessOf(access, stop);
+    return record ? isRoutable(record) : false;
+  }).length;
+}
+
+export function createTimedTourCandidates(locations, origin, budgetMinutes, { access = null } = {}) {
   if (!TOUR_BUDGETS.includes(budgetMinutes)) {
     throw new Error("Tour budget must be 30, 60, or 120 minutes");
   }
@@ -110,6 +144,13 @@ export function createTimedTourCandidates(locations, origin, budgetMinutes) {
   const uniqueLocations = combineLocationWorks([...new Map(
     (Array.isArray(locations) ? locations : [])
       .filter((location) => location?.id && isFinitePair(location.position))
+      // Known closed is the one verdict that removes a stop. `canShow` is the same rule
+      // the map uses for the pin, and a closed place fails both: there is nothing to
+      // walk to.
+      .filter((location) => {
+        const record = accessOf(access, location);
+        return record ? canShow(record) : true;
+      })
       .map((location) => [location.id, location]),
   ).values()]);
 
@@ -140,6 +181,7 @@ export function createTimedTourCandidates(locations, origin, budgetMinutes) {
           stops,
           estimatedMinutes: estimateTourMinutes(stops),
           startDistanceKm: distanceKm(effectiveOrigin, stops[0].position),
+          confirmedStops: confirmedStopCount(stops, access),
         });
       }
     }
@@ -151,6 +193,10 @@ export function createTimedTourCandidates(locations, origin, budgetMinutes) {
     .filter((candidate) => candidate.estimatedMinutes <= limit)
     .sort((left, right) =>
       right.stops.length - left.stops.length ||
+      // Among tours of the same length, the one whose stops we can vouch for wins. This
+      // sits above distance on purpose: a walk that is 200 m longer and gets you in is
+      // a better walk than a short one to a locked gate.
+      right.confirmedStops - left.confirmedStops ||
       left.startDistanceKm - right.startDistanceKm ||
       right.estimatedMinutes - left.estimatedMinutes ||
       left.stops.map((stop) => stop.id).join("|").localeCompare(

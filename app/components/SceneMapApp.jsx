@@ -18,6 +18,7 @@ import {
   Cloud,
   Clock3,
   Crosshair,
+  DoorOpen,
   ExternalLink,
   Film,
   Info,
@@ -26,6 +27,7 @@ import {
   LocateFixed,
   LogOut,
   MapPin,
+  Maximize2,
   Plus,
   Route,
   Search,
@@ -63,6 +65,7 @@ import {
   createTimedTourCandidates,
   routeFitsBudget,
 } from "../lib/timed-tour.mjs";
+import { ACCESS, accessNote, isRoutable, MAX_PLACES_PER_QUERY } from "../lib/place-access.mjs";
 import VoiceGuide from "./VoiceGuide";
 import GraphLayer from "./GraphLayer";
 import WorkSearchBox from "./WorkSearchBox";
@@ -305,9 +308,14 @@ function locationsFromApi(records) {
       const kind = record.kind ?? "film";
       const relationLabel = record.relation_label
         ?? (kind === "book" ? "Story setting" : "Filming location");
+      // A place found by the inverted search has no Wikidata item — it is a Wikipedia
+      // article — so the id has to come from somewhere else. Falling through to
+      // `undefined` would give every such place the SAME id, and the map would show
+      // one pin for all of them.
+      const placeId = record.loc_wikidata_id ?? record.loc_source_id;
 
       return {
-        id: `${kind}-${record.work_wikidata_id}-${record.loc_wikidata_id}`,
+        id: `${kind}-${record.work_wikidata_id}-${placeId}`,
         filmId: record.work_wikidata_id,
         film: record.work_title,
         scene: record.scene_title ?? relationLabel,
@@ -324,6 +332,16 @@ function locationsFromApi(records) {
         year: record.work_year,
         kind,
         relationKind: record.relation_kind,
+        // How exactly the place is located — a separate question from how well it is
+        // evidenced, and the one that decides whether it may be drawn as a dot.
+        precision: record.precision ?? "unknown",
+        display: record.display ?? "pin",
+        precisionCaveat: record.precision_caveat ?? null,
+        // Not a claim that anything was filmed here — only that this place's own
+        // article mentions the work. The map must keep the two apart everywhere it
+        // shows them, so the flag travels with the location rather than being
+        // re-derived at each render.
+        isCandidate: record.relation_kind === "candidate",
         sourceUrl: record.source_url,
         sourceTitle: record.source_title,
         evidenceSource: record.evidence_source ?? "wikidata",
@@ -449,13 +467,28 @@ function RefreshLocationsOnViewport({ onViewportChange }) {
   return null;
 }
 
-function makeMarkerIcon(selected, nearest, kind) {
+// A candidate pin is drawn hollow, and that is a claim about evidence, not a style.
+// A solid pin here means somebody stated this place belongs to this work; a candidate
+// means only that the place's article mentions it. Two facts that different, sharing
+// one symbol, is the map telling a person something we have not verified.
+function makeMarkerIcon(selected, nearest, kind, candidate) {
   return L.divIcon({
     className: "",
-    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}${nearest ? " is-nearest" : ""}"><span></span></span>`,
+    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}${nearest ? " is-nearest" : ""}${candidate ? " is-candidate" : ""}"><span></span></span>`,
     iconSize: [34, 42],
     iconAnchor: [17, 34],
   });
+}
+
+// How big an area is, roughly, so it can be drawn as one. These are not claims about
+// the boundary — we do not have boundaries — they are honest orders of magnitude: a
+// village you could cross on foot, a county you could not. Drawing the county as a dot
+// is the lie this replaces; drawing it as a ring the size of a county is merely vague,
+// which is exactly what the source was.
+const AREA_RADIUS_M = { settlement: 1200, region: 12000, country: 60000, unknown: 3000 };
+
+function areaRadiusMeters(precision) {
+  return AREA_RADIUS_M[precision] ?? AREA_RADIUS_M.unknown;
 }
 
 const userIcon = L.divIcon({
@@ -818,6 +851,10 @@ export default function SceneMapApp() {
   const [timedTour, setTimedTour] = useState(null);
   const [timedTourStatus, setTimedTourStatus] = useState("idle");
   const [timedTourMessage, setTimedTourMessage] = useState("");
+  // What OSM knows about getting into the places around here, keyed by place id. Kept
+  // beside the tour rather than inside it so the location card can say the same thing
+  // the tour says about a stop.
+  const [tourAccess, setTourAccess] = useState(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const [accountUser, setAccountUser] = useState(null);
@@ -1482,11 +1519,53 @@ export default function SceneMapApp() {
     }
   }
 
+  // What OSM says about getting in, for the stops a tour might use. Asked once per
+  // build and never per pin: Overpass runs on donated hardware, and the answer only
+  // changes a route, which is the only place we make a promise about a door.
+  //
+  // Every failure — a busy Overpass, a rejected batch, a network drop — resolves to no
+  // knowledge rather than to "open". The tour then reads exactly as it did before this
+  // existed, with the stops marked unconfirmed.
+  async function loadAccess(locations) {
+    const places = locations.slice(0, MAX_PLACES_PER_QUERY).map((location) => ({
+      id: location.locationId ?? location.id,
+      name: location.place,
+      lat: location.position[0],
+      lng: location.position[1],
+    }));
+    if (places.length === 0) return null;
+
+    try {
+      const response = await fetch("/api/access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ places }),
+      });
+      if (!response.ok) throw new Error(`access responded ${response.status}`);
+      const payload = await response.json();
+      return Object.fromEntries((payload.places ?? []).map((record) => [record.id, record]));
+    } catch {
+      return null;
+    }
+  }
+
   async function buildTimedTour() {
+    setTimedTour(null);
+    setTimedTourStatus("loading");
+    setTimedTourMessage("Checking which of these you can actually get into...");
+
+    // Only the places a walk could plausibly use are worth asking about — the batch is
+    // bounded, and a stop 300 km away was never going to be in a 60-minute tour.
+    const nearestFirst = [...visibleLocations].sort((left, right) =>
+      haversineKm(browseCenter, left.position) - haversineKm(browseCenter, right.position));
+    const access = await loadAccess(nearestFirst);
+    setTourAccess(access);
+
     const candidates = createTimedTourCandidates(
       visibleLocations,
       browseCenter,
       tourBudget,
+      { access },
     );
 
     if (candidates.length === 0) {
@@ -1590,6 +1669,10 @@ export default function SceneMapApp() {
       usedAiFallback = true;
     }
 
+    const unconfirmed = selectedPlan.stops.filter(
+      (stop) => !isRoutable(access?.[stop.locationId ?? stop.id]),
+    ).length;
+
     setTimedTour({
       budgetMinutes: tourBudget,
       guide,
@@ -1597,10 +1680,17 @@ export default function SceneMapApp() {
       stops: selectedPlan.stops,
       usedAiFallback,
       usedRouteFallback,
+      unconfirmed,
     });
     setTimedTourStatus("ready");
     setTimedTourMessage(
       [
+        // Said before the pleasantries, because it is the sentence that decides whether
+        // somebody walks half an hour to a locked gate. A route is a promise about a
+        // specific day, and this is the part of it we cannot make.
+        unconfirmed
+          ? `${unconfirmed} of ${selectedPlan.stops.length} stops: we have not confirmed you can get in. Check before you go.`
+          : null,
         usedAiFallback ? "AI was unavailable, so verified location descriptions were used." : null,
         usedRouteFallback ? "Walking directions were estimated because the router was unavailable." : null,
       ].filter(Boolean).join(" "),
@@ -1923,7 +2013,35 @@ export default function SceneMapApp() {
               </Marker>
             </>
           )}
-          {visibleLocations.map((location) => (
+          {/* A place the source located only to an island, a county or a city is drawn
+              as the area it is. The owner's rule: "we do not include the whole island
+              as a point, but as an area where the exact place is not known" — a dot on
+              Istanbul's centre invents a doorway that no source ever claimed. */}
+          {visibleLocations.filter((location) => location.display === "area").map((location) => (
+            <Circle
+              key={`area-${location.id}`}
+              center={location.position}
+              radius={areaRadiusMeters(location.precision)}
+              pathOptions={{
+                color: "#f7b733",
+                weight: activeLocation?.id === location.id ? 2 : 1,
+                opacity: 0.55,
+                fillOpacity: activeLocation?.id === location.id ? 0.12 : 0.06,
+                dashArray: "6 6",
+              }}
+              eventHandlers={{ click: () => setActiveLocation(location) }}
+            >
+              <Popup>
+                <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
+                <strong>{location.film}</strong>
+                <br />
+                {location.place}
+                <br />
+                <em>Somewhere in here — the source names the area, not a spot</em>
+              </Popup>
+            </Circle>
+          ))}
+          {visibleLocations.filter((location) => location.display !== "area").map((location) => (
             <Marker
               key={location.id}
               position={location.position}
@@ -1931,6 +2049,7 @@ export default function SceneMapApp() {
                 activeLocation?.id === location.id,
                 nearby?.nearest?.location.id === location.id,
                 location.kind,
+                location.isCandidate,
               )}
               eventHandlers={{
                 click: () => setActiveLocation(location),
@@ -1941,6 +2060,12 @@ export default function SceneMapApp() {
                 <strong>{location.film}</strong>
                 <br />
                 {location.place}
+                {location.isCandidate && (
+                  <>
+                    <br />
+                    <em>Unverified mention</em>
+                  </>
+                )}
               </Popup>
             </Marker>
           ))}
@@ -2487,12 +2612,21 @@ export default function SceneMapApp() {
                 <span>{timedTour.stops.length} stops</span>
               </div>
               <ol>
-                {timedTour.stops.map((stop) => (
-                  <li key={stop.id}>
-                    <strong>{stop.place}</strong>
-                    <span>{stop.film}</span>
-                  </li>
-                ))}
+                {timedTour.stops.map((stop) => {
+                  const record = tourAccess?.[stop.locationId ?? stop.id];
+                  return (
+                    <li key={stop.id}>
+                      <strong>{stop.place}</strong>
+                      <span>{stop.film}</span>
+                      {/* Per stop, not only in the summary: "2 of 4 unconfirmed" does
+                          not tell you WHICH two, and that is the whole question when
+                          you are standing at the bus stop deciding. */}
+                      <span className={`access-note${record && isRoutable(record) ? " is-known" : ""}`}>
+                        {accessNote(record)}
+                      </span>
+                    </li>
+                  );
+                })}
               </ol>
               <button className="start-tour-button" type="button" onClick={startTimedTour}>
                 <Route size={17} />
@@ -2703,6 +2837,28 @@ export default function SceneMapApp() {
                 <span>{activeLocation.position[0].toFixed(4)}, {activeLocation.position[1].toFixed(4)}</span>
               </div>
             </div>
+            {activeLocation.precisionCaveat && (
+              <p className="precision-caveat" role="note">
+                <Maximize2 size={15} aria-hidden="true" />
+                {activeLocation.precisionCaveat}
+              </p>
+            )}
+            {/* Only once a tour has asked. Printing "we have not confirmed" beside
+                every pin on the map would say nothing, since nothing has been checked
+                — the sentence is only worth reading where it was actually looked up. */}
+            {tourAccess?.[activeLocation.locationId ?? activeLocation.id] && (
+              <p className="place-access-row">
+                <DoorOpen size={16} aria-hidden="true" />
+                {accessNote(tourAccess[activeLocation.locationId ?? activeLocation.id])}
+              </p>
+            )}
+            {activeLocation.isCandidate && (
+              <p className="evidence-caveat" role="note">
+                <strong>Unverified.</strong> Found by reading this place&rsquo;s own article,
+                not a statement about the work. It may be where something was named,
+                written or imagined rather than filmed &mdash; open the source and judge it.
+              </p>
+            )}
             <p>{activeLocation.description}</p>
             <VoiceGuide location={activeLocation} story={activeNarration} />
             <div className="comparison-grid">

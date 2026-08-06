@@ -9,9 +9,19 @@ import {
   escapeInsourceRegex,
   isSearchableEntity,
   MAX_ENTITIES_PER_QUERY,
+  namesFromFanout,
 } from "../app/lib/place-search.mjs";
 
 const EDINBURGH = { lat: 55.9533, lng: -3.1883 };
+
+// Rows in the shape the live endpoint returns them.
+const fanoutRow = ({ label, article = null, human = false, property = "P674", fame = 0 }) => ({
+  nameLabel: { value: label },
+  ...(article ? { article: { value: article } } : {}),
+  human: { value: String(human) },
+  p: { value: `http://www.wikidata.org/prop/direct/${property}` },
+  fame: { value: String(fame) },
+});
 
 // --- the query shape that actually reaches the answer -------------------------------
 
@@ -105,6 +115,83 @@ test("the fan-out asks for characters, because the title does not reach the plac
   assert.match(query, /wdt:P674/, "P674 characters is the property that matters");
   assert.match(query, /wd:Q8337/);
   assert.equal(buildEntityFanoutQuery("not-a-qid"), null);
+});
+
+test("a duplicate name never costs a branch", () => {
+  // Six branches is the entire budget. A work's title is usually also its main
+  // character's name, so "Harry Potter" arrived twice and pushed Lord Voldemort out of
+  // the six — and Voldemort is the only one of those names Greyfriars Kirkyard's
+  // article contains. Measured live: the duplicate alone lost the motivating case.
+  const query = buildInvertedSearch({
+    names: ["Harry Potter", "James Potter", "Harry Potter", "Lily Potter",
+      "Hermione Granger", "Ron Weasley", "Lord Voldemort"],
+    center: EDINBURGH,
+  });
+
+  assert.match(query, /Lord Voldemort/);
+  assert.equal((query.match(/Harry Potter/g) ?? []).length, 1);
+});
+
+test("fictional characters are spent before real people", () => {
+  // Outlander's characters include George Washington, Louis XV and Simon Fraser, 11th
+  // Lord Lovat. Those names are in Scottish place articles for reasons that have
+  // nothing to do with the series; measured, they filled all six branches and the
+  // search returned zero. Claire and Jamie Fraser are only ever there because of it.
+  const names = namesFromFanout({ results: { bindings: [
+    fanoutRow({ label: "William Tryon", human: true, fame: 16 }),
+    fanoutRow({ label: "Lord John Grey", fame: 1 }),
+    fanoutRow({ label: "Ronald D. Moore", human: true, property: "P170", fame: 29 }),
+    fanoutRow({ label: "Claire Fraser", fame: 8 }),
+    fanoutRow({ label: "George Washington", human: true, fame: 273 }),
+  ] } });
+
+  assert.deepEqual(names, [
+    "Claire Fraser", "Lord John Grey",    // fictional: near-unique in running prose
+    "Ronald D. Moore",                    // made the work — the "written here" half
+    "William Tryon", "George Washington", // real people who happen to be characters
+  ]);
+});
+
+test("an invented name is ranked by fame, and a real one against it", () => {
+  // Two measurements pointing opposite ways. Voldemort was ninth of eleven in the order
+  // Wikidata returned, so the six branches never reached the one name Greyfriars
+  // Kirkyard contains — for a character, more Wikipedias means more prose mentions it.
+  // George Washington has 273 and is the worst possible search term for Outlander,
+  // because none of those mentions are about Outlander.
+  const characters = namesFromFanout({ results: { bindings: [
+    fanoutRow({ label: "Ginny Weasley", fame: 45 }),
+    fanoutRow({ label: "Lord Voldemort", fame: 76 }),
+    fanoutRow({ label: "Lily Potter", fame: 38 }),
+  ] } });
+  assert.deepEqual(characters, ["Lord Voldemort", "Ginny Weasley", "Lily Potter"]);
+
+  const realPeople = namesFromFanout({ results: { bindings: [
+    fanoutRow({ label: "George Washington", human: true, fame: 273 }),
+    fanoutRow({ label: "Simon Fraser, 11th Lord Lovat", human: true, fame: 9 }),
+    fanoutRow({ label: "Louis XV of France", human: true, fame: 106 }),
+  ] } });
+  assert.deepEqual(realPeople, [
+    "Simon Fraser, 11th Lord Lovat", "Louis XV of France", "George Washington",
+  ]);
+});
+
+test("a missing English label falls back to the article title", () => {
+  // Q34660 is J. K. Rowling. That item today carries labels in dozens of languages and
+  // none in English, so `?nameLabel` comes back as the bare q-id and the author's name
+  // — the one that finds the café she wrote in — disappears from the fan-out.
+  const names = namesFromFanout({ results: { bindings: [
+    fanoutRow({ label: "Q34660", article: "J. K. Rowling", human: true, property: "P50" }),
+    // The article title carries a disambiguator no sentence ever writes.
+    fanoutRow({ label: "Harry Potter", article: "Harry Potter (character)" }),
+    fanoutRow({ label: "Q999999", human: true }),
+  ] } });
+
+  assert.deepEqual(names, ["Harry Potter", "J. K. Rowling"]);
+});
+
+test("the fan-out of nothing is empty, not a crash", () => {
+  assert.deepEqual(namesFromFanout(null), []);
+  assert.deepEqual(namesFromFanout({ results: { bindings: [] } }), []);
 });
 
 // --- reading the answer -------------------------------------------------------------------

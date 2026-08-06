@@ -5,6 +5,7 @@ import {
   buildWikidataEntitiesUrl,
   buildWikidataSearchUrl,
   entityClaimIds,
+  entityText,
   isWikidataId,
   isWorkKind,
   locationsByDistance,
@@ -22,6 +23,36 @@ import {
   addSceneMatchTokens,
   SCENE_MATCH_TOKEN_CACHE_CONTROL,
 } from "../../lib/scene-match-token.mjs";
+import { findInvertedPlaces } from "../../lib/inverted-places.mjs";
+import { DISPLAY, gradePlace } from "../../lib/place-grade.mjs";
+
+// Precision is an axis of its own, and it is the one that decides what a pin may claim.
+// "Skyfall was shot in Istanbul" can be perfectly evidenced and is still not a doorway;
+// a fan naming the exact café is precise and thinly evidenced. The two are never
+// multiplied, so both travel to the client separately ([[three-axes]]).
+//
+// A place whose type we could not read stays a PIN. `gradePlace` calls that case hidden
+// — correct for a record we are deciding whether to store, wrong for a live map, where
+// a missing P31 label would delete a real place with a real coordinate over metadata
+// nobody has filled in. Unknown here means ungraded, and it says so on the card.
+function gradeLocations(locations) {
+  return locations.map((location) => {
+    const grade = gradePlace({
+      name: location.loc_name,
+      typeLabels: location.place_types,
+      // A statement on the work's Wikidata item is somebody's recorded claim; an
+      // inverted-search hit is not, and the card already says so.
+      verified: location.relation_kind !== "candidate",
+    });
+
+    return {
+      ...location,
+      precision: grade.precision,
+      display: grade.display === DISPLAY.hidden ? DISPLAY.pin : grade.display,
+      precision_caveat: grade.caveat,
+    };
+  });
+}
 
 // node:crypto (via scene-match-token) requires the Node runtime, not edge.
 export const runtime = "nodejs";
@@ -164,16 +195,54 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
   const config = workKindConfig(kind);
   const locationIds = entityClaimIds(workEntity, config.locationProperty);
   const locationEntities = await fetchEntities(locationIds);
-  const normalized = normalizeWikidataEntityLocations(workEntity, locationEntities, { kind });
+  // What each place IS, one batch for the whole result. Without it every place in a
+  // title search would be ungraded — and the coarse ones, the countries and the
+  // counties, are exactly what a title search returns most of.
+  const typeEntities = await fetchEntities(
+    [...locationEntities.values()].flatMap((entity) => entityClaimIds(entity, "P31")),
+  );
+  const typeLabels = new Map(
+    [...typeEntities].map(([typeId, entity]) => [typeId, entityText(entity, "labels")]),
+  );
+  const normalized = normalizeWikidataEntityLocations(workEntity, locationEntities, {
+    kind, typeLabels,
+  });
   // Every place the work touches, nearest first. The radius no longer decides what
   // exists — a title search is not a question about the city on screen.
   const ranked = locationsByDistance(normalized, center, radius);
-  const locations = selectFirstMatchingWork(ranked, [matchedWorkId], limit, excludeLocationId);
+  const stated = selectFirstMatchingWork(ranked, [matchedWorkId], limit, excludeLocationId);
+
+  // The other direction: places whose OWN article mentions this work. Wikidata's P915
+  // is a statement somebody wrote on the work's item, and per-work it is thin — one
+  // place for Notting Hill. The inverted search reads the category that only ever lives
+  // on the place's page, which is where the graves, the cafés and the schools are.
+  //
+  // It runs AFTER the statement search rather than beside it, and is given what that
+  // search already found, so the same place cannot arrive twice. Its cost is bounded
+  // and its failures are swallowed: these are extra places, never the answer.
+  const candidates = await findInvertedPlaces({
+    work: {
+      id: matchedWorkId,
+      title: matchedWork?.label ?? entityText(workEntity, "labels"),
+      year: stated[0]?.work_year ?? null,
+    },
+    kind,
+    center,
+    radiusKm: radius,
+    limit: Math.max(0, limit - stated.length),
+    exclude: stated,
+    onError: (error) => console.warn("inverted place search failed", error?.message),
+  });
+
+  // Every inverted hit is inside `nearcoord:`, so it is here by construction — but the
+  // distance is still measured rather than assumed, because the client sorts on it.
+  const locations = [...stated, ...locationsByDistance(candidates, center, radius)];
 
   return {
     matchedWork,
     locations,
     here: locations.filter((location) => location.in_radius).length,
+    candidate_count: candidates.length,
   };
 }
 
@@ -234,7 +303,10 @@ export async function GET(request) {
           // whether to fly somewhere: a title search that returns places nobody can see
           // is the same failure as returning none.
           here: result.here ?? 0,
-          locations: addSceneMatchTokens(result.locations),
+          // How many of them are candidates rather than statements. The client says so
+          // on the card; a count here lets it say so before opening one.
+          candidates: result.candidate_count ?? 0,
+          locations: addSceneMatchTokens(gradeLocations(result.locations)),
         },
         { headers: { "Cache-Control": SCENE_MATCH_TOKEN_CACHE_CONTROL } },
       );
@@ -262,7 +334,7 @@ export async function GET(request) {
         kind,
         search_mode: "nearby",
         matched_work: null,
-        locations: addSceneMatchTokens(locations),
+        locations: addSceneMatchTokens(gradeLocations(locations)),
       },
       { headers: { "Cache-Control": SCENE_MATCH_TOKEN_CACHE_CONTROL } },
     );

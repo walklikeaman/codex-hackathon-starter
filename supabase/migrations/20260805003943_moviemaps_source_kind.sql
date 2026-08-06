@@ -1,3 +1,8 @@
+-- Recovered from the live database on 2026-08-05: this migration was applied through
+-- the Supabase MCP by another session and never committed, so the repo described a
+-- schema the database no longer had. Text below is exactly what ran (version
+-- 20260805003943).
+
 -- A third kind of submission: moviemaps.org.
 --
 -- This migration adds the enum value and NOTHING else, which is not tidiness. Postgres
