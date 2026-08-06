@@ -4,10 +4,14 @@ import {
   buildLocationsSparql,
   buildWikidataEntitiesUrl,
   buildWikidataSearchUrl,
+  buildWorkFameQuery,
   entityClaimIds,
   entityText,
+  fameFromBindings,
+  rankWorksByFame,
   isWikidataId,
   isWorkKind,
+  locationFallbacks,
   locationsByDistance,
   locationsWithinRadius,
   normalizeWikidataEntityLocations,
@@ -75,9 +79,35 @@ async function searchWorks(query) {
   if (!response.ok) throw new Error(`Wikidata search responded with ${response.status}`);
   const payload = await response.json();
 
-  return (payload.search ?? [])
+  const matches = (payload.search ?? [])
     .filter((result) => isWikidataId(result.id))
     .map(({ id, label, description }) => ({ id, label, description }));
+
+  // Famous first. `wbsearchentities` orders by how well a label matches the typed
+  // string, which puts Adele's lyric video above the film called Skyfall and a
+  // parasitology journal above the film called Parasite. One extra query, and it is the
+  // difference between a juror naming their favourite film and seeing it, or seeing an
+  // empty map that reads as "we do not have that film".
+  const fameQuery = buildWorkFameQuery(matches.map((match) => match.id));
+  if (!fameQuery) return matches;
+
+  try {
+    const endpoint = new URL(WIKIDATA_ENDPOINT);
+    endpoint.searchParams.set("query", fameQuery);
+    endpoint.searchParams.set("format", "json");
+    const fameResponse = await fetch(endpoint, {
+      headers: { Accept: "application/sparql-results+json", "User-Agent": USER_AGENT },
+      next: { revalidate: 86400 },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!fameResponse.ok) return matches;
+    return rankWorksByFame(matches, fameFromBindings(await fameResponse.json()));
+  } catch (error) {
+    // Ordering is an improvement, not a precondition. If the service is slow the search
+    // runs in the order the API gave us, exactly as it did before.
+    console.warn("work fame ranking unavailable", error?.message);
+    return matches;
+  }
 }
 
 async function fetchLocationBindings(query) {
@@ -193,7 +223,24 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
 
   const workEntity = workEntities.get(matchedWorkId);
   const config = workKindConfig(kind);
-  const locationIds = entityClaimIds(workEntity, config.locationProperty);
+
+  // The work's own property first, then the weaker ones — but only if the strong one
+  // gave nothing. Measured on 24 famous titles, three returned an empty map: Spirited
+  // Away and Parasite have no P915 at all (one is animation, the other built its sets),
+  // and an empty map does not read as "nobody recorded the locations", it reads as "we
+  // do not have that film".
+  let via = null;
+  let locationIds = entityClaimIds(workEntity, config.locationProperty);
+  if (locationIds.length === 0) {
+    for (const fallback of locationFallbacks(kind)) {
+      const ids = entityClaimIds(workEntity, fallback.property);
+      if (ids.length === 0) continue;
+      via = fallback;
+      locationIds = ids;
+      break;
+    }
+  }
+
   const locationEntities = await fetchEntities(locationIds);
   // What each place IS, one batch for the whole result. Without it every place in a
   // title search would be ungraded — and the coarse ones, the countries and the
@@ -205,7 +252,7 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
     [...typeEntities].map(([typeId, entity]) => [typeId, entityText(entity, "labels")]),
   );
   const normalized = normalizeWikidataEntityLocations(workEntity, locationEntities, {
-    kind, typeLabels,
+    kind, typeLabels, via,
   });
   // Every place the work touches, nearest first. The radius no longer decides what
   // exists — a title search is not a question about the city on screen.
