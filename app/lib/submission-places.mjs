@@ -34,6 +34,13 @@ const SOURCE_LABELS = {
   wikipedia: { evidence: "wikipedia_extract", title: "Wikipedia article", who: "Wikipedia" },
   permit_record: { evidence: "film_permit", title: "Filming permit record", who: "a city filming permit" },
   reelstreets: { evidence: "reelstreets", title: "Reelstreets entry", who: "Reelstreets" },
+  movielocations: { evidence: "movielocations", title: "MovieLocations entry", who: "MovieLocations" },
+  // The only source whose sentence a person can check by standing in front of it.
+  open_plaques: {
+    evidence: "open_plaques",
+    title: "The plaque on the wall",
+    who: "a commemorative plaque at this address",
+  },
 };
 
 export function isRefusedSource(sourceKind) {

@@ -37,6 +37,17 @@ test("a pending submission reaches the map as a candidate, never as a verified p
   assert.match(location.relation_description, /not yet verified/i);
 });
 
+test("a plaque says where its sentence can be checked", () => {
+  // The card has to name the plaque, because the plaque is the reason to believe it —
+  // "Source record" tells a person nothing they can act on.
+  const location = submissionToLocation(
+    row({ source_kind: "open_plaques", source_sentence: "The classic film The Railway Children was filmed at Oakworth Station 1970" }),
+    { work: WORK, kind: "film" },
+  );
+  assert.equal(location.source_title, "The plaque on the wall");
+  assert.match(location.relation_description, /commemorative plaque at this address/);
+});
+
 test("the source's own sentence leads when it has one", () => {
   const location = submissionToLocation(
     row({ source_sentence: "The blue door on Westbourne Park Road" }),
