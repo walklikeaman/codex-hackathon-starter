@@ -7,6 +7,36 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-07] decision | Handoff rewritten to the state that actually exists
+
+**Object**: `wiki/handoff.md`, `wiki/sources/commemorative-plaques.md`
+**Scenario**: chore · **Outcome**: ✅ success
+
+The handoff a session leaves behind is read by someone with no memory of it, so it is
+worth only as much as its worst wrong number. Three were wrong and are corrected.
+
+**"811 titles we do not hold" was never a measurement.** It came from a Title Case sweep
+that also produced "The Hospital" and "Junior High School". The honest figure is **49
+candidates, 13 resolvable** — and the difference matters because 811 makes plaques look
+like the next volume lever when they are not. The page said it, the source page said it,
+and both now say what was measured.
+
+**The next volume lever is the person path, and it is blocked on an empty table.** 2,952
+plaques name 1,479 creative people with Wikipedia links; reaching their works needs
+`creators` / `work_creators`, which hold nothing. That is a SOURCE problem, not a rules
+problem, and calling it correctly is what stops the next session from tuning a matcher
+that is already right.
+
+**The queue is the largest unfinished thing in the project**: 30,257 geolocated rows
+across 6,075 works, **zero reviewed**. Showing them as clearly-labelled candidates was
+this session's fix and it buys time; it is not a decision per row, and the handoff now
+says so in those words.
+
+Also recorded where it will be found: a merge into `main` does not reliably deploy
+production and `commits/<sha>/status` goes green on the Preview check; constraints exist
+in the live database that no migration in git describes; and the Open Plaques dump ships
+its own Null Island.
+
 ## [2026-08-05] ingest | Titles on plaques became works, and the rules that made them true
 
 **Object**: `app/lib/plaque-title-resolve.mjs`
