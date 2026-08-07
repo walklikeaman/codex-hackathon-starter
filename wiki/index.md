@@ -31,6 +31,8 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [demo-path](concepts/demo-path.md) — the one sacred scenario
 - [fact-architecture](concepts/fact-architecture.md) — a fact has identity, payload and its
   own sentence; degree of separation; and the on_conflict outage found while writing it
+- [queue-review](concepts/queue-review.md) — what a rule may decide about a submission and
+  what nobody can; the two rules that were wrong first, and why 13,841 rows have no point
 - [personal-library](concepts/personal-library.md) — Letterboxd ZIP/CSV, privacy
 - [location-discovery](concepts/location-discovery.md) — three paths; a model may name a place, never locate one
 - [film-permits](concepts/film-permits.md) — the only primary source: the city that issued the permit

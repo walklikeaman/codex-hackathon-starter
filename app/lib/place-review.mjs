@@ -34,14 +34,22 @@ export const STATUS = Object.freeze({
 // Two geocoders agreeing tells you nothing about whether a film was shot there. So
 // coordinate agreement is weighted as the supporting detail it is, and CANNOT combine
 // with another supporting detail to publish a claim nobody has evidenced.
-export const CLAIM_SIGNALS = Object.freeze(["wikidata_entity", "cited_source", "frame_match"]);
+export const CLAIM_SIGNALS = Object.freeze([
+  "wikidata_entity", "cited_source", "frame_match", "independent_corroboration",
+]);
 
 // A canonical Wikidata entity is the strongest single signal we have: it means a place
 // exists independently of anything we or a model said about it, so it verifies alone.
 // Nothing else does — a citation can be wrong about where a scene was shot, and a frame
 // match is one model's reading of a picture.
+// `independent_corroboration` — two DIFFERENT sites naming the same place for the same
+// work — sits below a canonical entity and above a single citation, and deliberately
+// below the threshold on its own. Both sites are scrapes of secondary material and may
+// be repeating a common upstream; agreement between them is real evidence and is not
+// authority, so it needs a second signal before it publishes anything.
 export const SIGNAL_WEIGHTS = Object.freeze({
   wikidata_entity: 0.6,
+  independent_corroboration: 0.5,
   cited_source: 0.45,
   frame_match: 0.35,
   coordinate_agreement: 0.25,
