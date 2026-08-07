@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   isRefusedSource,
+  MATCHED_BY,
   REFUSED_SOURCES,
   selectSubmissionPlaces,
   submissionToLocation,
@@ -52,19 +53,44 @@ test("a row without a usable coordinate is dropped rather than placed at Null Is
   assert.equal(submissionToLocation(row({ place_name: "  " }), { work: WORK, kind: "film" }), null);
 });
 
-test("a source whose terms forbid taking the data never reaches the map", () => {
-  // 8,063 reelstreets rows are already in the queue. The project being non-commercial
-  // changes what licences allow and changes nothing about a site's terms of use.
-  assert.ok(REFUSED_SOURCES.includes("reelstreets"));
-  assert.equal(isRefusedSource("reelstreets"), true);
-  assert.equal(isRefusedSource("moviemaps"), false);
+test("every source reaches the map, and every card names who said it", () => {
+  // Owner's decision 05.08: collect any source and mark it unverified rather than
+  // discarding the lead. "Somebody said something happened here" is worth showing as
+  // long as the card says exactly that and links to whoever said it.
+  assert.deepEqual([...REFUSED_SOURCES], [], "nothing is withheld by default");
+  assert.equal(isRefusedSource("reelstreets"), false);
 
+  // Different places, because two sources naming the SAME place are deduplicated into
+  // one pin — correct, and a separate question from which sources we accept.
   const chosen = selectSubmissionPlaces(
-    [row({ source_kind: "reelstreets" }), row({ id: "22222222-2222-2222-2222-222222222222" })],
+    [
+      row({ source_kind: "reelstreets", place_name: "Westbourne Park Road", lat: 51.5188, lng: -0.2011 }),
+      row({ id: "22222222-2222-2222-2222-222222222222" }),
+    ],
     { work: WORK, kind: "film", center: LONDON },
   );
-  assert.equal(chosen.length, 1);
-  assert.equal(chosen[0].evidence_source, "moviemaps");
+  assert.equal(chosen.length, 2);
+  assert.match(chosen.find((place) => place.evidence_source === "reelstreets").relation_description, /Reelstreets/);
+  assert.match(chosen.find((place) => place.evidence_source === "moviemaps").relation_description, /MovieMaps/);
+  for (const place of chosen) assert.match(place.relation_description, /not yet verified/i);
+});
+
+test("a row matched only by title says so, because a title is not an identifier", () => {
+  // Doctor Who is two series under one name: Wikidata points at tt0056751 (1963) and the
+  // queue was filled under tt0436992 (2005). Both are Doctor Who and both should show —
+  // but "same title" and "same identifier" are not the same claim, and Gladiator is two
+  // different films.
+  const [byTitle] = selectSubmissionPlaces([row()], {
+    work: WORK, kind: "film", center: LONDON, matchedBy: MATCHED_BY.title,
+  });
+  assert.equal(byTitle.matched_by, "title");
+  assert.match(byTitle.relation_label, /matched by title/i);
+  assert.match(byTitle.relation_description, /by title, not by identifier/i);
+
+  const [byId] = selectSubmissionPlaces([row()], { work: WORK, kind: "film", center: LONDON });
+  assert.equal(byId.matched_by, "id");
+  assert.equal(byId.relation_label, "In review");
+  assert.doesNotMatch(byId.relation_description, /by title/i);
 });
 
 test("nearest first, and bounded — one series has 961 rows in the queue", () => {
