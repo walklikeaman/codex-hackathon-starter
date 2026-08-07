@@ -7,6 +7,52 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-05] ingest | Titles on plaques became works, and the rules that made them true
+
+**Object**: `app/lib/plaque-title-resolve.mjs`
+**Scenario**: feature · **Outcome**: ✅ success · #125
+
+The plaque ingest could only link to works we already held, and that was the ceiling: of
+853 titles named on plaques stating production, **811 were works we did not have**. This
+resolves the title in Wikidata and creates the work carrying its q-id from birth.
+
+**The extractor first.** A crude Title Case sweep produced those 811, and they include
+"The Hospital", "Junior High School" and "Town & Country". Tightened to quoted strings
+and titles introduced by their kind ("the classic film X"), the same 140 plaques yield
+**49 candidates** — a number small enough to be checked by eye, which is the point.
+
+**Then three rules, and each was added because the previous version was wrong in a way
+that looked right:**
+
+| rule | resolved | wrong among them |
+|---|---|---|
+| exact title + is a film/series/book | 27 | 7 |
+| + the year written on the wall | 18 | ~4 |
+| + the title beside the claim | **13** | **0** |
+
+The instructive failures: **"The Lady Vanishes"** resolved to the 1976 remake although
+the plaque is about Gainsborough Studios **1924-1949**; **"Taj Mahal"** to a 1963 film
+although the plaque names a hangar in San Antonio; **"Decoration Day"** to a 1990 film
+although the plaque is about a cemetery tradition. Two years on a plaque are a RANGE, not
+two points — that is how The Wicked Lady (1945) was being rejected while the 1983 remake
+was not. And with no year at all, a match is only safe when exactly one work carries the
+title, because there is nothing to disambiguate with.
+
+**The verb chooses the kind.** "Zane Grey, the prolific author of western novels, lived
+here … Riders of the Purple Sage" is about the NOVEL; the 1918 adaptation would have the
+author writing a film he never made.
+
+**Written to the database, and the upsert matters as much as the insert.** Five of the
+thirteen already existed here under an IMDb id or a unique title, so they were ENRICHED
+with their Wikidata id rather than duplicated; eight are new. Works carrying a Wikidata
+id went from **15 to 28**. A title matching two of our rows is left alone — guessing
+which is the 1945 film is the mistake the year rule exists to prevent.
+
+**Live:** 53 plaque rows across 40 works. The new ones answer on production — The Wicker
+Man at Whithorn Library, You Only Live Twice at the Duck Inn where Fleming wrote it,
+Dial M For Murder at Ifield Green, Finnegans Wake at Bognor Regis, Crime and Punishment
+at Dostoevsky's flat on Kaznacheiskaya.
+
 ## [2026-08-05] ingest | Plaques on the map: 43 places where the quote is on the wall
 
 **Object**: `app/lib/plaque-source.mjs`, `scripts/ingest-plaques.mjs`,
