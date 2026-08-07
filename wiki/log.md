@@ -7,6 +7,46 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-05] update | Coverage measured, and the map stopped hiding what we already know
+
+**Object**: `app/api/locations/route.js`
+**Scenario**: bugfix · **Outcome**: ✅ success
+**Code changes**: `#136`
+
+The owner asked how many works have fewer than five places. The answer led straight to a
+bug that was hiding a third of the base.
+
+**The queue, exactly.** 6,394 works have rows; **78.7% have fewer than five geolocated
+places**, the median is 2 and the mean 4.7. The distribution is a long thin tail: 5.3%
+have none, **39.8% have exactly one**, 17.1% have two, 16.5% three or four, and only 8.3%
+have ten or more. Split by kind: films 82.5% under five (median 2), series 45.5% (median
+5, and one series holds 961).
+
+**But the map answers from three sources**, so the queue's number is not what a person
+sees. Measured end to end on production, fourteen works drawn at random from the thin
+buckets: live sources ADDED places to ten of the fourteen — Altered States went from 3 to
+16, The Invisible Man from 1 to 6.
+
+**And four of the fourteen returned nothing at all**, although we hold their places. The
+queue was only ever consulted after Wikidata had identified the work, so when Wikidata
+does not know the title — "The Drive of Life" is not there under that name, "Wild West
+Tech" is a television documentary our records call a film and the type check refuses
+every candidate — the product stayed silent about places it already had. The same failure
+this session keeps finding: work that never reaches the live path.
+
+Both empty paths now ask our own records first, matched on title and kind, labelled
+"matched by title" on every card, with `matched_work` saying "from our own records — not
+identified in Wikidata".
+
+**After: 0 empty of 14** (was 4), and the juror scenario is 0 empty of 24 with a median
+of 1.26s.
+
+**Deployment lesson, and it cost the verification.** See [[deployment-pipeline]]: of four
+merges into `main` in forty minutes only two produced a Production deployment, and
+`gh api commits/<sha>/status` goes green on the PREVIEW check. Production was serving an
+hour-old commit while the poll said success. Ask for the environment by name, and use
+`gh workflow run "Deploy production"` when it has not fired.
+
 ## [2026-08-05] rule-change | English everywhere, including GitHub
 
 **Object**: `AGENTS.md`, `wiki/log.md`, four issues and seven pull requests
