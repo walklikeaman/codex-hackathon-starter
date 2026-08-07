@@ -70,7 +70,19 @@ The Last Emperor, Sherlock-the-character). Query by title and year.
 - **Fandom** — per-wiki licence roulette including CC-BY-NC; the "Filming locations"
   categories are EMPTY on the Bond, LOTR and Potter wikis; claims are anonymous.
 - **Film-Grab / Movie-Screencaps / ShotDeck** — real frames, no rights to grant.
-- **MovieMaps, Doctor Who Locations Guide, Reelstreets** — terms forbid it.
+- **Doctor Who Locations Guide, Reelstreets** — terms forbid it, and that does not depend
+  on whether we sell anything: terms forbid the ACT. 8,063 reelstreets rows are in the
+  queue anyway and are filtered out of the product.
+- **MovieMaps — corrected 05.08.** This line said "terms forbid it"; measured, the site
+  has **no terms page at all** (`/terms`, `/legal`, `/copyright` are 404), so there is no
+  prohibition to honour and no licence to rely on either. Owner's decision: its rows may
+  be SHOWN as unverified candidates with a link back, because we take facts rather than
+  their prose or images and the project is not commercial.
+
+**Licence type vs terms of use — the distinction that decides these.** The project is a
+student demo and is not sold, so NON-COMMERCIAL licences (CC BY-NC, restricted model
+weights) are not blockers. Terms of use are a different thing: they forbid the act, not
+the profit, and they stand regardless.
 
 **But looking is not ingesting.** Their stop lists are legitimate as *leads* (verify the
 claim in our own sources) and as a *recall benchmark*. Measured: operators visit 47
@@ -103,10 +115,9 @@ forbid it) though 8,063 of its rows sit in the queue.
 38,270 submissions, all `pending`, 30,212 with coordinates. **Nothing has been reviewed
 and there is still no review UI** — the map shows them honestly rather than waiting.
 
-15 works · 70 places · 92 links (**8 with no evidence — see `links_without_evidence`**)
-· 56 pending submissions, 30 with coordinates, 10 of them from Paris permits.
-
-Nothing in `location_submissions` has been reviewed. There is no review UI.
+The verified graph is still small: 15 works · 70 places · 92 links (**8 with no evidence
+— see `links_without_evidence`**). The queue is what makes the map look alive, and it is
+three orders of magnitude bigger — see above.
 
 ## Next, in the order I would take it
 
