@@ -1,17 +1,23 @@
 # Sources we looked at and did not take
 
-## Поправка 05.08.2026: некоммерческий проект
+## Correction 05.08.2026: not a commercial project
 
-Владелец уточнил: проект студенческий, демонстрационный, **не продаётся**. Поэтому
-ограничения вида лицензии (CC BY-NC, некоммерческие веса моделей) больше не блокируют —
-условия соблюдаются как написаны, и всё ревизуется при первом разговоре о продаже.
+The owner clarified: this is a student demo and it is **not sold**. Restrictions of
+licence TYPE (CC BY-NC, non-commercial model weights) therefore stop blocking — their
+conditions are honoured as written, and all of it is revisited the moment selling is
+discussed.
 
-**Отказы ниже, основанные на условиях использования, остаются в силе.** Terms of Service
-запрещают действие, а не заработок: скрейпинг IMDb, MovieMaps, Reelstreets запрещён
-независимо от денег. И корпуса кадров, у владельцев которых нет прав на сами кадры, —
-тоже: некоммерческое использование чужого без прав остаётся использованием чужого без прав.
+**Refusals below that rest on terms of use still stand.** Terms forbid the ACT, not the
+earnings, so scraping IMDb or Reelstreets is forbidden regardless of money. The same goes
+for frame corpora whose owners hold no rights to the frames: non-commercial use of
+somebody else's work without rights is still use without rights.
 
-Правило: **лицензия говорит, на каких условиях можно; условия сайта — можно ли вообще.**
+The rule: **a licence says on what terms you may; a site's terms say whether you may at
+all.**
+
+**Owner's decision 05.08 on sources in general:** collect any source and mark it
+unverified rather than discarding the lead. "Somebody said something happened here" is
+worth showing when the card says exactly that and names who said it.
 
 
 

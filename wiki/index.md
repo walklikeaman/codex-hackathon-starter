@@ -50,8 +50,8 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
   (film stills, "paste your Letterboxd handle")
 - [source-evaluation](sources/source-evaluation.md) — IMDb, Fandom and frame corpora:
   what we looked at, refused, and why it will not change
-- [commemorative-plaques](sources/commemorative-plaques.md) — таблички на фасадах:
-  47 064 точки в общественном достоянии, цитата уже написана на стене (issue #125)
+- [commemorative-plaques](sources/commemorative-plaques.md) — plaques on facades:
+  47,064 public-domain points where the quote is already written on the wall (issue #125)
 - [feature-research](sources/feature-research.md) — competitors, APIs and legal
   notes behind `ROADMAP.md` and backlog issues #44–#77
 - `Context/brief-scenemap-design.md` — the original product brief
