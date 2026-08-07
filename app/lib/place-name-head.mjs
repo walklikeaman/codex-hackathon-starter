@@ -169,13 +169,36 @@ export function splitPlacePhrase(name) {
   return { head, areas, area: areas[areas.length - 1], refusal: null };
 }
 
-// How far a head may sit from its area and still be that place. Same 100 km as
-// `HINT_RADIUS_KM` in geocode-wikidata.mjs, and deliberately the same number: this is the
-// same question that module asks when a hint breaks a tie, applied one step later —
-// there, to choose between candidates; here, to check the single candidate that came back
-// unopposed. `chooseCandidate` reports "unique" for a lone result no matter where it is,
-// which is exactly how a London restaurant became a place in Colorado.
+// How far a head may sit from its area and still be that place.
+//
+// TWO radii, because "area" means two different sizes of thing and one number cannot serve
+// both. Measured on the first real batch of 1,000 rows:
+//
+//   "Millennium Biltmore Hotel, South Grand Avenue Entrance, Downtown Los Angeles"
+//        -> confirmed by Downtown Los Angeles, a district. 100 km is right.
+//   "Bedales, Bedale Street, Borough Market, London SE1"
+//        -> confirmed by Bedale Street, and Bedales is a SCHOOL IN HAMPSHIRE, 80 km away.
+//           Inside 100 km, and a completely wrong pin.
+//
+// So when the area that answered is the row's IMMEDIATELY enclosing clause — normally a
+// street or a small district — the head has to be on top of it. When the answer came from
+// further out, the loose radius applies. The tight tier keeps every other index-0
+// acceptance in that batch (CityPoint on Ropemaker Street, Grace Cathedral on California
+// Street, the Massachusetts State House on Beacon Street) and drops only Bedales.
+//
+// 100 km is the same number `HINT_RADIUS_KM` uses in geocode-wikidata.mjs, and this is the
+// same question asked one step later: there, to choose between candidates; here, to check
+// the single candidate that came back unopposed. `chooseCandidate` reports "unique" for a
+// lone result no matter where it is, which is exactly how a London restaurant became a
+// place in Colorado.
 export const AREA_RADIUS_KM = 100;
+export const IMMEDIATE_AREA_RADIUS_KM = 5;
+
+// Which radius applies, given WHICH of the row's areas actually answered. Index 0 is the
+// clause closest to the place itself.
+export function radiusForAreaIndex(index) {
+  return index === 0 ? IMMEDIATE_AREA_RADIUS_KM : AREA_RADIUS_KM;
+}
 
 export function kmApart(a, b) {
   const dLat = (a.lat - b.lat) * 111.32;

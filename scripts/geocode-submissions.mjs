@@ -26,7 +26,9 @@ import process from "node:process";
 
 import { createGeocoder } from "../app/lib/geocode-client.mjs";
 import { WIKIDATA_LICENSE } from "../app/lib/geocode-wikidata.mjs";
-import { headIsInsideArea, splitPlacePhrase } from "../app/lib/place-name-head.mjs";
+import {
+  headIsInsideArea, radiusForAreaIndex, splitPlacePhrase,
+} from "../app/lib/place-name-head.mjs";
 
 const args = process.argv.slice(2);
 const flag = (name, fallback = null) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
@@ -109,11 +111,17 @@ for (const entry of split) {
   if (!head) { tally.head_unknown += 1; continue; }
   // The most specific area a gazetteer knows. A country centroid confirms nothing at a
   // hundred kilometres, which is why the specific end of the address is tried first.
-  const area = entry.areas.map((name) => areaPoints.get(name)?.place).find(Boolean);
-  if (!area) { tally.area_unknown += 1; continue; }
-  if (!headIsInsideArea(head, area)) { tally.outside_area += 1; continue; }
+  const areaIndex = entry.areas.findIndex((name) => areaPoints.get(name)?.place);
+  if (areaIndex < 0) { tally.area_unknown += 1; continue; }
+  const area = areaPoints.get(entry.areas[areaIndex]).place;
+  // How close the head must be depends on WHICH clause answered: an immediately
+  // enclosing street demands metres, a district or county allows a hundred kilometres.
+  if (!headIsInsideArea(head, area, radiusForAreaIndex(areaIndex))) {
+    tally.outside_area += 1;
+    continue;
+  }
   tally.accepted += 1;
-  accepted.push({ row: entry.row, head, entry });
+  accepted.push({ row: entry.row, head, entry, areaName: entry.areas[areaIndex] });
 }
 
 console.log(`\n${kind ?? "all"}: ${rows.length} rows`);
@@ -138,8 +146,8 @@ if (!sqlPath) {
     "--   where geocode_source = 'wikidata';",
     "",
   ];
-  for (const { row, head, entry } of accepted) {
-    const reason = `head ${JSON.stringify(entry.head)} inside ${JSON.stringify(entry.areas.find((a) => areaPoints.get(a)?.place))}`;
+  for (const { row, head, entry, areaName } of accepted) {
+    const reason = `head ${JSON.stringify(entry.head)} inside ${JSON.stringify(entry.areaName)}`;
     out.push(
       `update location_submissions set lat = ${head.lat}, lng = ${head.lng}, `
       + `geocode_source = 'wikidata', geocode_source_id = ${quote(head.wikidata_id ?? head.id ?? "")}, `

@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   AREA_RADIUS_KM,
+  IMMEDIATE_AREA_RADIUS_KM,
   headIsInsideArea,
+  radiusForAreaIndex,
   headRefusal,
   placeArea,
   placeHead,
@@ -158,4 +160,28 @@ test("the radius is the same 100 km the geocoder already uses for a hint", () =>
   assert.equal(headIsInsideArea({ lat: 50.827, lng: -0.153 }, london), true);
   // Bristol, 170 km, is not.
   assert.equal(headIsInsideArea({ lat: 51.454, lng: -2.588 }, london), false);
+});
+
+// --- the radius depends on how big the area is -----------------------------------
+
+test("a street-level area demands a street-level distance", () => {
+  // Measured on the first batch of 1,000: "Bedales, Bedale Street, Borough Market, London
+  // SE1" was confirmed by Bedale Street — and Bedales is a school in Hampshire, 80 km
+  // away. Inside 100 km, and a completely wrong pin.
+  const bedaleStreet = { lat: 51.505, lng: -0.090 };
+  const bedalesSchool = { lat: 51.020, lng: -0.911 };
+  assert.equal(headIsInsideArea(bedalesSchool, bedaleStreet, radiusForAreaIndex(0)), false);
+  assert.equal(headIsInsideArea(bedalesSchool, bedaleStreet, radiusForAreaIndex(1)), true);
+
+  // And the tight tier keeps the ones that are genuinely on the street it names.
+  const ropemakerStreet = { lat: 51.5195, lng: -0.0888 };
+  const cityPoint = { lat: 51.5194, lng: -0.0885 };
+  assert.equal(headIsInsideArea(cityPoint, ropemakerStreet, radiusForAreaIndex(0)), true);
+});
+
+test("the two radii are the two sizes of thing an area can be", () => {
+  assert.equal(radiusForAreaIndex(0), IMMEDIATE_AREA_RADIUS_KM);
+  assert.equal(radiusForAreaIndex(1), AREA_RADIUS_KM);
+  assert.equal(radiusForAreaIndex(2), AREA_RADIUS_KM);
+  assert.ok(IMMEDIATE_AREA_RADIUS_KM < AREA_RADIUS_KM);
 });
