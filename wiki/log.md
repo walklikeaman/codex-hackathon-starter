@@ -7,6 +7,58 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-05] ingest | Plaques on the map: 43 places where the quote is on the wall
+
+**Object**: `app/lib/plaque-source.mjs`, `scripts/ingest-plaques.mjs`,
+`supabase/migrations/20260807020000_*`, `20260807020100_*`
+**Scenario**: feature · **Outcome**: ✅ success · #125, PR #138
+
+Coverage work, and the honest headline is that **plaques raise quality, not volume**.
+47,064 plaques carry a coordinate; after the rules, 50 of them state something about a
+work we hold, and 43 rows survived deduplication into the live queue across 31 works.
+
+**The rules ARE the feature, and each was measured on the whole world dump:**
+
+| rule | hits |
+|---|---|
+| normalised substring | 4,643 — "the club", "the beach", "the office" |
+| + case-sensitive on the original text | 346 |
+| + the claim word within sixty characters | **46, and they are real** |
+
+Without the last one a pub called The Crown is the series The Crown, and a
+cinematographer's credit list ("Among his film credits are Oklahoma, Doctor Dolittle,
+The Graduate") becomes four filming locations nobody claimed.
+
+**Refused before anything else:** 6,269 Stolpersteine and kindred memorials, 1,413 of
+them inside the phrase "lived here" — the phrase a naive filter keeps.
+
+**Three faults in the data itself**, each now a guard with a test. The dump carries
+**Null Island**: the Majestic Cinema in Leeds arrives as `latitude 0.0` with a correct
+longitude, and `finiteOrNull` cannot catch it because 0 is finite and a legal latitude.
+Some rows name the place `?`. And `organisations` is a JSON array written as text, which
+rendered as "Plaque erected by []".
+
+**Stored: the claim SENTENCE, not the wall.** The One Tun's inscription runs to nine
+hundred characters about saffron crops with the Oliver Twist claim in the first line —
+the same rule the Wikipedia extractor already follows, for the same reason.
+
+**Live now:** Midsomer Murders gained five pubs, Groundhog Day three Woodstock landmarks,
+plus Brief Encounter at Carnforth Station, The Railway Children at Oakworth, The Wicker
+Man, A Clockwork Orange, Billy Liar, Gainsborough Studios, Local Hero at the Pennan Inn,
+Moby Dick at Youghal.
+
+**Two paths measured and NOT taken**, so nobody re-measures them. Matching a person's
+plaque to their works through Wikidata gives 1,547 works for the 25 most-plaqued people
+and only **11 of ours** once the kind has to agree — Dickens wrote the NOVEL Oliver Twist
+and our row is the film. And the ceiling is not the matcher: of 853 titles named on
+plaques that state production, **811 are works we do not hold**. The lever for volume is
+creating those works from an identifier, not widening this filter.
+
+**Drift again:** the live evidence CHECK already carried `reelstreets` and
+`movielocations` branches that exist in no committed migration. Rewriting the constraint
+from what the repo knew was rejected by 8,063 rows — a constraint is written against the
+database that exists.
+
 ## [2026-08-05] update | Coverage measured, and the map stopped hiding what we already know
 
 **Object**: `app/api/locations/route.js`
