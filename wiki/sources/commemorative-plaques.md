@@ -1,10 +1,16 @@
 # Commemorative plaques — the claim is written on the wall
 
-**Built 05.08 (#138): 43 rows across 31 works are in the live queue.** The numbers that
-matter are in the log entry of the same date; the short version is that the matcher's
-rules did the work — 4,643 naive hits became 346 with case sensitivity and 46 with
-proximity — and that the ceiling on volume is our works table, not the filter: of 853
-titles named on production-claiming plaques, 811 are works we do not hold.
+**Built in #138 and extended in #140: 53 rows across 40 works are in the live queue**, and
+works carrying a Wikidata id went 15 → 28. The numbers that matter are in the two log
+entries at the top of `wiki/log.md`; the short version is that the matcher's rules did the
+work — 4,643 naive hits became 346 with case sensitivity and 46 with proximity — and that
+the ceiling on volume is the SOURCE, not the filter.
+
+**Correcting an earlier claim on this page: "811 titles we do not hold" was an artefact of
+a crude Title Case sweep**, not a measurement. Read properly — quoted or introduced by the
+word naming its kind, and beside the production claim — the extractor yields **49
+candidate titles, of which 13 resolve** to a film, series or book safely
+(`plaque-title-resolve.mjs`). Do not plan volume against 811.
 
 Research 05.08.2026, live queries. Task: issue #125. The owner's observation: the round
 plaques on London and Edinburgh facades say things like "filmed here", "recorded here",
