@@ -7,181 +7,208 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
-## [2026-08-05] decision | Очередь дошла до карты, и владелец решил показывать MovieMaps
+## [2026-08-05] rule-change | English everywhere, including GitHub
+
+**Object**: `AGENTS.md`, `wiki/log.md`, four issues and seven pull requests
+**Scenario**: decision · **Outcome**: ✅ success
+
+Owner's instruction (05.08): **the project is in English — the repository AND GitHub.**
+This replaces the earlier convention recorded in the handoff, "repo in English, GitHub
+issues in Russian", which was followed for issues #125, #127, #128, #129 and for the
+titles and bodies of PRs #122, #123, #126, #130–#133. All of them are rewritten.
+
+Five log entries written earlier today in Russian are translated here as well, along
+with `wiki/index.md` and the correction note in `wiki/sources/source-evaluation.md`.
+
+**What stays in Cyrillic, deliberately.** It is data, not prose:
+`wikipedia-source.mjs` holds the Russian section names the extractor queries
+("работа над картиной", "съёмки" …) — removing them removes a language edition; and
+`place-dedup.mjs`, `place-precision.md` and two tests use "Красная площадь" as the
+example that proves the name normaliser keeps non-Latin alphabets instead of emptying
+them. Both would be broken by translation, not improved.
+
+**Merge commit subjects on `main` are still Russian** — seven of them, from today. They
+are rewritable only by rewriting the branch's history, which is destructive and is the
+owner's call.
+
+## [2026-08-05] decision | The queue reached the map, and the owner ruled on MovieMaps
 
 **Object**: `app/lib/submission-places.mjs`, `app/api/locations/route.js`
 **Scenario**: feature · **Outcome**: ✅ success
 **Code changes**: `#132`
 
-Владелец сформулировал требование: прототип должен быть **полностью рабочим** — не
-демонстрация на пятидесяти фильмах, а вся база, которую мы собрали. Проверка показала,
-насколько велик разрыв.
+The owner set the bar: the prototype must be FULLY working — not a demo on fifty films,
+but the whole base we collected. Measuring the gap showed how far off that was.
 
-**Замер.** В базе **38 270 заявок, все `pending`, 30 212 с координатой, по 6 054
-работам** — и **ни один маршрут в `app/` не читает `location_submissions`**. Живая карта
-отвечала только из Wikidata, поэтому поиск по названию находил места для **15** работ,
-хотя ингест нашёл факты для шести тысяч. Всё, что загрузили другие сессии, лежало в
-темноте.
+**The measurement.** The database holds **38,270 submissions, every one `pending`, 30,212
+with a coordinate, across 6,054 works** — and **no route in `app/` reads
+`location_submissions`**. The live map answered from Wikidata alone, so a title search
+found places for **15** works while the ingest had facts for six thousand. Everything
+previous sessions pulled in was sitting in the dark.
 
-**Мост — IMDb-id.** Работа, найденная в Wikidata, несёт P345; загруженные работы несут
-`imdb_id` — 6 041 штука, покрывающая 30 189 строк с координатами. Через Wikidata q-id
-это не работает: их у нас всего 15.
+**The bridge is the IMDb id.** A work matched in Wikidata carries P345; the ingested works
+carry `imdb_id` — 6,041 of them, covering 30,189 geolocated rows. Wikidata q-ids cannot do
+it: only 15 of our works have one.
 
-**Приезжают кандидатами.** Полый пин, «not yet verified by us», ссылка на источник — то
-же обращение, что получил инвертированный поиск в этот же день. В `places` и в граф они
-не попадают. Ограничение: ближайшие к экрану, 12 на работу (у Person of Interest в
-очереди 961 строка), с дедупликацией против обоих предыдущих поисков.
+**They arrive as candidates.** Hollow pin, "not yet verified by us", link to the source —
+the same treatment the inverted search got the same day. They never enter `places` or the
+graph. Bounded: nearest to the viewport first, twelve per work (Person of Interest alone
+has 961 rows), deduplicated against both earlier searches.
 
-**Результат на проде:** Notting Hill 10→15, The Dark Knight 14→26, Inception 20→34,
-Sense8 2→14, Harry Potter 17→26. У Parasite, где у Wikidata нет ни одного P915, из
-очереди пришла реальная сеульская улица.
+**On production:** Notting Hill 10→15, The Dark Knight 14→26, Inception 20→34, Sense8
+2→14, Harry Potter 17→26. Parasite, which has no P915 at all in Wikidata, got a real
+Seoul street from the queue.
 
-**Решение владельца по MovieMaps.** Сессия, загрузившая эти 30 161 строку, записала в
-своём исследовании: «A MovieMaps row is a lead: strong enough to put in front of a
-reviewer, not licensed». Показ публично — другое действие, чем хранение в очереди,
-поэтому спросили. Владелец решил: **показывать как непроверенных кандидатов.**
+**The owner's decision on MovieMaps.** The session that ingested those 30,161 rows wrote
+in its own research: "A MovieMaps row is a lead: strong enough to put in front of a
+reviewer, not licensed". Showing publicly is a different act from storing, so it was
+asked rather than assumed. The decision: **show them as unverified candidates.**
 
-Основания, все измеренные: у moviemaps.org **нет страницы условий вообще** — `/terms`,
-`/legal`, `/copyright` отвечают 404, поэтому запрета на действие не существует (это
-отличает их от reelstreets, у которого условия есть и запрещают); мы берём **факты** —
-название места и координату, — а не их текст и не их картинки; каждая строка помечена
-непроверенной и ведёт ссылкой к источнику; проект некоммерческий.
+The grounds, all measured: moviemaps.org has **no terms page at all** — `/terms`,
+`/legal` and `/copyright` are 404, so no prohibition exists to honour (which is what
+separates it from reelstreets, whose terms exist and forbid); we take **facts** — a place
+name and a coordinate — not their prose or their images; every row is labelled unverified
+and links back; the project is not commercial.
 
-**Reelstreets отфильтрован** — и в SQL-запросе, и в модуле. 8 063 его строки остаются в
-базе: прятать от продукта — наше решение, удалять чужой ингест — нет.
 
-## [2026-08-05] update | Сценарий жюри: 24 любимых фильма, три пустые карты, ноль после правки
+## [2026-08-05] update | The juror scenario: 24 favourite films, three empty maps, zero after the fix
 
 **Object**: `app/lib/location-search.mjs`, `app/api/locations/route.js`
 **Scenario**: bugfix · **Outcome**: ✅ success
 
-Владелец сформулировал приёмку демо одной фразой: **кто-то из жюри называет любимый
-фильм, мы набираем его в поиске, и всё готово — без сомнений, что такого фильма нет.**
-Измерено на проде до правки, 24 известных названия: **пусто у трёх** — Parasite,
-Spirited Away, Skyfall. Причины оказались разные, и обе стоило чинить.
+The owner stated the demo's acceptance in one sentence: **someone on the jury names their
+favourite film, we type it in, and it is there — with no doubt that we have it.** Measured
+on production before touching anything, 24 well-known titles: **three came back empty** —
+Parasite, Spirited Away, Skyfall. The causes were different and both were worth fixing.
 
-**Первая: выигрывает не тот объект.** `wbsearchentities` ранжирует по совпадению
-подписи и больше ни по чему. По «Skyfall» первыми идут песня Адели, её лирик-видео и
-саундтрек — **фильма нет в первой восьмёрке вообще**; по «Parasite» — журнал по
-паразитологии, две видеоигры и биологическое понятие. Проверка типа не спасает: клип в
-иерархии Wikidata ЯВЛЯЕТСЯ фильмом, поэтому лирик-видео проходит и отвечает пустотой.
+**First: the wrong entity wins.** `wbsearchentities` ranks by label match and nothing
+else. "Skyfall" returns Adele's song, her lyric video and the soundtrack — **the film is
+not in the top eight at all**; "Parasite" returns a parasitology journal, two video games
+and the biological concept. The type check does not save it: a music video IS a film in
+Wikidata's hierarchy, so the lyric video passes and answers with nothing.
 
-Разделяет их известность — число языковых версий: Skyfall фильм 78 против песни 36 и
-клипа 2; Parasite фильм 81 против понятия 46; Spirited Away фильм 109. Кандидатов стало
-15 вместо 8, и они сортируются по `wikibase:sitelinks` до проверки типа. **Тип по-прежнему
-решает последним** — известная песня может встать первой в списке и всё равно быть
-отвергнута за то, что она не фильм. Это закрывает и давний баг из передачи
-«Skyfall резолвится в клип Адели»: было 0 мест, стало 20, из них 13 в Лондоне.
+What separates them is fame — sitelink counts: Skyfall film 78 against song 36 and video
+2; Parasite film 81 against the concept 46; Spirited Away film 109. The candidate list is
+now 15 deep and ordered by `wikibase:sitelinks` before the type check. **Type still has
+the last word** — a famous song can lead the list and still be refused for not being a
+film. This also closes the handoff's long-standing "Skyfall resolves to Adele's lyric
+video": 0 places before, 20 after, 13 of them in London.
 
-**Вторая: у работы честно нет мест.** У Spirited Away и Parasite нет ни одного P915 —
-одна анимация, у второй декорации построены. Пустая карта не читается как «никто не
-записал места съёмок», она читается как «у нас нет этого фильма», а это ровно то
-впечатление, которого продукт не может себе позволить. Теперь есть лесенка отступления:
-место действия (P840), затем страна создания (P495), и каждая ступень говорит, чем она
-является: «Parasite is set in South Korea. No exact filming locations are recorded for it
-yet». Страна получает от `place-grade` рендер областью, а не точкой.
+**Second: the work genuinely has no places.** Spirited Away and Parasite carry no P915 at
+all — one is animation, the other built its sets. An empty map does not read as "nobody
+recorded the locations", it reads as "we do not have that film", which is the one
+impression this product cannot afford. There is now a ladder: narrative location (P840),
+then country of origin (P495), each rung saying what it is — "Parasite is set in South
+Korea. No exact filming locations are recorded for it yet". A country renders as an area,
+never a doorway.
 
-**После правки: пусто у 0 из 24.** 824 теста зелёные.
+**After: empty for 0 of 24.** 824 tests green.
 
-## [2026-08-05] rule-change | Проект не коммерческий — и это меняет часть отказов, но не все
+
+## [2026-08-05] rule-change | Not a commercial project — which changes some refusals and not others
 
 **Object**: `wiki/sources/source-evaluation.md`, issue #127
 **Scenario**: decision · **Outcome**: ✅ success
 
-Владелец уточнил (05.08): **это студенческий демо-проект, его не продают.** Задача —
-показать жюри, что можно построить с AI, а не выйти на рынок. Значит запись «SuperPoint
-и SuperGlue не берём из-за некоммерческой лицензии» была написана под неверную
-предпосылку и снимается.
+The owner clarified (05.08): **this is a student demo and it is not sold.** The goal is to
+show a jury what can be built with AI, not to reach a market. So the note "SuperPoint and
+SuperGlue are refused over their non-commercial licence" was written under a wrong premise
+and is withdrawn.
 
-**Что это меняет.** Ограничения ВИДА ЛИЦЕНЗИИ — CC BY-NC, некоммерческие веса моделей —
-перестают быть препятствием, пока проект не продают: SuperPoint/SuperGlue, дополнительные
-данные MusicBrainz (CC BY-NC-SA), не-коммерческие вики Fandom. Условия соблюдаются как
-написаны — атрибуция, share-alike, — и при первом же разговоре о продаже это ревизуется.
+**What that changes.** Restrictions of LICENCE TYPE — CC BY-NC, non-commercial model
+weights — stop being blockers while nothing is sold: SuperPoint/SuperGlue, MusicBrainz
+supplementary data (CC BY-NC-SA), non-commercial Fandom wikis. Their conditions are
+honoured as written — attribution, share-alike — and the whole thing is revisited the
+moment selling is discussed.
 
-**Чего это НЕ меняет, и разница принципиальная.** Запрет в условиях использования
-запрещает *действие*, а не *заработок*: скрейпинг IMDb, MovieMaps, Reelstreets остаётся
-запрещённым независимо от того, берём ли мы деньги. И «у источника нет прав, чтобы их
-передать» (Film-Grab и подобные корпуса кадров) тоже остаётся: некоммерческое
-использование чужого без прав — всё равно использование чужого без прав.
+**What it does NOT change, and the difference is the point.** A prohibition in terms of
+use forbids the ACT, not the earnings: scraping IMDb, MovieMaps or Reelstreets stays
+forbidden whether or not money changes hands. And "the source has no rights to grant"
+(Film-Grab and similar frame corpora) stays too: non-commercial use of somebody else's
+work without rights is still use without rights.
 
-Правило одной строкой: **лицензия говорит, на каких условиях можно; условия сайта
-говорят, можно ли вообще.** Первое зависит от коммерции, второе нет.
+The rule in one line: **a licence says on what terms you may; a site's terms say whether
+you may at all.** The first depends on commerce, the second does not.
 
-Практический выигрыш от поправки скромный: ALIKED + LightGlue под Apache/BSD и так
-покрывают ту же задачу, что SuperPoint/SuperGlue. Настоящая польза в другом — открылись
-стоп-листы Fandom как ДАННЫЕ, а не только как ориентир полноты.
+The practical gain is modest — ALIKED + LightGlue under Apache/BSD already cover what
+SuperPoint/SuperGlue do. The real gain is elsewhere: Fandom's stop lists open up as DATA
+rather than only as a recall benchmark.
 
-## [2026-08-05] decision | Четыре задачи на будущее: фото-проверка, музыка, факты и таблички
+
+## [2026-08-05] decision | Four directions the owner set: photo verification, music, facts, plaques
 
 **Object**: issues #125, #127, #128, #129
-**Scenario**: research · **Outcome**: ✅ success — разведано и записано, код не начат
+**Scenario**: research · **Outcome**: ✅ success — researched and recorded, no code started
 
-Владелец задал направление на после хакатона. Всё разведано живыми запросами, лицензии
-проверены по первоисточникам.
+Everything below was measured with live queries and licences read at the source.
 
-**#127 — проверка места по фотографиям.** Главный вывод: готовая технология есть ровно
-на половину. Локализация снимка решена и свободна — **MegaLoc** (MIT, CVPR 2025),
-**LightGlue** (Apache-2.0) + **ALIKED** (BSD-3), hloc, StreetCLIP. **SuperPoint и
-SuperGlue не берём**: ограничительные лицензии, несовместимые с коммерческим продуктом,
-при том что они первыми попадаются в туториалах. Вторая половина — не решена нигде и
-есть наш продукт: чужие системы отвечают «где снят кадр» вероятностью, наш вопрос —
-«правда ли, что фильм X снимали по адресу Y, и чем это доказывается». Разница
-практическая: у нас есть гипотеза (дешевле поиска по планете), нам нужно **число
-совпавших точек**, а не оценка модели, и нам **можно ответить «не знаю»**.
-Половина конвейера уже написана: `scene-frame-match`, `still-classify`, `mapillary`
-(с `compass_angle`), `building-snap`, `place-review`, `grounding`, `isMatchablePlace`.
+**#127 — verifying a place from photographs.** The headline: ready technology covers
+exactly half. Locating a photograph is solved and free — **MegaLoc** (MIT, CVPR 2025),
+**LightGlue** (Apache-2.0) + **ALIKED** (BSD-3), hloc, StreetCLIP. The other half is
+solved nowhere and is our product: those systems answer "where was this shot" with a
+probability, while our question is "is it true that film X was shot at address Y, and what
+proves it". The difference is practical: we hold a hypothesis (far cheaper than searching
+the planet), we need a **countable number of matched points** rather than a model's
+opinion, and we are **allowed to answer "we don't know"**. Half the pipeline is already
+written: `scene-frame-match`, `still-classify`, `mapillary` (with `compass_angle`),
+`building-snap`, `place-review`, `grounding`, `isMatchablePlace`.
 
-**#128 — музыка как вид работы.** Владелец решил: берём. Замерено: Wikidata `P483
-записано в` даёт **5 464 записи со студией, у которой есть координата** (все ранние
-The Beatles → Abbey Road), клипов с `P915` — 111, музыкальных табличек по UK — 1 248.
-MusicBrainz: core CC0, дополнительные данные CC BY-NC-SA — некоммерческие, брать нельзя.
-Личная библиотека: **Last.fm по никнейму, без авторизации** (из [[personal-collections-matrix]]),
-Spotify непригоден публично (5 тестовых пользователей), Apple Music требует $99.
+**#128 — music as a kind of work.** The owner decided we take it. Measured: Wikidata's
+`P483 recorded at` gives **5,464 recordings whose studio has a coordinate** (every early
+Beatles track → Abbey Road), music videos with `P915` number 111, UK plaques with a
+musical subject 1,248. MusicBrainz: core data CC0, supplementary CC BY-NC-SA. Personal
+library: **Last.fm reads a listening history from a nickname with no user auth**
+([[personal-collections-matrix]]); Spotify allows five test users in dev mode; Apple Music
+wants $99.
 
-**#129 — архитектура фактов, и это самое важное.** Схема выражает нужное наполовину, две
-поломки видны без кода. Первая: `unique (work_id, place_id, relation_kind)` **запрещает
-второй факт того же вида** — Abbey Road и The Beatles это одна строка на двенадцать
-записей. Вторая: факт о человеке пришит к работе — кафе Роулинг сегодня это семь строк с
-семикратно продублированным доказательством, потому что `creator_place_links` не
-существует. Предложено: одна таблица фактов с двумя видами субъекта, и тогда карточка
-работы и карточка места — одна выборка с разных концов. Плюс **дистанция родства**
-(0 — про работу, 1 — про её человека, 2 — про то, что повлияло), видимая в интерфейсе,
-иначе «места Гарри Поттера» тихо станут «местами всего, к чему прикасалась Роулинг».
+**#129 — the architecture of facts, and this is the important one.** The schema expresses
+half of what the product needs, and both breaks are visible without code. First:
+`unique (work_id, place_id, relation_kind)` **forbids a second fact of the same kind** —
+Abbey Road and The Beatles is one row for twelve recordings. Second: a fact about a person
+is pinned to a work — Rowling's café is seven rows with the same evidence copied seven
+times, because `creator_place_links` does not exist. Proposed: one fact table with two
+kinds of subject, so the work card and the place card become one query read from
+different ends. Plus a **degree of separation** (0 about the work, 1 about its person, 2
+about what influenced it) visible in the interface — without it, "Harry Potter places"
+quietly becomes "places connected to anything Rowling ever touched".
 
-**Updated**: `wiki/sources/commemorative-plaques.md` (#125 записан отдельно)
+**Updated**: `wiki/sources/commemorative-plaques.md` (#125 recorded separately)
 
-## [2026-08-05] ingest | Таблички на фасадах: цитата, которая уже написана на стене
+
+## [2026-08-05] ingest | Plaques on facades: the quote is already written on the wall
 
 **Object**: `wiki/sources/commemorative-plaques.md`, issue #125
-**Scenario**: research · **Outcome**: ✅ success — источник найден и измерен, код не начат
+**Scenario**: research · **Outcome**: ✅ success
 
-Идея владельца: круглые таблички в Лондоне и Эдинбурге говорят «здесь снимали», «здесь
-записывались», «здесь это написано». Проверено живыми запросами — источник существует и
-он лучше всех предыдущих.
+The owner's observation: the round plaques in London and Edinburgh say "filmed here",
+"recorded here", "written here". Checked with live queries — the source exists and it is
+better than anything before it.
 
-**Open Plaques, лицензия PDDL — общественное достояние.** Сильнее ODbL и CC BY-SA, то
-есть сильнее всего, что в проекте уже используется. Дампы CSV/JSON/GeoJSON, краулинг
-они просят не делать. 55 115 табличек, **47 064 с координатой**; UK 17 371, и у всех
-есть текст надписи. Второй, независимый источник — OSM (`memorial=plaque`), Лондон 1 844,
-Эдинбург 172, тот же Overpass, что уже стоит за `/api/access`.
+**Open Plaques, licensed PDDL — public domain.** Stronger than the ODbL and CC BY-SA this
+project already relies on. Dumps in CSV/JSON/GeoJSON; they ask people not to crawl.
+55,115 plaques, **47,064 with a coordinate**; the UK holds 17,371 and every one carries
+its inscription. A second, independent source is OSM (`memorial=plaque`): London 1,844,
+Edinburgh 172, through the same Overpass that already backs `/api/access`.
 
-**Почему ложится идеально:** правило проекта — цитата, проверяемая дословно, а здесь
-цитата и есть объект, она уже лежит в поле `inscription`. И бьёт в «где написано или
-сделано»: табличка Роулинг в Эдинбурге, `My Beautiful Laundrette ... was filmed on this
-road`, `Hunky Dory & Ziggy Stardust ... were recorded here`, Боуи в Берлине. Плюс это
-building-precision по адресу — та ступень, которой у Wikidata почти нет.
+**Why it fits perfectly:** the project's rule is a quote checked verbatim, and here the
+quote IS the object — it is already in the `inscription` field. And it lands on "where it
+was written or made": the Rowling plaque in Edinburgh, `My Beautiful Laundrette ... was
+filmed on this road`, `Hunky Dory & Ziggy Stardust ... were recorded here`, Bowie in
+Berlin. Plaques are also building precision at a street address — the rung Wikidata almost
+never gives.
 
-**Наше по ролям субъекта (UK):** кино 538, музыка 1 248, книги 1 802, уникальных 3 187.
+**Ours by subject role (UK):** film 538, music 1,248, books 1,802, 3,187 unique.
 
-**Два отказа, оба измерены, оба кодируются до всего остального.** В дампе **6 269
-Stolpersteine** и подобных мемориалов жертвам нацизма, 1 413 из них попадают в
-формулировку «lived here / wohnte» — в туристический маршрут они не идут, исключаются
-явно и с тестом. И поиск по имени — не идентификация: `Bowie` в мировом дампе даёт сотню
-техасских маркеров про Джима Боуи и округ Боуи.
+**Two refusals, both measured, both coded before anything else.** The dump contains
+**6,269 Stolpersteine** and similar memorials to victims of Nazism, 1,413 of them inside
+the phrase "lived here / wohnte" — they do not go into a walking tour, and they are
+excluded explicitly and with a test. And a name is not an identifier: `Bowie` over the
+world dump returns a hundred Texas markers about Jim Bowie and Bowie County.
 
-**Открытый вопрос владельцу:** музыка — это новый вид работы. `work_kind` знает
-film/series/book, а музыкантов среди табличек больше всего, и «здесь записан альбом» —
-не filming_location и не narrative_location.
+**Open question for the owner:** music is a new kind of work. `work_kind` knows
+film/series/book, musicians are the largest group of plaque subjects, and "this album was
+recorded here" is neither a filming location nor a narrative one.
+
 
 ## [2026-08-05] decision | Shipped, and a merge turns out to be a release
 

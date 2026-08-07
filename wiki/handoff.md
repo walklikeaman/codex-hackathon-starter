@@ -154,7 +154,7 @@ three orders of magnitude bigger — see above.
 
 ## How to work here
 
-Repo in English; **GitHub issues in Russian**. No Claude attribution anywhere — history
+**English everywhere — the repository AND GitHub** (owner, 05.08; this replaces the earlier "issues in Russian" convention). Cyrillic survives only as DATA: the Russian Wikipedia section names the extractor queries, and "Красная площадь" as the example proving the name normaliser keeps non-Latin alphabets. No Claude attribution anywhere — history
 was rewritten and `includeCoAuthoredBy: false`; this overrides the `/ship` template's
 trailer. Tests are `node --test test/*.test.mjs`, zero-network, dependency-injected.
 Answers to the operator are written as ready-to-paste prompts for their team.
