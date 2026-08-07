@@ -119,9 +119,14 @@ test("resolve write-through persists places, links and evidence at both grains",
   assert.ok(writer.calls.evidence.every((e) => typeof e.subject_id === "string" && e.subject_id.length > 0));
   assert.ok(writer.calls.evidence.every((e) => !("subject_ref" in e)));
 
-  // The link rows are keyed to the work and the resolved place uuid.
+  // The link rows are keyed to the work and the resolved place uuid — and they spell out
+  // the whole conflict target (#129). A row that leaves `scene_id` or `about` to the
+  // column default is a row whose identity is decided somewhere other than here, and the
+  // upsert that used to name three columns has been raising 42P10 in production since the
+  // unique constraint was split into partial indexes.
   assert.deepEqual(writer.calls.links[0], {
     work_id: WORK_ID, place_id: "place-Q100", relation_kind: "filming_location", confidence: 0.9,
+    scene_id: null, about: null,
   });
   assert.deepEqual(body.resolved[0].places.map((p) => p.wikidata_id), ["Q100", "Q200"]);
 });

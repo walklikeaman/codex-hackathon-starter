@@ -59,10 +59,18 @@ function defaultCreateWriter(env) {
       failOn(error, "places upsert");
       return data ?? [];
     },
+    // The conflict target must name every column of a unique index, and since
+    // 20260808010100 that index is (work_id, place_id, relation_kind, scene_id, about).
+    //
+    // The three-column form this used to send has been raising 42P10 — "there is no
+    // unique or exclusion constraint matching the ON CONFLICT specification" — since
+    // 20260731234121 split the constraint into two PARTIAL indexes, which Postgres
+    // cannot infer from a bare inference clause. This route is the only write path into
+    // the canonical graph, and it failed here, after the Wikidata work had succeeded.
     async upsertLinks(rows) {
       const { data, error } = await client
         .from("work_place_links")
-        .upsert(rows, { onConflict: "work_id, place_id, relation_kind" })
+        .upsert(rows, { onConflict: "work_id,place_id,relation_kind,scene_id,about" })
         .select("id, work_id, place_id, relation_kind");
       failOn(error, "links upsert");
       return data ?? [];
@@ -168,6 +176,15 @@ export function createResolveHandler({
             place_id: placeId,
             relation_kind: link.relation_kind,
             confidence: link.confidence,
+            // Written out rather than left to the column defaults, because these two are
+            // the conflict target: a row that omits them is a row whose identity is
+            // implied somewhere else.
+            //
+            // `about` is null and `statement` is not written at all: a P915 statement
+            // says a work and a place are related and nothing more. The sentence belongs
+            // to sources that state one — a plaque, a paragraph, a permit record.
+            scene_id: null,
+            about: null,
           };
         })
         .filter(Boolean);

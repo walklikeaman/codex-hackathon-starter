@@ -385,3 +385,49 @@ test("a replica says so, rather than claiming a shoot", () => {
 test("the author's own places have a role too", () => {
   assert.equal(placeRole({ relation_kind: "author_place" }).role, "author");
 });
+
+// --- a place on the card is a FACT, and a fact says what it claims (#129) --------
+
+test("the card prints the sentence the source stated, not our template", () => {
+  const summary = placeSummary(place({
+    subject_type: "creator",
+    subject_name: "J. K. Rowling",
+    relation_kind: "wrote_here",
+    statement: "J. K. Rowling wrote some of the early chapters of Harry Potter here.",
+  }));
+  assert.equal(summary.sentence, "J. K. Rowling wrote some of the early chapters of Harry Potter here.");
+  assert.equal(summary.subject_type, "creator");
+  assert.equal(summary.subject_name, "J. K. Rowling");
+});
+
+test("a place with no stated wording still gets a sentence", () => {
+  const summary = placeSummary(place({ subject_name: "Notting Hill" }));
+  assert.equal(summary.sentence, "Notting Hill was filmed at Leadenhall Market.");
+});
+
+test("a fact carries how far it stands from the work, and whether a route may take it", () => {
+  assert.equal(placeSummary(place()).distance, 0);
+  assert.equal(placeSummary(place()).routable, true);
+
+  const inspiration = placeSummary(place({ relation_kind: "inspiration_for" }));
+  assert.equal(inspiration.distance, 2);
+  assert.equal(inspiration.routable, false);
+  assert.match(inspiration.distance_label, /nearby/i);
+});
+
+test("the distance the RPC computed wins over the one we would derive", () => {
+  // work_facts() returns it. A client that re-derives it is a second opinion on a
+  // question the schema already answered, and the two will diverge.
+  const summary = placeSummary(place({ relation_kind: "filming_location", distance: 2 }));
+  assert.equal(summary.distance, 2);
+  assert.equal(summary.routable, false);
+});
+
+test("a person's place sorts below every place the work itself was shot at", () => {
+  // Otherwise one plaque about a screenwriter outranks the street in the opening shot.
+  const sorted = sortPlaces([
+    placeSummary(place({ id: "author", subject_type: "creator", relation_kind: "lived_here", confidence: 0.99 })),
+    placeSummary(place({ id: "shot", relation_kind: "filming_location", confidence: 0.4 })),
+  ]);
+  assert.deepEqual(sorted.map((p) => p.id), ["shot", "author"]);
+});
