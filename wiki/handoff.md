@@ -92,6 +92,17 @@ Edinburgh Harry Potter stops; we cover 8.
 
 ## State of the data
 
+**Read this first: the live map now answers from TWO stores.** Wikidata for statements,
+and our own `location_submissions` queue for everything the ingest found — bridged by the
+IMDb id (P345 → `works.imdb_id`), 6,041 works, 30,189 geolocated rows. Queue rows arrive
+as CANDIDATES: hollow pin, "not yet verified by us", link to the source, and they never
+enter `places` or the graph. Owner's decision 05.08: MovieMaps rows may be shown that
+way (no terms page exists on their site); reelstreets is filtered out (its terms do
+forbid it) though 8,063 of its rows sit in the queue.
+
+38,270 submissions, all `pending`, 30,212 with coordinates. **Nothing has been reviewed
+and there is still no review UI** — the map shows them honestly rather than waiting.
+
 15 works · 70 places · 92 links (**8 with no evidence — see `links_without_evidence`**)
 · 56 pending submissions, 30 with coordinates, 10 of them from Paris permits.
 
