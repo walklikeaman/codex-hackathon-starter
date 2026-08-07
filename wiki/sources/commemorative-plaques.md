@@ -1,5 +1,11 @@
 # Commemorative plaques — the claim is written on the wall
 
+**Built 05.08 (#138): 43 rows across 31 works are in the live queue.** The numbers that
+matter are in the log entry of the same date; the short version is that the matcher's
+rules did the work — 4,643 naive hits became 346 with case sensitivity and 46 with
+proximity — and that the ceiling on volume is our works table, not the filter: of 853
+titles named on production-claiming plaques, 811 are works we do not hold.
+
 Research 05.08.2026, live queries. Task: issue #125. The owner's observation: the round
 plaques on London and Edinburgh facades say things like "filmed here", "recorded here",
 "wrote here" — which is a statement about a place, carved in stone, at an address.
