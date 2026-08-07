@@ -1,3 +1,5 @@
+import { normalizeWorkTitle } from "./content-graph.mjs";
+
 function parseCsvRows(text) {
   const rows = [];
   let row = [];
@@ -54,9 +56,16 @@ function libraryKey(movie) {
   return movie.imdbId || `${movie.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}:${movie.year ?? ""}`;
 }
 
-function normalizedTitle(value) {
-  return value.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, " ").trim();
-}
+// The SAME normaliser the catalogue's `title_norm` is built with, imported rather than
+// re-implemented. The two used to differ by one line and it silently broke every accented
+// title: this one lacked the combining-accent strip, so NFKD turned "Amelie" into
+// "ame\u0301lie" and the punctuation rule then made it "ame lie", against a catalogue
+// holding "amelie". "Léon: The Professional" failed the same way. A library of 2,422 films
+// matched nothing it should have.
+const normalizedTitle = normalizeWorkTitle;
+
+// Exported so a test can assert the two definitions are the same one.
+export { normalizeWorkTitle as normalizedTitleForTest };
 
 export function workIsInLibrary(work, library) {
   const title = normalizedTitle(work.title);

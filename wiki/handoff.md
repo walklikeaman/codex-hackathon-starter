@@ -21,10 +21,11 @@ production: empty for **0 of 24** famous titles, median 1.3 s.
 | | |
 |---|---|
 | main | see `git log` — the fact architecture (#129) landed 08.08 |
-| tests | 898, `node --test test/*.test.mjs`, zero network |
+| tests | 914, `node --test test/*.test.mjs`, zero network |
 | works | 7,063 · **28 with a Wikidata id** · 70 places · 92 verified links |
 | queue | 43,888 submissions, 30,257 geolocated — **90 verified, 914 rejected, the rest pending with a reason** (08.08; another branch is deduplicating, so this moves) |
-| by source | moviemaps 30,153 · reelstreets 8,063 · movielocations 5,783 · open_plaques 53 · wikipedia 36 · permits 10 |
+| by source | moviemaps 30,153 · reelstreets 8,062 · movielocations 5,580 · open_plaques 53 · wikipedia 36 · permits 10 |
+| never geocoded | **13,637** — every located row got its point from its own source; the gazetteer pass started 08.08 |
 
 **The map answers from three stores at once**, and this is the thing to understand before
 touching [app/api/locations/route.js](app/api/locations/route.js):
@@ -75,6 +76,12 @@ gh api "repos/walklikeaman/codex-hackathon-starter/deployments?environment=Produ
 ```bash
 gh workflow run "Deploy production" -f ref=main -f confirm_production=true
 ```
+
+**A measurement of the queue is a snapshot, not a fact.** Another branch works the same
+production table: between two measurements forty minutes apart the resolved-row count went
+0 → 34, the table lost 210 rows, and the movie-locations name statistics changed so much
+that a whole planned task evaporated. **Quote the time next to any queue number, and
+re-measure before acting on one.**
 
 **The database has rules the repo does not describe.** Twice a constraint existed only in
 production because another session applied it through the MCP without committing — and a
@@ -211,11 +218,14 @@ and `work_creators` hold zero rows, and filling them is a source problem, not a 
    over that view, and distance shown in the interface rather than only carried in the API.
 2. **The queue.** First verdicts landed 08.08 — see [[queue-review]] and the log. What
    remains, in order:
-   - **Repair the names.** 13,841 rows have no coordinate and mostly cannot get one,
-     because `place_name` is a caption rather than a name: 47% of movie-locations rows run
-     past twelve words and 54% still carry the `<Film> location:` prefix the extractor was
-     meant to cut. **This is worth more pins than any amount of clicking** and it is our
-     bug, not the source's. The review already labels them `unusable_name:*`.
+   - ~~**Repair the names.**~~ **Measured 08.08 and the diagnosis was wrong** — another
+     branch had already fixed its extractor (47% long → 1.3%). The real reason 13,637 rows
+     have no point is that **no geocoder has ever been run on this queue**: every located
+     row got its point from the source it was scraped from. `place-name-head.mjs` +
+     `scripts/geocode-submissions.mjs` now do it, at a measured **8.3%** — and the
+     tempting 31.7% is a trap that puts a London restaurant in Colorado. See
+     [[queue-review]]. **The pass is bounded and resumable; most of the 13,637 are still
+     waiting for it.**
    - **A human surface** for the rows a rule leaves pending, ranked so an hour of somebody's
      attention changes the map the most. `scripts/review-submissions.mjs` prints the
      backlog; nothing renders it.

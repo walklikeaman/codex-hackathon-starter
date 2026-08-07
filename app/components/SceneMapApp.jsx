@@ -53,6 +53,7 @@ import WorkProfile from "./WorkProfile.jsx";
 import { isWalkableStop, trailStops } from "../lib/story-trail.mjs";
 import { normalizePlaceName } from "../lib/place-dedup.mjs";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
+import { libraryImportSummary, matchLibrary } from "../lib/library-match.mjs";
 import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { createCoalescingRunner } from "../lib/coalesce.mjs";
 import { WALKING_SPEED_KMH, haversineKm, isLatLng } from "../lib/geo.mjs";
@@ -1455,10 +1456,34 @@ export default function SceneMapApp() {
         ? await parseLetterboxdArchive(await file.arrayBuffer(), file.size)
         : parseMediaCsv(await file.text(), pendingConnector);
       const nextLibrary = mergeLibraries(library, imported);
-      const mappedCount = films.filter((film) => workIsInLibrary(film, nextLibrary)).length;
+      const inCity = films.filter((film) => workIsInLibrary(film, nextLibrary)).length;
       setLibrary(nextLibrary);
       setLibraryMapOnly(true);
-      setImportMessage(`${imported.length} movies imported from ${pendingConnector === "imdb" ? "IMDb" : "Letterboxd"}${isZip ? " ZIP" : ""}. ${mappedCount} mapped ${mappedCount === 1 ? "title" : "titles"} shown in ${cityName}.`);
+
+      // Against the CATALOGUE, not against the city in view. Comparing 2,422 titles with
+      // the eleven films the map happened to be drawing in London is how this reported
+      // "0 mapped titles" for a library we hold hundreds of.
+      //
+      // The catalogue is fetched rather than the library posted, because the panel below
+      // promises the file never leaves the browser and it must stay true.
+      setImportMessage(`${nextLibrary.length} films imported. Checking them against the catalogue…`);
+      try {
+        const response = await fetch("/api/catalogue");
+        if (!response.ok) throw new Error(`catalogue ${response.status}`);
+        const { works: catalogue } = await response.json();
+        const held = matchLibrary(nextLibrary, catalogue);
+        setImportMessage(libraryImportSummary({
+          imported: nextLibrary.length,
+          works: held.works,
+          places: held.places,
+          cityName,
+          inCity,
+        }));
+      } catch {
+        // The import itself succeeded; only the count against the catalogue did not. Say
+        // that, rather than reporting a zero we did not measure.
+        setImportMessage(`${nextLibrary.length} films imported. The catalogue could not be reached, so we cannot say yet how many of them we hold. ${inCity} of them are on the map in ${cityName}.`);
+      }
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : "The file could not be imported.");
     } finally {

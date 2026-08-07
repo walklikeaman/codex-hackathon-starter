@@ -15,11 +15,15 @@ Related: [[three-axes]], [[place-precision]], [[fact-architecture]],
 | source | rows | geolocated | avg name | names > 12 words |
 |---|---|---|---|---|
 | moviemaps | 30,153 | 30,153 | 22 chars | 2 |
-| reelstreets | 8,063 | 27 | 37 chars | 508 |
-| movielocations | 5,783 | **0** | 79 chars | 2,722 (47%) |
+| reelstreets | 8,062 | 27 | 37 chars | 508 |
+| movielocations | 5,580 | **0** | 38 chars | 71 |
 | open_plaques | 53 | 53 | — | — |
 | wikipedia | 36 | 14 | — | — |
 | permit_record | 10 | 10 | — | — |
+
+The movie-locations row read `5,783 / 79 chars / 2,722` a few hours earlier. Another branch
+re-ingested the source in between. This is the second table on this page that needs a
+timestamp — see the last section.
 
 Three findings, and each one changed what was built.
 
@@ -29,15 +33,35 @@ distinct point**. The obvious offline check — "do the rows agree with each oth
 nothing, because they are the same number copied, not independent observations. It was
 tried, measured, and discarded.
 
-**13,841 rows have no coordinate and mostly cannot get one**, because `place_name` is not
-a name. 54% of movie-locations rows still carry the `<Film> location:` prefix the
-extractor was meant to cut, and 47% run past twelve words:
+**13,637 rows have no coordinate — and the first diagnosis of why was wrong.** It blamed
+captions: 47% of movie-locations names past twelve words, 54% carrying the `<Film>
+location:` prefix the extractor was meant to cut. Re-measured on 08.08 after
+movie-locations was re-ingested from another branch, that is **71 of 5,580** and **zero**.
+The extractor was fixed and the rows stayed pointless anyway, because of something the
+first measurement never checked:
 
-> John Wick Chapter 2 location: Wick gets the ancient plans of Gianna's estate: Antica
-> Libreria Cascianelli, Largo Febo, Rome | Photograph: Stephen Bisgrove / Alamy
+```
+source_kind      geocode_source
+moviemaps        moviemaps        30,147
+open_plaques     open_plaques         53
+permit_record    opendata_paris       10
+reelstreets      reelstreets          27   ← the 27 that came WITH points
+reelstreets      (null)            8,035
+movielocations   (null)            5,580
+```
 
-No geocoder resolves a sentence. **This is our bug, not the source lying**, and it is the
-single largest lever on pin count left in the project.
+**No geocoder has ever been run on this queue.** Every located row got its point from the
+source it was scraped from. The 13,637 are not blocked by their names; they are blocked
+because nobody ever asked a gazetteer. See [[geocoding-cascade]] and
+[app/lib/place-name-head.mjs](../../app/lib/place-name-head.mjs).
+
+The 508 ReelStreets names that DO run long are not captions either — they are written
+descriptions of where a camera stood, and they are good:
+
+> Bristol Temple Meads station on Station Approach off Bath Road in Bristol, Avon
+
+Precise, deliberate, and unanswerable by a gazetteer. That is a different problem from a
+broken extractor and it has a different fix.
 
 **Everything that would settle a MovieMaps row needs the network** — is there an entity
 here, does another site say the same thing — which is the lane a resolver in another
@@ -128,12 +152,62 @@ same production table. Across forty minutes of this session the resolved-row cou
 0 → 20 → 34 and the table lost 210 rows to its deduplication. Anything quoted from the
 queue is a snapshot; re-measure before acting on it.
 
+## Turning a name into a point
+
+[app/lib/place-name-head.mjs](../../app/lib/place-name-head.mjs), run by
+[scripts/geocode-submissions.mjs](../../scripts/geocode-submissions.mjs).
+
+What is stored is an address; what Wikidata holds is the venue.
+
+| asked | resolves |
+|---|---|
+| the name as stored | **0.8%** |
+| the first comma clause alone | **31.7%** |
+| head + area, kept only if the head landed inside the area | **8.3%** |
+
+The middle number is the tempting one and it is the wrong one. Dropping the comma clause
+throws away the disambiguator, which is exactly what `gazetteerName` refuses to do and is
+right to refuse. Measured, that 31.7% includes:
+
+```
+Zorba, Leinster Gardens, Bayswater, London W2   ->  "Zorba"               ->  Colorado
+St John's Square, Clerkenwell, London EC1       ->  "St John's Square"    ->  Malta
+Federal Reserve Bank, Liberty Street, New York  ->  "Federal Reserve Bank"->  Dallas
+Union League Club, West Jackson Boulevard, Chicago  ->  ...               ->  New York
+```
+
+So the clause is not discarded — it becomes the **area**, resolved separately, and the
+head is kept only if it landed within 100 km of it. `chooseCandidate` cannot make this
+check for us: it reports `unique` for a lone result wherever on earth it is, because its
+job is choosing between candidates, not checking one against the world.
+
+**Areas are tried most-specific-first**, and that alone doubled the yield (3.3% → 8.3%).
+A country centroid confirms nothing at a hundred kilometres — anchoring "Kladruby
+Monastery, Kladruby, Czech Republic" to the Czech Republic rejects a perfectly correct
+row, while "Kladruby" the village next door confirms it.
+
+**Refused before asking**, each one a measured wrong answer:
+
+- `head_is_a_common_noun` — "the alley at the corner of Seaford Road…" reduces to "alley",
+  which Wikidata places in Israel.
+- `road_is_a_line_not_a_point` — "A82 at Rannoch Moor…" reduces to "A82", whose Wikidata
+  point is the road's southern end in Glasgow: 80 km away, on the right road and in the
+  wrong place ([[place-precision]]).
+- `no_area_to_check_against` — nothing encloses the name, so nothing can confirm it. This
+  is the rule that keeps Zorba out of Colorado.
+
 ## Next, in order
 
-1. **Repair the names** — 13,841 rows cannot be geocoded because their name is a caption.
-   Worth more pins than any amount of clicking.
+1. **Finish the gazetteer pass.** 13,637 rows have never been asked; the first batch of
+   1,000 ran on 08.08. It is bounded and resumable — `--kind` and `--limit` — and WDQS
+   answers 429 under sustained load, so it is a job to run in batches rather than in one
+   go. At the measured 8.3% the whole queue is worth roughly 1,100 points, on works that
+   have none today.
 2. **A human surface** for what a rule leaves pending, ranked so an hour of attention
    changes the map the most. The runner prints the backlog; nothing renders it.
 3. **Promote a verified submission into a fact** — the 90 verified rows carry the sentence
    `statement` was built for ([[fact-architecture]]). Crosses "nothing from the queue
    enters the graph", so it is the owner's call.
+4. **The 508 ReelStreets descriptions** deserve better than a head. They name a corner, a
+   junction, a stretch of road — the kind of thing a routing service places precisely and
+   a gazetteer cannot. That is a source choice, not a rules choice.
