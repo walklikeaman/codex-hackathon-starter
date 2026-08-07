@@ -42,8 +42,10 @@ const SUBMISSION_FETCH_LIMIT = 200;
 // geolocated rows that the live map could not see. Read with the anon key like the rest
 // of the graph — the queue is public-read under RLS — and a failure costs these extra
 // places, never the map.
-const SUBMISSION_COLUMNS =
-  "id, place_name, area_hint, lat, lng, source_url, source_sentence, source_kind, works!inner(imdb_id, title_norm, kind)";
+const SUBMISSION_FIELDS = "id, place_name, area_hint, lat, lng, source_url, source_sentence, source_kind";
+const SUBMISSION_COLUMNS = `${SUBMISSION_FIELDS}, works!inner(imdb_id, title_norm, kind)`;
+// The own-records path needs the work's own identity, because Wikidata gave us none.
+const OWN_WORK_COLUMNS = `${SUBMISSION_FIELDS}, works!inner(id, title, title_norm, kind)`;
 
 // One identifier is not enough, and Doctor Who is why.
 //
@@ -396,6 +398,65 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
   };
 }
 
+// What our own records know, when Wikidata does not recognise the title at all.
+//
+// Measured on a random sample of fourteen works drawn from the queue: FOUR came back
+// completely empty although we hold their places. "Wild West Tech" and "The Drive of
+// Life" are not in Wikidata under that name, or are not the kind we asked for — and the
+// queue was only ever consulted after a work had been matched there. So the product was
+// silent about places it already had, which is the exact failure this session keeps
+// finding: work that never reaches the live path.
+//
+// Matched by title and kind, and labelled as such on every card.
+async function findOwnWorkPlaces({ query, kind, center, env = process.env }) {
+  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const titleNorm = normalizeWorkTitle(query ?? "");
+  if (!url || !anonKey || !titleNorm) return { matchedWork: null, locations: [] };
+
+  try {
+    const client = createClient(url, anonKey, { auth: { persistSession: false } });
+    const { data, error } = await client
+      .from("location_submissions")
+      .select(OWN_WORK_COLUMNS)
+      .eq("status", "pending")
+      .not("lat", "is", null)
+      .eq("works.title_norm", titleNorm)
+      .eq("works.kind", kind)
+      .limit(SUBMISSION_FETCH_LIMIT);
+
+    if (error) throw new Error(error.message);
+    if (!data?.length) return { matchedWork: null, locations: [] };
+
+    // Several rows of `works` can share a title — Doctor Who is two series. The one with
+    // the most places answers, and the rest come along: they are the same name and the
+    // card says the match was by title.
+    const byWork = new Map();
+    for (const row of data) {
+      const id = row.works?.id;
+      if (!id) continue;
+      byWork.set(id, [...(byWork.get(id) ?? []), row]);
+    }
+    const [bestId, rows] = [...byWork.entries()].sort((a, b) => b[1].length - a[1].length)[0] ?? [];
+    if (!bestId) return { matchedWork: null, locations: [] };
+
+    const work = { id: bestId, title: rows[0].works?.title ?? query, year: null };
+    return {
+      matchedWork: {
+        id: bestId,
+        label: work.title,
+        description: "from our own records — not identified in Wikidata",
+      },
+      locations: selectSubmissionPlaces(data, {
+        work, kind, center, limit: MAX_SUBMISSION_PLACES, matchedBy: MATCHED_BY.title,
+      }),
+    };
+  } catch (error) {
+    console.warn("own-records lookup failed", error?.message);
+    return { matchedWork: null, locations: [] };
+  }
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const lat = numberInRange(searchParams.get("lat"), DEFAULTS.lat, { min: -90, max: 90 });
@@ -422,18 +483,28 @@ export async function GET(request) {
     const workIds = workMatches.map((match) => match.id);
 
     if (workQuery && workIds.length === 0) {
-      return NextResponse.json({
-        center: { lat, lng },
-        radius_km: radius,
-        kind,
-        search_mode: "work",
-        matched_work: null,
-        locations: [],
-      });
+      // Wikidata does not know the title. Our own records still might.
+      const own = await findOwnWorkPlaces({ query: workQuery, kind, center: { lat, lng } });
+      return NextResponse.json(
+        {
+          center: { lat, lng },
+          radius_km: radius,
+          kind,
+          search_mode: "work",
+          matched_work: own.matchedWork,
+          here: own.locations.length,
+          candidates: own.locations.length,
+          queued: own.locations.length,
+          locations: addSceneMatchTokens(gradeLocations(
+            locationsByDistance(own.locations, { lat, lng }, radius),
+          )),
+        },
+        { headers: { "Cache-Control": SCENE_MATCH_TOKEN_CACHE_CONTROL } },
+      );
     }
 
     if (workQuery) {
-      const result = await findLocationsByTitle({
+      let result = await findLocationsByTitle({
         workMatches,
         kind,
         center: { lat, lng },
@@ -441,6 +512,22 @@ export async function GET(request) {
         limit,
         excludeLocationId,
       });
+
+      // Wikidata had candidates and none of them was this kind of work — "Wild West Tech"
+      // is a television documentary our records call a film. Ask our own records before
+      // answering with nothing.
+      if (!result.matchedWork) {
+        const own = await findOwnWorkPlaces({ query: workQuery, kind, center: { lat, lng } });
+        if (own.locations.length) {
+          result = {
+            matchedWork: own.matchedWork,
+            locations: locationsByDistance(own.locations, { lat, lng }, radius),
+            here: own.locations.length,
+            candidate_count: own.locations.length,
+            queued_count: own.locations.length,
+          };
+        }
+      }
 
       return NextResponse.json(
         {
