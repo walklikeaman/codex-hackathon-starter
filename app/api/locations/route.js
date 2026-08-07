@@ -31,41 +31,83 @@ import {
 import { findInvertedPlaces } from "../../lib/inverted-places.mjs";
 import { DISPLAY, gradePlace } from "../../lib/place-grade.mjs";
 import { createClient } from "@supabase/supabase-js";
-import { REFUSED_SOURCES, selectSubmissionPlaces } from "../../lib/submission-places.mjs";
+import { MATCHED_BY, selectSubmissionPlaces } from "../../lib/submission-places.mjs";
+import { normalizeWorkTitle } from "../../lib/content-graph.mjs";
 
 // How many queue rows one work may contribute. Person of Interest alone has 961.
 const MAX_SUBMISSION_PLACES = 12;
 const SUBMISSION_FETCH_LIMIT = 200;
 
-// Everything the ingest found, reachable from a title search.
+// Everything the ingest found, reachable from a title search: 6,041 works and 30,189
+// geolocated rows that the live map could not see. Read with the anon key like the rest
+// of the graph — the queue is public-read under RLS — and a failure costs these extra
+// places, never the map.
+const SUBMISSION_COLUMNS =
+  "id, place_name, area_hint, lat, lng, source_url, source_sentence, source_kind, works!inner(imdb_id, title_norm, kind)";
+
+// One identifier is not enough, and Doctor Who is why.
 //
-// The bridge is the IMDb id: a work matched in Wikidata carries P345, and the ingested
-// works carry `imdb_id` — 6,041 of them, covering 30,189 geolocated rows. Wikidata q-ids
-// would not work; only 15 of our works have one.
+// Wikidata's item for the series carries IMDb `tt0056751` — the 1963 series. Our queue
+// was filled under `tt0436992`, the 2005 revival: 566 rows against 3. Both are Doctor
+// Who, one identifier reaches three of them, and a search that answers with three is
+// wrong in the way that matters — the person asked for Doctor Who and we had 566.
 //
-// Read with the anon key, like the rest of the graph: the queue is public-read under RLS
-// already. A failure costs the candidates and never the map.
-async function findSubmissionPlaces({ imdbId, work, kind, center, exclude, env = process.env }) {
-  if (!imdbId) return [];
+// The same shape waits in every long-running series, every remake and every work whose
+// two sources picked different ids. So identifiers first, ALL of them — an item may
+// carry several P345 values, plus a TMDB id — and then the title, which finds the rest.
+//
+// The two are not equally strong and the card says which one it was: a title is shared
+// by works that have nothing to do with each other (Gladiator is two films), so a
+// title-matched row is labelled "matched by title" and asks to be checked.
+async function findSubmissionPlaces({ workEntity, work, kind, center, exclude, env = process.env }) {
   const url = env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return [];
 
+  const imdbIds = entityClaimValues(workEntity, "P345").filter((id) => /^tt\d+$/.test(String(id)));
+  const tmdbId = entityClaimValues(workEntity, "P4947")[0] ?? null;
+  const titleNorm = normalizeWorkTitle(work.title ?? "");
+
   try {
     const client = createClient(url, anonKey, { auth: { persistSession: false } });
-    const { data, error } = await client
+    const base = () => client
       .from("location_submissions")
-      .select("id, place_name, area_hint, lat, lng, source_url, source_sentence, source_kind, works!inner(imdb_id)")
-      .eq("works.imdb_id", imdbId)
+      .select(SUBMISSION_COLUMNS)
       .eq("status", "pending")
       .not("lat", "is", null)
-      // Filtered in the query as well as in the module: a refused source should not even
-      // travel over the wire.
-      .not("source_kind", "in", `(${REFUSED_SOURCES.join(",")})`)
       .limit(SUBMISSION_FETCH_LIMIT);
 
-    if (error) throw new Error(error.message);
-    return selectSubmissionPlaces(data ?? [], {
+    const rows = [];
+    const seen = new Set();
+    const collect = (data, matchedBy) => {
+      for (const row of data ?? []) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        rows.push({ ...row, matched_by: matchedBy });
+      }
+    };
+
+    if (imdbIds.length || tmdbId) {
+      const filters = [
+        imdbIds.length ? `imdb_id.in.(${imdbIds.join(",")})` : null,
+        tmdbId ? `tmdb_id.eq.${tmdbId}` : null,
+      ].filter(Boolean).join(",");
+      const { data, error } = await base().or(filters, { referencedTable: "works" });
+      if (error) throw new Error(error.message);
+      collect(data, MATCHED_BY.id);
+    }
+
+    // The title round runs even when the identifier found rows: 3 of Doctor Who's 569
+    // came from the id, and stopping there would have been the bug.
+    if (titleNorm) {
+      const { data, error } = await base()
+        .eq("works.title_norm", titleNorm)
+        .eq("works.kind", kind);
+      if (error) throw new Error(error.message);
+      collect(data, MATCHED_BY.title);
+    }
+
+    return selectSubmissionPlaces(rows, {
       work, kind, center, limit: MAX_SUBMISSION_PLACES, exclude,
     });
   } catch (error) {
@@ -331,7 +373,7 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
   // deduplicated against both of the above, and so a slow database never delays the
   // answer that Wikidata already gave.
   const queued = await findSubmissionPlaces({
-    imdbId: entityClaimValues(workEntity, "P345")[0] ?? null,
+    workEntity,
     work,
     kind,
     center,
