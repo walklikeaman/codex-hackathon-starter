@@ -1,0 +1,37 @@
+{
+ "version": 1,
+ "source": "reelstreets-places",
+ "updated_at": "2026-08-07T20:15:04+00:00",
+ "runs": [
+  {
+   "at": "2026-08-07T20:15:04+00:00",
+   "extracted": 3,
+   "errors": 0,
+   "tokens": 45092,
+   "model": "qwen/qwen3.7-flash"
+  }
+ ],
+ "records": {
+  "339974": {
+   "modified": null,
+   "seen_at": "2026-08-07T20:13:30+00:00",
+   "slug": "six-sided-triangle-the",
+   "real": 13,
+   "fingerprint": "e8404361d8db19f5"
+  },
+  "339571": {
+   "modified": null,
+   "seen_at": "2026-08-07T20:14:11+00:00",
+   "slug": "sammy-and-rosie-get-laid",
+   "real": 38,
+   "fingerprint": "7181f1deeef027c1"
+  },
+  "339851": {
+   "modified": null,
+   "seen_at": "2026-08-07T20:15:04+00:00",
+   "slug": "amelie",
+   "real": 61,
+   "fingerprint": "947b526303b37ccc"
+  }
+ }
+}

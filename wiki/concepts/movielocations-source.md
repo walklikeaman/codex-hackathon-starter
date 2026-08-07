@@ -57,6 +57,20 @@ global key, so the dedup has to be global too. [[reelstreets-source]]'s ingest
 carried the same latent bug and was fixed with it — it had simply not met a
 collision yet.
 
+## A fourth defect, found by another source rather than by a test
+
+The caption regex demanded "filming location" or "film location". The site also
+writes plain "<Film> location:", and every caption of that shape failed to split
+— so the whole caption landed in `place_name`. **3,125 of 5,783 rows, 54% of the
+source.** It shipped, passed tests, and lived a day in the database.
+
+Nothing local caught it: the rows looked plausible, and the tests exercised the
+caption format that had been anticipated. It surfaced only when
+[[cross-source]] matching put these place names beside another site's, where
+`Skyfall location: Silva escapes into the underground system: …` could not be
+mistaken for an address. Repaired from cache with no network, the broken rows
+deleted and the source re-ingested: median place name 84 → 37 characters.
+
 ## Licence
 
 No terms page, no copyright statement, nothing on the homepage. The same silence

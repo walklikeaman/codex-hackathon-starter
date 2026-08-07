@@ -88,6 +88,9 @@ CHUNK = 25
 # globally across workers, a little under the cap.
 FREE_TIER_RPM = 18
 
+# Attempts before a rate limit is treated as a broken run rather than a blip.
+RETRIES = 5
+
 
 class RateLimiter:
     """One shared clock. N workers still add up to at most RPM per minute."""
@@ -108,6 +111,18 @@ class RateLimiter:
 LIMITER = RateLimiter(FREE_TIER_RPM)
 
 
+def pace_for(model_name: str, override: int | None = None) -> None:
+    """Only :free models sit in the shared 20/min bucket.
+
+    Leaving the free pace on a paid model would stretch an hour of work into
+    three for a ceiling that does not apply to it.
+    """
+    global LIMITER
+    rpm = override or (FREE_TIER_RPM if model_name.endswith(':free') else 240)
+    LIMITER = RateLimiter(rpm)
+    print(f'pacing at {rpm} requests/min')
+
+
 def build_prompt(film: dict, locations: list[dict]) -> str:
     lines = [f'Film: {film.get("title")} ({film.get("year")})']
     if film.get('locations_named'):
@@ -124,7 +139,7 @@ def extract_film(model: JsonOpenRouter, film: dict) -> dict:
     if not film.get('locations'):
         return {**{k: film[k] for k in ('id', 'slug', 'title', 'year')}, 'captures': []}
 
-    def ask(batch: list[dict], depth: int = 0, retries: int = 5) -> list[dict]:
+    def ask(batch: list[dict], depth: int = 0, retries: int = RETRIES) -> list[dict]:
         """One call for one batch, splitting rather than repeating on bad JSON.
 
         At temperature 0 a retry sends a bit-identical request and gets a
@@ -149,12 +164,22 @@ def extract_film(model: JsonOpenRouter, film: dict) -> dict:
                          or 'timed out' in text or 'temporarily' in text
                          or '502' in text or '503' in text or '504' in text)
             if transient:
-                if retries <= 0:
-                    print(f'  giving up on {film["slug"]} captions '
-                          f'{batch[0]["index"]}-{batch[-1]["index"]}: {str(exc)[:60]}')
-                    return []
-                time.sleep(min(20, 3 * (6 - retries)))
-                return ask(batch, depth, retries - 1)
+                if retries > 0:
+                    time.sleep(min(20, 3 * (6 - retries)))
+                    return ask(batch, depth, retries - 1)
+                # Retries exhausted. Returning [] here is what silently lost
+                # 3,630 batches across 2,292 films: the backoff is sized for a
+                # per-minute window, and a free tier's DAILY cap cannot be waited
+                # out in fifteen seconds, so every batch "gave up" in turn and
+                # the run looked like it was working. A limit that does not clear
+                # is a broken run, not a missing caption — stop the whole thing
+                # so the state is obviously bad rather than quietly thin.
+                raise RuntimeError(
+                    f'rate limit did not clear after {RETRIES} attempts on '
+                    f'{film["slug"]} captions {batch[0]["index"]}-{batch[-1]["index"]}. '
+                    f'A free-tier daily cap cannot be waited out; re-run with '
+                    f'--model on a paid model, or tomorrow. Last error: {str(exc)[:80]}'
+                ) from exc
             if len(batch) == 1 or depth > 4:
                 print(f'  unparseable for {film["slug"]} caption '
                       f'{batch[0]["index"]}: {str(exc)[:70]}')
@@ -219,6 +244,7 @@ def main() -> int:
     ap.add_argument('--workers', type=int, default=4)
     ap.add_argument('--model')
     ap.add_argument('--show', action='store_true', help='print every extraction')
+    ap.add_argument('--rpm', type=int, help='override the request pace')
     ap.add_argument('--data', type=Path, default=DATA)
     args = ap.parse_args()
 
@@ -261,6 +287,7 @@ def main() -> int:
     except MissingApiKey as exc:
         print(f'error: {exc}', file=sys.stderr)
         return 2
+    pace_for(resolve_model(args.model), args.rpm)
     print(f'model: {resolve_model(args.model)} via OpenRouter\n')
 
     started = time.monotonic()

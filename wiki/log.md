@@ -7,6 +7,50 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-08] incident | Cross-source matching found a defect in 54% of a source
+
+**Object**: `tools/scraperai/movielocations.py`, `app/lib/{cross-source,wikidata-resolve}.mjs`,
+`scripts/{corroborate-sources,resolve-wikidata}.mjs`,
+`supabase/migrations/20260807213453`
+**Scenario**: bugfix · **Outcome**: ✅ success
+**Code changes**: this commit
+
+**Nothing from three scrapes can reach the map, and measuring why came first.**
+`place-review.mjs` weights `wikidata_entity` at 0.6 against a 0.6 threshold, so a
+canonical entity is the only single signal that verifies — and `cited_source +
+coordinate_agreement` combine by noisy-OR to 0.5875, just under. Not one of
+44,088 submissions had a Q-id. A second wall sits in front of that one:
+`disqualification()` refuses any row without a coordinate, and 13,819 have none.
+
+**So: resolve pins to Wikidata by coordinate AND name.** Measured properly
+before committing to a 21-hour run — 196 real pins, four candidate rules scored
+on one fetch so they stayed comparable. The surprise was that "one name contains
+the other" resolves FEWER than strict equality: a substring catches neighbours,
+the case turns ambiguous, and an ambiguous case is correctly discarded. The
+chosen rule drops a generic word only when BOTH names carry one, which is what
+stops "Victoria Park" collapsing onto "Victoria". 28.1%, and the ceiling is the
+data: 138 of 196 had some entity within 150 m but the rest are genuine
+neighbours, and Wikidata holds no entry for an ordinary house.
+
+**Cross-source corroboration earned its keep before writing a row.** Among pairs
+it declined, rows appeared like `Skyfall location: Silva escapes into the
+underground system: Ventilator …` — a whole caption sitting where a place name
+belongs. The movie-locations regex demanded "filming location" or "film
+location"; the site also writes plain "<Film> location:", and every one of those
+failed to split. **3,125 of 5,783 rows, 54% of the source**, shipped yesterday,
+past tests and past review, living a day in the database. Tests only checked
+captions of the format that was anticipated. Fixed with one optional word,
+re-parsed from cache with no network at all, the broken rows deleted (all
+`pending`, nothing referencing them) and the source re-ingested: median place
+name 84 → 37 characters, zero unsplit captions.
+
+Corroboration itself is modest — 89 rows gain agreement, 81 of them a coordinate
+they lacked — because sources write the same address very differently. Loosening
+that match is the next real task, and it is judgement at a scale of thousands
+rather than a rule.
+
+**Updated**: `test/cross-source.test.mjs`, `wiki/concepts/movielocations-source.md`
+
 ## [2026-08-07] ingest | movie-locations.com, and three defects caught at the door
 
 **Object**: `tools/scraperai/{movielocations,crawler}.py`,

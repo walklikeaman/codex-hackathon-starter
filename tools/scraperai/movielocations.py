@@ -44,10 +44,16 @@ SITEMAP = f'{BASE}/pro-sitemaps-4055503.php'
 OUT = Path(__file__).resolve().parents[2] / 'data' / 'movielocations'
 
 _WS = re.compile(r'\s+')
-# "Vertigo filming location: Scottie's home: 900 Lombard Street" — the site
-# writes both "filming location" and "film location", and the film name always
-# leads. Everything after the first marker is scene-then-address.
-_CAPTION = re.compile(r'^(.*?)\s+(?:filming|film)\s+location\s*:\s*(.*)$', re.I | re.S)
+# "Vertigo filming location: Scottie's home: 900 Lombard Street" — the film name
+# always leads, and everything after the marker is scene-then-address.
+#
+# The marker itself varies more than it first appears: "filming location",
+# "film location", and plain "location". The first version demanded one of the
+# two-word forms, so every plain "<Film> location:" caption failed to split and
+# the WHOLE caption became the place name — 3,125 of 5,783 rows, 54% of the
+# source, already written to the database before a cross-source comparison
+# surfaced them. Hence the optional word rather than the alternation.
+_CAPTION = re.compile(r'^(.*?)\s+(?:filming\s+|film\s+)?location\s*:\s*(.*)$', re.I | re.S)
 
 
 def clean(text):
