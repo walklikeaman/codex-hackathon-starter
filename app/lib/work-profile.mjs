@@ -16,6 +16,7 @@
 import { parseTmdbMovieId } from "./tmdb-images.mjs";
 import { imdbUrl, metacriticUrl, rottenTomatoesUrl } from "./work-ratings.mjs";
 import { finiteOrNull } from "./numbers.mjs";
+import { distanceLabel, factDistance, factSentence, isRoutableFact } from "./facts.mjs";
 
 export const MAX_PROFILE_PLACES = 60;
 export const MAX_PROFILE_STILLS = 12;
@@ -100,9 +101,27 @@ export function placeSummary(place) {
   const role = placeRole(place);
   const lat = finiteOrNull(place?.lat);
   const lng = finiteOrNull(place?.lng);
+  // A fact row carries its own distance from work_facts(); a bare place row does not,
+  // and deriving it here means a caller that has not moved to the RPC still gets an
+  // honest answer rather than a missing field the client reads as zero.
+  const distance = Number.isFinite(place?.distance) ? place.distance : factDistance(place);
 
   return {
     id: place?.place_id ?? place?.id ?? null,
+    fact_id: place?.fact_id ?? null,
+    // WHO this fact is about. A film's card shows facts about the film and facts about
+    // the people who made it, and a reader must be able to tell which is which.
+    subject_type: place?.subject_type ?? "work",
+    subject_name: place?.subject_name ?? null,
+    about: place?.about ?? null,
+    stated_year: finiteOrNull(place?.stated_year),
+    // The source's own words when we have them; the template only when we do not.
+    sentence: factSentence(place),
+    distance,
+    distance_label: distanceLabel(distance),
+    // Distance 2 is "nearby, and here is why it is interesting" — never a stop somebody
+    // is told to walk to. The interface needs that as a flag, not as a rule it re-derives.
+    routable: isRoutableFact({ ...place, distance }),
     name: place?.name ?? null,
     city: place?.city ?? null,
     country: place?.country ?? null,
@@ -126,6 +145,11 @@ const ROLE_ORDER = ["on_location", "unknown", "studio", "narrative", "fictional"
 
 export function sortPlaces(places) {
   return [...places].sort((a, b) => {
+    // Distance outranks role: "the director lived here" is a real find, and it still
+    // belongs below every place the film itself was shot at. Without this, one plaque
+    // about a screenwriter outranks the street in the opening shot.
+    const byDistance = (a.distance ?? 0) - (b.distance ?? 0);
+    if (byDistance !== 0) return byDistance;
     const byRole = ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role);
     if (byRole !== 0) return byRole;
     return (b.confidence ?? 0) - (a.confidence ?? 0);

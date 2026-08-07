@@ -20,8 +20,8 @@ production: empty for **0 of 24** famous titles, median 1.3 s.
 
 | | |
 |---|---|
-| main | `79bf9e8` — "A title on a wall becomes a work with a real identifier (#140)", deployed and verified |
-| tests | 854, `node --test test/*.test.mjs`, zero network |
+| main | see `git log` — the fact architecture (#129) landed 08.08 |
+| tests | 874, `node --test test/*.test.mjs`, zero network |
 | works | 7,063 · **28 with a Wikidata id** · 70 places · 92 verified links |
 | queue | **44,098 submissions, 30,257 geolocated, across 6,075 works — zero reviewed** |
 | by source | moviemaps 30,153 · reelstreets 8,063 · movielocations 5,783 · open_plaques 53 · wikipedia 36 · permits 10 |
@@ -39,7 +39,14 @@ touching [app/api/locations/route.js](app/api/locations/route.js):
 
 ## What is built and NOT wired up
 
-Nothing, as of this session — and that is worth keeping true. The project's most repeated
+One thing, named precisely: **`statement`, `about` and `stated_year` have a reader and no
+writer.** The work card prints them; nothing fills them yet, because `/api/resolve`
+deliberately leaves `statement` null — a P915 statement says a work and a place are related
+and no more. The first real producer is the 53 Open Plaques rows in the queue (see step 2
+below). `creator_place_links` is the same: the table, the evidence trigger and the card
+path all exist, and `creators` still holds zero rows.
+
+That is worth keeping true. The project's most repeated
 failure is finished work that never reaches the live path: it happened with posters,
 ratings, three audio features, the personal library, the map filter, then all three place
 modules, then the entire 30k-row ingest. **Before writing a module, grep for its callers**
@@ -70,7 +77,17 @@ gh workflow run "Deploy production" -f ref=main -f confirm_production=true
 **The database has rules the repo does not describe.** Twice a constraint existed only in
 production because another session applied it through the MCP without committing — and a
 new `CHECK` was then rejected by 8,063 live rows. Read the live definition first: a
-constraint is written against the database that exists, not the one in git.
+constraint is written against the database that exists, not the one in git. Measured on
+08.08: **13 migrations existed in production and in no file**; all 13 are now committed.
+Check it stays true — `select name from supabase_migrations.schema_migrations` against
+`ls supabase/migrations/`.
+
+**A schema change that is correct in SQL can still break the client.** `on_conflict` in
+PostgREST is a promise about an index SHAPE, and nothing in the database says who relies on
+it. Splitting a unique constraint into two PARTIAL indexes on 31.07 killed the only write
+path into the graph for eight days — `ERROR 42P10`, raised *after* the Wikidata work had
+succeeded, so the route looked busy. See [[fact-architecture]]. When you change a unique
+index, grep for `onConflict`.
 
 **Never run `next build` while the dev server is up** — it clobbers `.next`. Check
 `lsof -ti:3000`.
@@ -176,19 +193,26 @@ Three numbers to correct, because an earlier note in this project overstated the
   walking tour would be grotesque.
 
 The remaining volume in plaques is the **person path** — 2,952 plaques about 1,479
-creative people with Wikipedia links — and it is blocked on `creators` / `work_creators`
-being empty.
+creative people with Wikipedia links. As of 08.08 the schema is no longer in the way:
+`creator_place_links` exists, a person's fact reaches a work through `work_creators`, and
+`lived_here` / `wrote_here` / `died_here` / `buried_here` / `commemorated_here` are real
+relation kinds instead of one vague `author_place`. What remains is **data**: `creators`
+and `work_creators` hold zero rows, and filling them is a source problem, not a rules one.
 
 ## Next, in the order I would take it
 
-1. **#129 — the fact architecture.** The most valuable and the most blocking. Two breaks
-   are visible without writing code: `unique (work_id, place_id, relation_kind)` forbids a
-   second fact of the same kind (Abbey Road is one row for twelve Beatles recordings), and
-   a fact about a person is pinned to a work (Rowling's café is seven rows with the same
-   evidence copied seven times, because `creator_place_links` does not exist). Everything
-   below is easier afterwards.
+1. ~~**#129 — the fact architecture.**~~ **Done 08.08** — see [[fact-architecture]]. A fact
+   now has identity (`about` in the uniqueness key), a payload (`about`, `stated_year`), its
+   own sentence (`statement`, printed verbatim), a person subject (`creator_place_links`)
+   and a degree of separation. `place_facts` reads both ends; `work_facts(work_id)` is the
+   whole card in one call. **Steps 4 and 5 of the issue are the remainder**: the place card
+   over that view, and distance shown in the interface rather than only carried in the API.
 2. **A review UI for the queue.** 30,257 geolocated rows, **zero reviewed**. Showing them
-   honestly as candidates buys time; it is not a substitute for a decision per row.
+   honestly as candidates buys time; it is not a substitute for a decision per row. The
+   graph can accept them again as of 08.08 — the write path was dead, and now is not.
+   **The smallest honest first bite: the 53 Open Plaques rows**, which carry an inscription
+   sentence and a work id and would be the first content `statement` ever holds. That
+   crosses "nothing from the queue enters the graph", so it is the owner's call.
 3. **#125 — the person path in plaques.** Needs `creators` / `work_creators` filled, or a
    Wikidata person→works bridge. This is the next real volume lever, and it is a SOURCE
    problem, not a rules problem.
