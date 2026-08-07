@@ -21,9 +21,9 @@ production: empty for **0 of 24** famous titles, median 1.3 s.
 | | |
 |---|---|
 | main | see `git log` — the fact architecture (#129) landed 08.08 |
-| tests | 874, `node --test test/*.test.mjs`, zero network |
+| tests | 898, `node --test test/*.test.mjs`, zero network |
 | works | 7,063 · **28 with a Wikidata id** · 70 places · 92 verified links |
-| queue | **44,098 submissions, 30,257 geolocated, across 6,075 works — zero reviewed** |
+| queue | 43,888 submissions, 30,257 geolocated — **90 verified, 914 rejected, the rest pending with a reason** (08.08; another branch is deduplicating, so this moves) |
 | by source | moviemaps 30,153 · reelstreets 8,063 · movielocations 5,783 · open_plaques 53 · wikipedia 36 · permits 10 |
 
 **The map answers from three stores at once**, and this is the thing to understand before
@@ -34,8 +34,10 @@ touching [app/api/locations/route.js](app/api/locations/route.js):
    ([app/lib/inverted-places.mjs](app/lib/inverted-places.mjs)), live, geographic.
 3. **Our queue** — `location_submissions`, bridged by IMDb id and by title
    ([app/lib/submission-places.mjs](app/lib/submission-places.mjs)). Everything from it
-   arrives as a **candidate**: hollow pin, "not yet verified by us", a link to the source.
-   Nothing from the queue enters `places` or the graph.
+   arrives as a **candidate**: hollow pin, a link to the source, and since 08.08 either
+   "not yet verified by us" or "Source checked" with the reason ([[queue-review]]). The
+   map reads *not rejected*, NOT *pending* — filtering on `pending` meant believing a row
+   deleted it. Nothing from the queue enters `places` or the graph.
 
 ## What is built and NOT wired up
 
@@ -43,8 +45,8 @@ One thing, named precisely: **`statement`, `about` and `stated_year` have a read
 writer.** The work card prints them; nothing fills them yet, because `/api/resolve`
 deliberately leaves `statement` null — a P915 statement says a work and a place are related
 and no more. The first real producer is the 53 Open Plaques rows in the queue (see step 2
-below). `creator_place_links` is the same: the table, the evidence trigger and the card
-path all exist, and `creators` still holds zero rows.
+below) — 90 of which now carry a verdict. `creator_place_links` is the same: the table,
+the evidence trigger and the card path all exist, and `creators` still holds zero rows.
 
 That is worth keeping true. The project's most repeated
 failure is finished work that never reaches the live path: it happened with posters,
@@ -207,12 +209,19 @@ and `work_creators` hold zero rows, and filling them is a source problem, not a 
    and a degree of separation. `place_facts` reads both ends; `work_facts(work_id)` is the
    whole card in one call. **Steps 4 and 5 of the issue are the remainder**: the place card
    over that view, and distance shown in the interface rather than only carried in the API.
-2. **A review UI for the queue.** 30,257 geolocated rows, **zero reviewed**. Showing them
-   honestly as candidates buys time; it is not a substitute for a decision per row. The
-   graph can accept them again as of 08.08 — the write path was dead, and now is not.
-   **The smallest honest first bite: the 53 Open Plaques rows**, which carry an inscription
-   sentence and a work id and would be the first content `statement` ever holds. That
-   crosses "nothing from the queue enters the graph", so it is the owner's call.
+2. **The queue.** First verdicts landed 08.08 — see [[queue-review]] and the log. What
+   remains, in order:
+   - **Repair the names.** 13,841 rows have no coordinate and mostly cannot get one,
+     because `place_name` is a caption rather than a name: 47% of movie-locations rows run
+     past twelve words and 54% still carry the `<Film> location:` prefix the extractor was
+     meant to cut. **This is worth more pins than any amount of clicking** and it is our
+     bug, not the source's. The review already labels them `unusable_name:*`.
+   - **A human surface** for the rows a rule leaves pending, ranked so an hour of somebody's
+     attention changes the map the most. `scripts/review-submissions.mjs` prints the
+     backlog; nothing renders it.
+   - **Promoting a verified submission into a fact** — the 90 verified rows carry the
+     sentence `statement` was built for. That crosses "nothing from the queue enters the
+     graph", so it is the owner's call.
 3. **#125 — the person path in plaques.** Needs `creators` / `work_creators` filled, or a
    Wikidata person→works bridge. This is the next real volume lever, and it is a SOURCE
    problem, not a rules problem.

@@ -58,10 +58,23 @@ export const MATCHED_BY = Object.freeze({
 // A sentence that says exactly what this is: somebody's claim, from a named source, not
 // yet checked by us. The source's own sentence leads when it has one — a permit record
 // and a Wikipedia line both say more than any template could.
+// A row that has been through the review and survived it. It is still NOT a place in the
+// graph — nothing here is — but "nobody has looked at this" and "we looked, and the
+// source is one a stranger can check" are different sentences, and saying the first about
+// the second is its own small dishonesty.
+function checkedNote(row) {
+  if (row?.status !== "verified") return "";
+  const reason = String(row?.status_reason ?? "").trim();
+  return reason
+    ? ` We have checked the source: ${reason}. It is still a candidate, not part of our graph.`
+    : " We have checked the source. It is still a candidate, not part of our graph.";
+}
+
 function submissionDescription(row, workTitle, matchedBy) {
   const place = row.place_name;
   const who = SOURCE_LABELS[row.source_kind]?.who ?? "an external source";
   const stated = String(row.source_sentence ?? "").trim();
+  const checked = checkedNote(row);
   // Said plainly rather than hedged: the title matched, the identifier did not, and a
   // work can share a title with a different work — Doctor Who is two series under one
   // name, and Gladiator is two films.
@@ -69,8 +82,11 @@ function submissionDescription(row, workTitle, matchedBy) {
     ? ` Matched to ${workTitle} by title, not by identifier — check it is the same work.`
     : "";
 
-  if (stated) return `${stated} — recorded for ${workTitle} by ${who}, not yet verified by us.${caveat}`;
-  return `${place} is listed as a location for ${workTitle} by ${who}. Not yet verified by us.${caveat}`;
+  const unchecked = checked ? "" : " Not yet verified by us.";
+  if (stated) {
+    return `${stated} — recorded for ${workTitle} by ${who}.${unchecked}${checked}${caveat}`;
+  }
+  return `${place} is listed as a location for ${workTitle} by ${who}.${unchecked}${checked}${caveat}`;
 }
 
 export function submissionToLocation(row, { work, kind, matchedBy = MATCHED_BY.id }) {
@@ -97,7 +113,10 @@ export function submissionToLocation(row, { work, kind, matchedBy = MATCHED_BY.i
     film_tmdb_id: null,
     relation_kind: SUBMISSION_RELATION_KIND,
     relation_property: null,
-    relation_label: matchedBy === MATCHED_BY.title ? "In review · matched by title" : "In review",
+    relation_label: row.status === "verified"
+      ? (matchedBy === MATCHED_BY.title ? "Source checked · matched by title" : "Source checked")
+      : (matchedBy === MATCHED_BY.title ? "In review · matched by title" : "In review"),
+    review_status: row.status ?? "pending",
     relation_description: submissionDescription(row, work.title, matchedBy),
     matched_by: matchedBy,
     // The area the source named, when it gave one — "Top of Bevington Road" is more use

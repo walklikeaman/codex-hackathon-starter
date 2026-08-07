@@ -42,7 +42,8 @@ const SUBMISSION_FETCH_LIMIT = 200;
 // geolocated rows that the live map could not see. Read with the anon key like the rest
 // of the graph — the queue is public-read under RLS — and a failure costs these extra
 // places, never the map.
-const SUBMISSION_FIELDS = "id, place_name, area_hint, lat, lng, source_url, source_sentence, source_kind";
+const SUBMISSION_FIELDS =
+  "id, place_name, area_hint, lat, lng, source_url, source_sentence, source_kind, status, status_reason";
 const SUBMISSION_COLUMNS = `${SUBMISSION_FIELDS}, works!inner(imdb_id, title_norm, kind)`;
 // The own-records path needs the work's own identity, because Wikidata gave us none.
 const OWN_WORK_COLUMNS = `${SUBMISSION_FIELDS}, works!inner(id, title, title_norm, kind)`;
@@ -75,7 +76,10 @@ async function findSubmissionPlaces({ workEntity, work, kind, center, exclude, e
     const base = () => client
       .from("location_submissions")
       .select(SUBMISSION_COLUMNS)
-      .eq("status", "pending")
+      // NOT rejected, rather than pending. A row we have checked and believe must not
+      // vanish from the map the moment somebody believes it, which is what filtering on
+      // `pending` did — the review would have quietly deleted its own best results.
+      .neq("status", "rejected")
       .not("lat", "is", null)
       .limit(SUBMISSION_FETCH_LIMIT);
 
@@ -419,7 +423,10 @@ async function findOwnWorkPlaces({ query, kind, center, env = process.env }) {
     const { data, error } = await client
       .from("location_submissions")
       .select(OWN_WORK_COLUMNS)
-      .eq("status", "pending")
+      // NOT rejected, rather than pending. A row we have checked and believe must not
+      // vanish from the map the moment somebody believes it, which is what filtering on
+      // `pending` did — the review would have quietly deleted its own best results.
+      .neq("status", "rejected")
       .not("lat", "is", null)
       .eq("works.title_norm", titleNorm)
       .eq("works.kind", kind)

@@ -7,6 +7,92 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-08] decision | The queue got its first verdicts, and the count that mattered was not 30,257
+
+**Object**: `app/lib/submission-review.mjs`, `scripts/review-submissions.mjs`,
+`app/api/locations/route.js`, `app/lib/submission-places.mjs`
+**Scenario**: feature · **Outcome**: ✅ success
+
+"30,257 rows, zero reviewed" reads as a clicking problem. Measured before writing
+anything, it is not one, and three numbers say why.
+
+**The 30,257 geolocated rows are 30,153 MovieMaps rows and 104 others.** Their names are
+clean — 22 characters on average, two rows over twelve words in the whole set — and their
+coordinates are one per place: **3,187 of 3,313 name-clusters hold exactly ONE distinct
+point**. So the obvious offline check, "do the rows agree with each other", proves
+nothing; they are the same number copied, not independent observations. Everything that
+would actually settle such a row needs the network.
+
+**13,841 rows have no coordinate, and mostly cannot get one, because the name is a
+caption.** 47% of movie-locations names run past twelve words and 54% still carry the
+`<Film> location:` prefix the extractor was meant to cut — which is why **zero** of its
+5,783 rows are geocoded, and reelstreets has 27 of 8,063. That is our extraction failing,
+not the source lying, and the review says so per row instead of burying it.
+
+**So a human queue of 30,257 rows is not a product** — the reviewer would hold no more
+information than we do. What shipped is the verdict itself: mechanical refusals, a
+source-class rule for claims a stranger can already check, and the weighted path for the
+signals the resolver in another branch is producing.
+
+**Applied to production: 90 verified, 914 rejected.** 53 plaques (the sentence is
+engraved on a wall at the coordinate — nothing else in the corpus is checkable that
+cheaply), 10 filming permits (the city that issued it is the authority), 27 rows carrying
+both a resolved Q-id and a statement. Rejected: 161 rows named "Google Maps" and kin —
+the caption of a map link — and 753 whose name is a photo credit, "Wikimedia /
+Alexanderm14".
+
+**Two rules were wrong first, and the live data said so both times.**
+
+`wikidata_entity` is a CLAIM signal in `place-review.mjs` and that is right there and
+wrong here. For a place discovered from a work's Wikidata statement, the entity IS the
+claim. For a queue row the Q-id is found the other way round — by asking what sits at the
+coordinate the scraper gave — so it proves the BUILDING exists and says nothing about
+whether a film was shot in it. It also scores 0.6, exactly the threshold, so without the
+correction 29 rows would have published "filmed here" on the strength of "this address is
+real".
+
+And `cited_source` first demanded that the sentence name the place it was filed under.
+Checked against real rows it was wrong in both directions: *"Bridge used in the first
+episode of series 1"* PASSED for Vauxhall Bridge on the word "bridge", while *"Jim wakes
+up from a coma in an abandoned hospital"* FAILED for Central Middlesex Hospital, which is
+a real statement about a real row. Prose does not repeat its own heading. What is worth
+excluding is the row that states nothing at all — `Source: Wikipedia`, `Source: IMDb` —
+and that is what it does now.
+
+**A verified row would have vanished off the map.** `/api/locations` filtered
+`status = 'pending'`, so believing a submission deleted it. Now it filters *not rejected*,
+and a checked row reads "Source checked" with the reason instead of "not yet verified by
+us". It is still a candidate and still outside the graph, and the card says both.
+
+**Only the decisive verdicts are stored.** A pending row's reason — no signal yet, no
+coordinate, the name is a caption — is derived and goes stale the moment a Q-id lands or
+the extractor is fixed. Writing 42,884 of those would stamp `reviewed_at` on rows nobody
+decided anything about, and the queue would report itself as reviewed when all that
+happened was a label. One script run re-derives them.
+
+**Reversible in one statement**, and the script prints the full breakdown every run.
+
+## [2026-08-08] incident | Another session is live in the same production database
+
+**Object**: `location_submissions`
+**Scenario**: chore · **Outcome**: ⚠️ carried forward
+
+Found while measuring the queue: the worktree `skype-ai-openrouter-movie-maps-bffab0`
+applied `submission_resolution_and_corroboration` to production at 21:34 — ten minutes
+after this session's own migration — and is running a Wikidata resolver against the queue
+right now. Its columns `wikidata_id` and `corroborated_by` exist in the live database and
+in **no file**; the count of resolved rows went 0 → 20 → 34 across three measurements
+forty minutes apart, and the table lost 210 rows to its deduplication in the same window.
+
+**That migration is deliberately NOT captured into `supabase/migrations/` here**, unlike
+the thirteen captured earlier today: it belongs to a branch that has not merged, and
+committing it from this side would collide with its own PR. It is drift with a known
+owner, which is a different thing from drift with none.
+
+Practical consequence for anyone measuring the queue: **quote the time.** Numbers in this
+log entry and in `submission-review.mjs` are as of 08.08 and were already moving as they
+were written.
+
 ## [2026-08-08] incident | The graph could not be written to, and had not been since 31 July
 
 **Object**: `app/api/resolve/route.js`, `supabase/migrations/20260808010100_*`
