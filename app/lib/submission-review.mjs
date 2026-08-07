@@ -9,10 +9,13 @@
 //     of 3,313 name-clusters hold exactly ONE distinct point. So the obvious offline
 //     check, "do the rows agree with each other", proves nothing: they are the same
 //     number copied, not independent observations.
-//   * **13,841 rows have no coordinate at all**, and mostly cannot get one, because
-//     their `place_name` is not a name — it is a caption. 47% of movie-locations rows
-//     run past twelve words and 54% still carry the "<Film> location:" prefix the
-//     extractor was supposed to cut. No geocoder resolves a sentence.
+//   * **13,637 rows have no coordinate at all** — and the reason is not what this comment
+//     said first. It blamed captions: 47% of movie-locations names running past twelve
+//     words, 54% still carrying the "<Film> location:" prefix. Re-measured 08.08 after
+//     the source was re-ingested, that is **71 of 5,580** and **zero**. The extractor was
+//     fixed; the rows stayed pointless anyway, because **no geocoder has ever been run on
+//     them** — every located row in the queue got its point from the source it was
+//     scraped from. See [[queue-review]] and app/lib/place-name-head.mjs.
 //   * Everything that would actually settle a MovieMaps row — is there a Wikidata entity
 //     here, does another site say the same thing — needs the network.
 //
@@ -54,10 +57,12 @@ const CREDIT_ONLY = /^(wikipedia|wikimedia|photograph|photo|image|courtesy)\s*[/
 const PHOTO_CREDIT_TAIL = /\|\s*photograph\b/i;
 const CAPTION_MARKER = /\blocation\s*:/i;
 
-// Twelve words. Measured rather than picked: MovieMaps, whose extraction is fine, has
-// TWO rows over twelve words out of 30,153. Movie-locations has 2,722 out of 5,783. The
-// threshold separates the two populations almost perfectly, and a real place name that
-// long ("Church of St Mary the Virgin, …") is one a geocoder would fail on anyway.
+// Twelve words. Measured rather than picked: MovieMaps, whose extraction is fine, has TWO
+// rows over twelve words out of 30,153. After the movie-locations re-ingest it has 71 of
+// 5,580 and ReelStreets has 508 of 8,062 — and those 508 are not captions but written
+// descriptions of where a camera stood ("Bristol Temple Meads station on Station Approach
+// off Bath Road in Bristol, Avon"). They are unusable for a GAZETTEER, not wrong, which is
+// what place-name-head.mjs exists to unpick.
 export const MAX_NAME_WORDS = 12;
 
 // Sources whose claim somebody who is not us can check, and what makes that true. These

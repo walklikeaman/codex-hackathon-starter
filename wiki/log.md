@@ -7,6 +7,68 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-08] incident | The names were not the problem, and the first diagnosis said they were
+
+**Object**: `app/lib/place-name-head.mjs`, `scripts/geocode-submissions.mjs`,
+`app/lib/submission-review.mjs`, `wiki/concepts/queue-review.md`
+**Scenario**: bug · **Outcome**: ✅ corrected
+
+Earlier today this log said 13,841 rows had no coordinate because their `place_name` was a
+caption — 47% of movie-locations names past twelve words, 54% carrying the `<Film>
+location:` prefix the extractor was meant to cut. **Re-measured before starting the
+repair: 71 of 5,580 and zero.** Another branch fixed its extractor and re-ingested the
+source in the hours between. The repair being asked for had already happened.
+
+What the first measurement never checked is one column:
+
+```
+moviemaps      geocode_source = moviemaps        30,147
+open_plaques   geocode_source = open_plaques         53
+permit_record  geocode_source = opendata_paris       10
+reelstreets    geocode_source = reelstreets          27
+reelstreets    geocode_source = NULL               8,035
+movielocations geocode_source = NULL               5,580
+```
+
+**No geocoder has ever been run on this queue.** Every located row got its point from the
+source it was scraped from. The 13,637 pointless rows were never blocked by their names.
+
+**And the 508 long ReelStreets names are not captions either.** They are written
+descriptions of where a camera stood — *"Bristol Temple Meads station on Station Approach
+off Bath Road in Bristol, Avon"* — precise, deliberate, and unanswerable by a gazetteer.
+A different problem with a different fix.
+
+So the work became: turn a written location into something a gazetteer can answer.
+Measured on 120 rows —
+
+| asked | resolves |
+|---|---|
+| the name as stored | 0.8% |
+| the first comma clause alone | **31.7%** |
+| head + area, kept only if the head landed inside the area | **8.3%** |
+
+**The middle number is the trap.** Dropping the comma clause throws away the
+disambiguator, and the 31.7% includes Zorba (a restaurant on Leinster Gardens) in
+Colorado, St John's Square in Malta, the Federal Reserve Bank in Dallas and the Union
+League Club of Chicago in New York. `chooseCandidate` cannot catch these: it reports
+`unique` for a lone result wherever on earth it is, because its job is choosing between
+candidates, not checking one against the world.
+
+So the clause becomes the **area**, resolved separately, and the head is kept only if it
+landed within the same 100 km the geocoder already uses for a hint. Trying areas
+**most-specific-first** doubled the yield on its own (3.3% → 8.3%): a country centroid
+confirms nothing at a hundred kilometres, and anchoring "Kladruby Monastery, Kladruby,
+Czech Republic" to the country rejects a correct row that the village next door confirms.
+
+Two refusals earned their place the same way: `head_is_a_common_noun` ("the alley at the
+corner of…" reduces to "alley", which Wikidata places in Israel) and
+`road_is_a_line_not_a_point` ("A82 at Rannoch Moor…" reduces to "A82", whose point is the
+road's southern end in Glasgow — 80 km away, on the right road and in the wrong place).
+
+**The lesson for the handoff:** a measurement of a shared production table is a snapshot,
+not a fact. Two numbers in this log were already stale when they were written, and both
+were stale because another branch was working the same rows.
+
 ## [2026-08-08] decision | The queue got its first verdicts, and the count that mattered was not 30,257
 
 **Object**: `app/lib/submission-review.mjs`, `scripts/review-submissions.mjs`,
