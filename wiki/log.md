@@ -7,6 +7,106 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-08] incident | The graph could not be written to, and had not been since 31 July
+
+**Object**: `app/api/resolve/route.js`, `supabase/migrations/20260808010100_*`
+**Scenario**: bug · **Outcome**: ✅ fixed · #129
+
+Found while working #129 on paper, not while looking for it.
+
+`20260731234121_scene_links_allow_revisits` replaced `unique (work_id, place_id,
+relation_kind)` with two **partial** unique indexes so a story could revisit a place
+across scenes. The reasoning in that migration is careful and right about NULLs on
+Postgres 14. It missed that PostgREST sends `ON CONFLICT (work_id, place_id,
+relation_kind)` with **no WHERE clause**, and Postgres cannot infer a partial index from a
+bare inference clause. Probed against production:
+
+```
+ERROR 42P10: there is no unique or exclusion constraint matching the ON CONFLICT
+specification
+```
+
+`/api/resolve` is the only write path into the canonical graph. It has been failing on
+that upsert for eight days — *after* the Wikidata round-trips succeed, so the route looks
+like it is working. The graph has stood at **92 links and 70 places** the whole time while
+the review queue grew to 44,098 rows, and nothing reported it.
+
+**Fixed by a FULL index with `nulls not distinct`** — Postgres 15 gained it, this database
+is 17.6. Inference works again and the guarantee the split protected is intact: two
+scene-less rows for the same triple still collide, because their NULLs no longer compare
+as distinct. Verified by probing the real database inside a rolled-back transaction.
+
+**The lesson, and it is the second time this project has paid for it:** a schema change
+that is correct in SQL can still break the client that talks to it. `on_conflict` is a
+promise about an index shape, and nothing in the database tells you who relies on it.
+
+## [2026-08-08] decision | A fact has its own identity, its own payload and its own sentence
+
+**Object**: `supabase/migrations/20260808010000_*`, `20260808010100_*`,
+`app/lib/facts.mjs`, `app/lib/work-profile.mjs`, `app/api/work/route.js`
+**Scenario**: feature · **Outcome**: ✅ success · #129 · [[fact-architecture]]
+
+Step 1 of #129 asked for the schema to be worked through **on paper** first, against real
+examples. Ten were written out and six of them could not be expressed —
+[[fact-architecture]] holds the table. They cluster: every one appears the moment a source
+states **a specific claim, with a date, in a sentence**, which is exactly what plaques
+(#125) and music (#128) are.
+
+**Break 1 — one row per (work, place, kind).** Abbey Road plus The Beatles plus "recorded
+here" was one row for twelve recordings. A fact now carries `about` (which album, which
+episode, which scene) and `about` is part of the uniqueness key, so two facts of the same
+kind at one place are legal when they are about different things and still illegal when
+they are not. Proved on the live database, rolled back: three facts of the same kind at
+one place, told apart by `about`.
+
+**Break 2 — a fact about a person pinned to a work.** Rowling's café was seven rows, one
+per book, with the evidence copied seven times, and the eighth book would have made it
+eight. `creator_place_links` now exists with the same evidence contract the work facts got
+on 05.08: no source, no fact, checked at commit. It reaches a work through
+`work_creators`, and `work_facts()` uses `exists` rather than a join so a person who both
+wrote and directed does not contribute every fact twice. Proved live: two roles, one fact
+on the card.
+
+**And the sentence.** `placeRole()` builds the card's phrase from the relation kind, which
+was the only option while a fact was a bare Wikidata triple. A plaque hands over the whole
+sentence already written on the wall, and turning *"J. K. Rowling wrote some of the early
+chapters of Harry Potter in the rooms on the first floor of this building"* into "Where the
+author worked" throws away the part somebody crossed a city to read. Stored wording is now
+printed **verbatim** — trimmed and nothing else, because a quote that has been tidied
+cannot be checked against the wall it came from.
+
+**Degree of separation, computed once in SQL.** 0 the work itself, 1 its people, 2 what
+influenced it. 0 and 1 may enter a route; 2 is "nearby, and here is why". Without it,
+"Harry Potter places" becomes "places connected to anything Rowling ever touched" without
+anybody deciding to make it so.
+
+**Not done, deliberately:** `work_place_links` was NOT renamed — eight stored functions
+reference it by name and function bodies do not follow `ALTER TABLE RENAME`, so a rename
+would silently break every map RPC on the demo path. And #129's single polymorphic fact
+table was not built: two typed tables keep the foreign keys, and the `place_facts` view
+gives the one read surface the proposal was really after.
+
+Wired, not shelved: `/api/work` now answers from `work_facts()` in one call. 874 tests.
+
+## [2026-08-08] update | Thirteen migrations existed in production and in no file
+
+**Object**: `supabase/migrations/` (13 new files)
+**Scenario**: chore · **Outcome**: ✅ success
+
+The handoff warns that "the database has rules the repo does not describe". Measured:
+`supabase_migrations.schema_migrations` held **13 migrations with no file** —
+`map_points_rpc_geometry_bbox`, `map_works_with_poster`, `map_works_with_ratings`,
+`works_mc_path`, `tts_cache_bucket`, `place_frames`, `scene_links_allow_revisits`,
+`scene_stop_precision`, `works_source`, and the reelstreets and movielocations pairs.
+
+All 13 are now files, verbatim, under their live version numbers with a header saying
+where they came from. One of them turned out to contain the outage above, which is the
+argument for doing this at all: a rule you cannot read is a rule you cannot check.
+
+`scenemap_initial_schema` (14th) was deliberately **not** captured — its tables are
+dropped by `content_graph`, so the file would recreate dead history, and its comments are
+in Russian, which the repo does not allow.
+
 ## [2026-08-07] decision | Handoff rewritten to the state that actually exists
 
 **Object**: `wiki/handoff.md`, `wiki/sources/commemorative-plaques.md`
