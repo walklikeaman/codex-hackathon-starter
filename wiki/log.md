@@ -7,6 +7,51 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-07] ingest | movie-locations.com, and three defects caught at the door
+
+**Object**: `tools/scraperai/{movielocations,crawler}.py`,
+`app/lib/movielocations-source.mjs`, `scripts/ingest-movielocations{,-works}.mjs`,
+`scripts/ingest-reelstreets.mjs`, `supabase/migrations/20260807165200|165213`
+**Scenario**: ingest · **Outcome**: ✅ success
+**Code changes**: this commit
+
+**A fifth source that needs no model at all.** movie-locations.com writes its
+captions as "<film> filming location: <scene>: <address>", so a regex finds the
+place during the scrape — no rate limit, no 14 hours, no chance of an invented
+place. 1,870 films, 6,200 locations, every one photographed, every film with a
+year. 657 works created and 5,783 submissions across 1,474 works.
+
+**1,590 of 1,870 films matched, 85%, against ReelStreets' 7.5% on its first
+run.** The matcher is the same one, unchanged. What changed is the catalogue: it
+had already grown past 7,000 works, so a new source finally has something to
+attach to. Worth remembering when judging the next source by its match rate.
+
+**Three defects, none of which announced itself.** 519 of 1,870 records — 28% —
+arrived as mojibake because the site declares UTF-8 in a `<meta>` tag and sends
+no charset header, so `requests` follows RFC 2616 and assumes ISO-8859-1. "Léon"
+was on its way into the catalogue as "LÃ©on", and the cache held the mis-decoded
+text too, so it had to be dropped and the site re-harvested. The crawler now
+trusts the header when it says something and the document when it does not,
+which is right for every site rather than this one.
+
+The other two were caught by their own output. A bracketed alternative title —
+"Harry Potter And The Philosopher's Stone (…Sorcerer's Stone)" — did not match
+the work we already hold and was proposed for creation, which is exactly the
+duplicate the works ingest is written timidly to avoid. And the ingest died on
+"ON CONFLICT DO UPDATE command cannot affect row a second time" because this
+site lists "Transformers: The Last Knight" twice, both entries matched one work,
+and `(work_id, place_key)` is a global key while the dedup was per film. The
+ReelStreets ingest carried the same latent bug and was fixed with it; it had
+simply not met a collision yet.
+
+**A concurrent session added a sixth kind while this landed.** `open_plaques`
+rewrote the same evidence constraint. Verified against the live database before
+shipping: all six kinds appear in both the enum and the constraint, so neither
+session's branch was lost.
+
+**Updated**: `wiki/concepts/movielocations-source.md` (new), `wiki/index.md`,
+`test/movielocations-source.test.mjs`
+
 ## [2026-08-06] ingest | ReelStreets: prose a model had to read, and a 20/min ceiling
 
 **Object**: `tools/scraperai/{reelstreets,extract_places,state}.py`,

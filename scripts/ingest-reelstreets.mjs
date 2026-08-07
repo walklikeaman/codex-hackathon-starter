@@ -80,6 +80,21 @@ async function loadWorksByTitle(db) {
   return byTitle;
 }
 
+// Two different scraped films can match the SAME work — this site lists
+// "Transformers: The Last Knight" twice — and each contributes its own rows.
+// Per-film dedup cannot see that, so the batch reaches Postgres holding one
+// (work_id, place_key) twice and the upsert dies with "ON CONFLICT DO UPDATE
+// command cannot affect row a second time". The key is global, so the dedup
+// has to be too.
+function dedupeAcrossFilms(rows) {
+  const byKey = new Map();
+  for (const row of rows) {
+    const key = `${row.work_id}\u0000${row.place_name.trim().toLowerCase()}`;
+    if (!byKey.has(key)) byKey.set(key, row);
+  }
+  return [...byKey.values()];
+}
+
 async function main() {
   const env = process.env;
   const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
@@ -155,9 +170,13 @@ async function main() {
     if (LIMIT && processed >= LIMIT) break;
   }
 
-  if (!DRY_RUN && pending.length > 0) {
-    for (let index = 0; index < pending.length; index += WRITE_BATCH) {
-      const batch = pending.slice(index, index + WRITE_BATCH);
+  const toWrite = DRY_RUN ? [] : dedupeAcrossFilms(pending);
+  if (toWrite.length < pending.length) {
+    console.log(`\n   ${pending.length - toWrite.length} rows collided across films on the same work`);
+  }
+  if (!DRY_RUN && toWrite.length > 0) {
+    for (let index = 0; index < toWrite.length; index += WRITE_BATCH) {
+      const batch = toWrite.slice(index, index + WRITE_BATCH);
       const { error } = await db
         .from("location_submissions")
         .upsert(batch, { onConflict: "work_id,place_key" });

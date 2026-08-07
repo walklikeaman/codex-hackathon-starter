@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import threading
 import time
 from pathlib import Path
@@ -98,6 +99,19 @@ class MovieMapsCrawler(BaseCrawler):
                 last_error = exc
             else:
                 if response.status_code == 200:
+                    # requests follows RFC 2616 and assumes ISO-8859-1 for
+                    # text/* when the HTTP header names no charset. That is the
+                    # wrong guess for any modern site: movie-locations.com
+                    # declares UTF-8 in a <meta> tag and sends no charset
+                    # header, so 519 of its 1,870 pages decoded into mojibake —
+                    # "Leon" arriving as "LA<C3>on" and heading for the catalogue.
+                    # Trust the header when it says something, the document when
+                    # it does not.
+                    if 'charset=' not in response.headers.get('content-type', '').lower():
+                        declared = re.search(rb'<meta[^>]+charset=["\']?([\w-]+)',
+                                             response.content[:4096], re.I)
+                        response.encoding = (declared.group(1).decode('ascii', 'ignore')
+                                             if declared else response.apparent_encoding)
                     self.stats['fetched'] += 1
                     if self.use_cache:
                         cached.write_text(response.text, encoding='utf-8')
