@@ -186,6 +186,27 @@ A country centroid confirms nothing at a hundred kilometres — anchoring "Kladr
 Monastery, Kladruby, Czech Republic" to the Czech Republic rejects a perfectly correct
 row, while "Kladruby" the village next door confirms it.
 
+**Applied to production, first batch of 1,000 movie-locations rows:**
+
+| outcome | rows |
+|---|---|
+| accepted, with a point and the area that confirmed it | **64** |
+| head not in Wikidata | 589 |
+| area not in Wikidata | 161 |
+| nothing enclosing the name to check against | 134 |
+| **head landed OUTSIDE its area** — these would have been wrong pins | **51** |
+| head is a common noun | 1 |
+
+Lacock Abbey, Knebworth House, Willis Tower, San Francisco City Hall, Grace Cathedral,
+the Stasi Museum, Navy Pier, the Unisphere, the Painted Hall at the Old Royal Naval
+College. Reversible in one statement — every row carries `geocode_source = 'wikidata'`.
+
+**And the run before it was thrown away.** It accepted 78 and wrote `inside undefined`
+into all of them: `areaName` sits on the accepted record, not on the split, and reading it
+off the wrong object emptied the note that says WHY a coordinate was kept. The points were
+right. Storing them with no reason would have been 64 rows of exactly the debt
+`provenance_is_required` was written against, so the batch was re-run rather than applied.
+
 **Refused before asking**, each one a measured wrong answer:
 
 - `head_is_a_common_noun` — "the alley at the corner of Seaford Road…" reduces to "alley",

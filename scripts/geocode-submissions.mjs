@@ -147,7 +147,11 @@ if (!sqlPath) {
     "",
   ];
   for (const { row, head, entry, areaName } of accepted) {
-    const reason = `head ${JSON.stringify(entry.head)} inside ${JSON.stringify(entry.areaName)}`;
+    // `areaName` sits on the accepted record, not on the split — reading it off `entry`
+    // wrote "inside undefined" into the provenance of 64 real coordinates. The points were
+    // right and the note that says WHY they were kept was empty, which is the half that
+    // makes a stored coordinate arguable rather than merely present.
+    const reason = `head ${JSON.stringify(entry.head)} inside ${JSON.stringify(areaName)}`;
     out.push(
       `update location_submissions set lat = ${head.lat}, lng = ${head.lng}, `
       + `geocode_source = 'wikidata', geocode_source_id = ${quote(head.wikidata_id ?? head.id ?? "")}, `
