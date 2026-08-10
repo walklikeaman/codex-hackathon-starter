@@ -207,6 +207,61 @@ off the wrong object emptied the note that says WHY a coordinate was kept. The p
 right. Storing them with no reason would have been 64 rows of exactly the debt
 `provenance_is_required` was written against, so the batch was re-run rather than applied.
 
+## The row's own hint, and the source whose hint is a lie
+
+Every pending row carries an `area_hint`, and whether it may be used as the containment
+anchor depends entirely on which site wrote it.
+
+| source | rows with no area in the name | hint is an index bucket | hint is a place |
+|---|---|---|---|
+| movie-locations | 703 | **0** | 703 (117 distinct: Hampshire, Prague, Los Angeles) |
+| reelstreets | 4,232 | **2,676** | 1,556, and they are "North", "Midlands", "Rest Of The World" |
+| wikipedia | 18 | 0 | 18 |
+
+**ReelStreets files every row under a section of its own alphabetical browse index** —
+`London A-B`, `London H-L`, `London M-N` — and the TITLES are what is bucketed, not the
+places. So:
+
+```
+"Pavilion Theatre on Westover Road, Bournemouth"   area_hint "London M-N"   160 km wrong
+"Hotel Metropole, The Leas, Folkestone, Kent"      area_hint "London H-L"   110 km wrong
+```
+
+Each would be confirmed as London **by the very check whose job is to catch that**, because
+the bucket resolves — to London — and nothing downstream would notice. The bucket is
+refused by shape; everything else is simply asked, and the gazetteer declines "Rest Of The
+World" by itself, which is where that judgement belongs.
+
+Net effect: askable rows went 7,619 → **9,896**.
+
+## The cache, and why refusals go in it
+
+`cacheRow()` sat in `geocode-wikidata.mjs` from the day it was written with no table and no
+caller. The full pass is what makes it necessary: 12,659 rows reduce to **12,352 distinct
+names**, ~1,540 queries, over two hours at the module's own five-second gap before a single
+429 — a job that long will be interrupted.
+
+**Refusals are cached deliberately.** Two thirds of the heads resolve to nothing; an
+ordinary house is not in Wikidata and will not be next week either. Caching only the hits
+would leave most of the corpus re-asked on every run.
+
+## The gazetteer refuses the anchors it is needed for most
+
+Visible the moment the cache was populated:
+
+```
+london · paris · los angeles · cornwall · hampshire · bayswater   ambiguous_homonyms
+leinster gardens                                                  -> Q3229195
+```
+
+`chooseCandidate` behaving exactly as documented — `dominantByPopulation` refuses when any
+rival has a recorded population, and London Ontario has one. **Correct for a place we are
+about to store, wrong for an anchor**, where any London in England would answer the only
+question being asked. Measured cost: `area_unknown` is 161 of 1,000, so roughly +2–3
+points on an 8.3% rate — real, modest, and worth measuring before building. See #149, which
+also records what NOT to do: loosening the population rule to make London resolve would
+break the refusal that is the feature.
+
 **Refused before asking**, each one a measured wrong answer:
 
 - `head_is_a_common_noun` — "the alley at the corner of Seaford Road…" reduces to "alley",
