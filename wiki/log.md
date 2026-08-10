@@ -7,6 +7,45 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-08] update | The scrape goes on a timer, and dry-run stops lying
+
+**Object**: `scripts/refresh-sources.sh`, `.gitignore`
+**Scenario**: feature · **Outcome**: ✅ success
+**Code changes**: this commit
+
+**One command now does the whole pass**, and it is safe on a timer because every
+piece under it is incremental and idempotent: the harvesters compare each site's
+own `<lastmod>` (or the WordPress API's `modified_after`) against the watermark
+in `data/*/state.json` and fingerprint what they extracted, so a page that was
+merely re-rendered is not re-read; the ingests upsert on `(work_id, place_key)`.
+A run with nothing to do does nothing and says so.
+
+**Two things a scheduled job must get right that a hand-run script can ignore.**
+The Wikidata pass takes about 21 hours at a polite query rate, so without a lock
+the next night's run would start on top of it and both would crawl the same
+sites — `flock` holds the whole pipeline, with an atomic `mkdir` fallback because
+macOS has no `flock(1)`. And cron gets a near-empty PATH and no shell profile, so
+node, python and the keys are resolved explicitly rather than assumed. The
+resolver takes 1,200 pins per run rather than all 27,000: it skips what it has
+already answered, so a nightly slice drains the backlog over weeks without ever
+holding the slot.
+
+**`--dry-run` was lying twice, and both were found by the run timing out rather
+than answering.** It promised to decide nothing and write nothing, but reached
+only as far as the ingests — the harvesters still crawled three sites and spent
+model calls before deciding to write nothing. And the resolver's own dry mode
+skips the write while still querying WDQS, which is correct alone and wrong
+inside a pipeline check: 1,200 pins at a polite rate is an hour to prove a step
+is wired. Harvest and extract are now skipped explicitly under `--dry-run`, and
+the resolver's budget drops to five. Seventy seconds, seven steps, no failures.
+
+A failed step does not end the run — one site being down must not cost the other
+two and every ingest — but failures are named at the end and the exit code is
+non-zero. A scheduled job that fails quietly is worse than one that never ran:
+the data looks fresh and is not.
+
+**Updated**: `.gitignore` (the lock the job holds)
+
 ## [2026-08-08] incident | Cross-source matching found a defect in 54% of a source
 
 **Object**: `tools/scraperai/movielocations.py`, `app/lib/{cross-source,wikidata-resolve}.mjs`,

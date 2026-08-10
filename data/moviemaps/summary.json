@@ -3,34 +3,44 @@
   "robots_txt": "Disallow: /search only (checked 2026-08-05)",
   "runs": [
     {
-      "kind": "movie",
-      "total": 6041,
-      "harvested": 6046,
-      "new": 5,
-      "changed": 5,
+      "kind": "location",
+      "total": 18048,
+      "harvested": 36096,
+      "new": 18048,
+      "changed": 18048,
       "errors": 0,
       "error_sample": [],
-      "seconds": 0.0
+      "seconds": 8.2
+    },
+    {
+      "kind": "movie",
+      "total": 6041,
+      "harvested": 6897,
+      "new": 856,
+      "changed": 856,
+      "errors": 0,
+      "error_sample": [],
+      "seconds": 0.7
     }
   ],
   "http": {
     "fetched": 0,
-    "cached": 7,
+    "cached": 18909,
     "failed": 0
   },
   "stats": {
     "locations": {
-      "records": 18048,
-      "with_coordinates": 18048,
-      "with_address": 18048,
-      "with_frames": 9458,
-      "frames_total": 90764
+      "records": 36096,
+      "with_coordinates": 36096,
+      "with_address": 36096,
+      "with_frames": 18916,
+      "frames_total": 181528
     },
     "movies": {
-      "records": 6051,
-      "with_imdb_id": 6051,
-      "with_locations": 6051,
-      "location_links_total": 30556
+      "records": 6907,
+      "with_imdb_id": 6907,
+      "with_locations": 6907,
+      "location_links_total": 34448
     }
   }
 }

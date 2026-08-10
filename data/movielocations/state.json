@@ -1,7 +1,7 @@
 {
  "version": 1,
  "source": "movielocations",
- "updated_at": "2026-08-07T21:57:08+00:00",
+ "updated_at": "2026-08-10T21:17:01+00:00",
  "runs": [
   {
    "at": "2026-08-07T21:57:08+00:00",
@@ -11,6 +11,17 @@
    "http": {
     "fetched": 0,
     "cached": 1871,
+    "failed": 0
+   }
+  },
+  {
+   "at": "2026-08-10T21:17:01+00:00",
+   "fetched": 0,
+   "changed": 0,
+   "errors": 1,
+   "http": {
+    "fetched": 0,
+    "cached": 1,
     "failed": 0
    }
   }

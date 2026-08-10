@@ -25,6 +25,10 @@ tmp/
 # scratch
 _probe_*
 
+# the scheduled refresh holds this while it runs (scripts/refresh-sources.sh)
+.refresh.lock
+.refresh.lock.d/
+
 # Scraped pages and harvest output — regenerate with the tools in
 # tools/scraperai/. The watermark (state.json) and the counts (summary.json) ARE
 # tracked: they are what a scheduled run reads to know where it got to, and a
