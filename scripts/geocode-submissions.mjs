@@ -25,7 +25,8 @@ import fs from "node:fs";
 import process from "node:process";
 
 import { createGeocoder } from "../app/lib/geocode-client.mjs";
-import { WIKIDATA_LICENSE } from "../app/lib/geocode-wikidata.mjs";
+import { WIKIDATA_LICENSE, cacheRow } from "../app/lib/geocode-wikidata.mjs";
+import { normalizePlaceName } from "../app/lib/place-dedup.mjs";
 import {
   headIsInsideArea, radiusForAreaIndex, splitPlacePhrase,
 } from "../app/lib/place-name-head.mjs";
@@ -80,10 +81,81 @@ function quote(text) {
   return `'${String(text).replace(/'/g, "''")}'`;
 }
 
+
+// ---------- the cache ----------
+//
+// 12,659 pointless rows reduce to 10,579 distinct names, which is ~1,320 WDQS queries and
+// close to two hours at the module's own politeness gap, before a single 429. A job that
+// long WILL be interrupted, so every answer is remembered — including the refusals, which
+// are two thirds of them. An ordinary house is not in Wikidata and asking again next week
+// will not change that.
+async function readCache() {
+  const cache = new Map();
+  for (let offset = 0; ; offset += 1000) {
+    const response = await fetch(
+      `${url}/rest/v1/geocode_cache?select=query_norm,lat,lng,source_id,match_reason&limit=1000&offset=${offset}&order=query_norm.asc`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: "application/json" } },
+    );
+    if (!response.ok) throw new Error(`cache read failed: ${response.status} ${await response.text()}`);
+    const page = await response.json();
+    if (!Array.isArray(page)) throw new Error(`cache read returned ${typeof page}, not an array`);
+    for (const row of page) cache.set(row.query_norm, row);
+    if (page.length < 1000) break;
+  }
+  return cache;
+}
+
+// Written as SQL alongside the coordinates, because this machine has the anon key and the
+// cache is service-role-write like the rest of the graph.
+function cacheStatements(decisions) {
+  const rows = [];
+  for (const [name, decision] of decisions) {
+    const hit = cacheRow(name, decision);
+    const norm = normalizePlaceName(name);
+    if (!norm) continue;
+    rows.push(hit
+      ? `(${quote(norm)}, ${hit.lat}, ${hit.lng}, 'wikidata', ${quote(hit.source_id ?? "")}, ${quote(hit.license)}, ${quote(hit.match_reason)})`
+      : `(${quote(norm)}, null, null, 'wikidata', null, null, ${quote(decision?.reason ?? "no_candidate")})`);
+  }
+  if (rows.length === 0) return [];
+  const statements = [];
+  for (let i = 0; i < rows.length; i += 500) {
+    statements.push(
+      "insert into geocode_cache (query_norm, lat, lng, source, source_id, license, match_reason) values\n  "
+      + rows.slice(i, i + 500).join(",\n  ")
+      + "\non conflict (query_norm) do nothing;",
+    );
+  }
+  return statements;
+}
+
+// Ask only what the cache does not already answer, and fold the two together.
+async function geocodeCached(names, cache, geocode) {
+  const answers = new Map();
+  const unknown = [];
+  for (const name of names) {
+    const cached = cache.get(normalizePlaceName(name));
+    if (cached) {
+      answers.set(name, cached.lat === null
+        ? { place: null, reason: cached.match_reason }
+        : { place: { lat: cached.lat, lng: cached.lng, wikidata_id: cached.source_id }, reason: cached.match_reason });
+    } else {
+      unknown.push(name);
+    }
+  }
+  console.error(`${names.length} names · ${names.length - unknown.length} already cached · ${unknown.length} to ask`);
+  if (unknown.length === 0) return { answers, asked: new Map() };
+  const fresh = await geocode(unknown);
+  for (const [name, decision] of fresh) answers.set(name, decision);
+  return { answers, asked: fresh };
+}
+
+const cache = await readCache();
+console.error(`cache holds ${cache.size} names`);
 const rows = await readRows();
 console.error(`${rows.length} rows without a point${kind ? ` (${kind})` : ""}`);
 
-const split = rows.map((row) => ({ row, ...splitPlacePhrase(row.place_name) }));
+const split = rows.map((row) => ({ row, ...splitPlacePhrase(row.place_name, { areaHint: row.area_hint }) }));
 const askable = split.filter((entry) => !entry.refusal);
 
 const geocode = createGeocoder({
@@ -96,8 +168,10 @@ const areaNames = [...new Set(askable.flatMap((entry) => entry.areas))];
 const headNames = [...new Set(askable.map((entry) => entry.head))];
 console.error(`${askable.length} askable · ${headNames.length} heads · ${areaNames.length} areas`);
 
-const areaPoints = await geocode(areaNames);
-const headPoints = await geocode(headNames);
+const areaResult = await geocodeCached(areaNames, cache, geocode);
+const headResult = await geocodeCached(headNames, cache, geocode);
+const areaPoints = areaResult.answers;
+const headPoints = headResult.answers;
 process.stderr.write("\n");
 
 const accepted = [];
@@ -157,6 +231,15 @@ if (!sqlPath) {
       + `geocode_source = 'wikidata', geocode_source_id = ${quote(head.wikidata_id ?? head.id ?? "")}, `
       + `geocode_license = ${quote(WIKIDATA_LICENSE.name)}, geocode_reason = ${quote(reason)} `
       + `where id = ${quote(row.id)} and lat is null;`,
+    );
+  }
+  const learned = new Map([...areaResult.asked, ...headResult.asked]);
+  const cacheSql = cacheStatements(learned);
+  if (cacheSql.length > 0) {
+    out.unshift(
+      `-- ${learned.size} names learned this run, remembered so the next one does not ask again.`,
+      ...cacheSql,
+      "",
     );
   }
   fs.writeFileSync(sqlPath, out.join("\n"));

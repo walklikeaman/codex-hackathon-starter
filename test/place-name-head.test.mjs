@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   AREA_RADIUS_KM,
   IMMEDIATE_AREA_RADIUS_KM,
+  areasFromHint,
+  hintIsAnIndexBucket,
   headIsInsideArea,
   radiusForAreaIndex,
   headRefusal,
@@ -184,4 +186,48 @@ test("the two radii are the two sizes of thing an area can be", () => {
   assert.equal(radiusForAreaIndex(1), AREA_RADIUS_KM);
   assert.equal(radiusForAreaIndex(2), AREA_RADIUS_KM);
   assert.ok(IMMEDIATE_AREA_RADIUS_KM < AREA_RADIUS_KM);
+});
+
+// --- the row's own hint, and the one source whose hint is a lie ------------------
+
+test("an alphabetical index bucket is not an area", () => {
+  // ReelStreets files every row under a section of its own browse index. Measured on the
+  // pending rows: 2,676 of them. The TITLES are bucketed, not the places — so
+  // "Pavilion Theatre on Westover Road, Bournemouth" carries "London M-N", and using it
+  // would confirm Bournemouth as London, 160 km wrong, by the very check whose job is to
+  // catch that. The bucket resolves (to London), so nothing downstream would notice.
+  assert.equal(hintIsAnIndexBucket("London M-N"), true);
+  assert.equal(hintIsAnIndexBucket("London A-B"), true);
+  assert.equal(hintIsAnIndexBucket("London T–Z"), true);
+  assert.deepEqual(areasFromHint("London H-L"), []);
+
+  // movie-locations has no such shape: all 117 of its distinct hints are real places.
+  assert.equal(hintIsAnIndexBucket("Los Angeles"), false);
+  assert.deepEqual(areasFromHint("Hampshire"), ["Hampshire"]);
+});
+
+test("a hint rescues a name that encloses itself in nothing", () => {
+  // 703 movie-locations rows and 18 wikipedia rows name no area of their own.
+  const rescued = splitPlacePhrase("Fairfield Hall", { areaHint: "Hampshire" });
+  assert.equal(rescued.refusal, null);
+  assert.deepEqual(rescued.areas, ["Hampshire"]);
+
+  // And a bucket rescues nothing, on purpose.
+  const refused = splitPlacePhrase("Big Ben", { areaHint: "London H-L" });
+  assert.equal(refused.refusal, "no_area_to_check_against");
+});
+
+test("the hint goes last, because it is the coarsest thing available", () => {
+  // The ordering is the whole mechanism: the tightest area answers first, and a hint is
+  // never tighter than a clause the row wrote about itself.
+  const split = splitPlacePhrase("the Old Mission San Juan Bautista, California", { areaHint: "San Francisco" });
+  assert.deepEqual(split.areas, ["California", "San Francisco"]);
+});
+
+test("a worthless hint is asked rather than second-guessed", () => {
+  // "Rest Of The World" and "North" are hints too. They are not index buckets, and the
+  // gazetteer refuses them by itself — which is where that judgement belongs.
+  assert.deepEqual(areasFromHint("Rest Of The World"), ["Rest Of The World"]);
+  assert.deepEqual(areasFromHint(""), []);
+  assert.deepEqual(areasFromHint(null), []);
 });

@@ -142,6 +142,37 @@ export function placeArea(name) {
   return areas.length > 0 ? areas[areas.length - 1] : null;
 }
 
+// A browse index is not a place. ReelStreets files every row under a section of its own
+// alphabetical index -- "London A-B", "London H-L", "London M-N" -- and those land in
+// `area_hint`, where they look exactly like an enclosing area. Measured on the pending
+// rows: **2,676 of them**, and the titles are what is bucketed, not the places. So
+//
+//   "Pavilion Theatre on Westover Road, Bournemouth"   area_hint "London M-N"
+//   "Hotel Metropole, The Leas, Folkestone, Kent"      area_hint "London H-L"
+//
+// would each be confirmed as London -- 160 km and 110 km wrong, by a check whose entire
+// job is to catch exactly that. The bucket resolves (to London), so nothing downstream
+// would notice.
+//
+// movie-locations has no such shape: all 117 of its distinct hints are real places
+// ("Hampshire", "Prague", "Los Angeles"), and they rescue 703 rows that name no area of
+// their own. So the bucket is refused by shape and everything else is simply asked --
+// "Rest Of The World" and "North" are hints too, and the gazetteer refuses those by
+// itself, which is the right place for that judgement.
+const INDEX_BUCKET = /\s+[A-Za-z]\s*[-\u2013]\s*[A-Za-z]$/;
+
+export function hintIsAnIndexBucket(hint) {
+  return INDEX_BUCKET.test(String(hint ?? "").trim());
+}
+
+// The area to fall back on when the written name encloses itself in nothing. Returns an
+// empty list rather than a bad guess.
+export function areasFromHint(hint) {
+  const text = tidy(hint);
+  if (!text || hintIsAnIndexBucket(text)) return [];
+  return [text];
+}
+
 // Why this row cannot be asked about at all. A refusal here is a result: the row keeps
 // its written name and stays without a point, which is the honest state.
 export function headRefusal(head) {
@@ -160,11 +191,14 @@ export function headRefusal(head) {
 // `area` may be null, and the caller must treat that as "unverifiable" rather than
 // "unconstrained": without an area there is nothing to check the head against, and the
 // 31.7% that a bare head appears to resolve is where Zorba ends up in Colorado.
-export function splitPlacePhrase(name) {
+export function splitPlacePhrase(name, { areaHint = null } = {}) {
   const head = placeHead(name);
   const refusal = headRefusal(head);
   if (refusal) return { head: null, areas: [], area: null, refusal };
-  const areas = placeAreas(name);
+  // The row's own hint goes LAST: it is the coarsest thing available, and the whole point
+  // of the ordering is that the tightest area answers first.
+  const areas = [...placeAreas(name), ...areasFromHint(areaHint)]
+    .filter((area, index, all) => all.indexOf(area) === index);
   if (areas.length === 0) return { head, areas: [], area: null, refusal: "no_area_to_check_against" };
   return { head, areas, area: areas[areas.length - 1], refusal: null };
 }
