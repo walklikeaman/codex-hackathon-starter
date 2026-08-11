@@ -1,3 +1,7 @@
+-- Captured from production 2026-08-08. This migration was applied through the
+-- Supabase MCP and never written to a file; the repo therefore did not describe the
+-- database. Body below is verbatim from supabase_migrations.schema_migrations.
+
 -- What a reelstreets.com submission owes.
 --
 -- Its film id and capture index, so a row leads back to the one shot it came

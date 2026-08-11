@@ -1,3 +1,7 @@
+-- Captured from production 2026-08-08. This migration was applied through the
+-- Supabase MCP and never written to a file; the repo therefore did not describe the
+-- database. Body below is verbatim from supabase_migrations.schema_migrations.
+
 -- What a movie-locations.com submission owes.
 --
 -- Its film slug and caption index, and the caption itself. The caption demand
@@ -5,10 +9,6 @@
 -- sentence, and a reviewer must be able to see the sentence it came from. The
 -- difference is that here a regex did the cutting rather than a model, which is
 -- more predictable but no more self-evidently right.
---
--- NOTE: a later migration (open_plaques_evidence, another session) rewrites this
--- same constraint and preserves this branch. Verified against the live database:
--- all six kinds appear in both the enum and the constraint.
 
 alter table location_submissions
   drop constraint if exists location_submissions_evidence_for_kind;

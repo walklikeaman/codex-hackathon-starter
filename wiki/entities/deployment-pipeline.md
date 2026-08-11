@@ -4,7 +4,36 @@ Vercel project `codex-hackathon-starter` (id `prj_FM31BOAjGEmwLlOFFK0zcpzcqStE`,
 account `walklikeaman1904`), linked to the GitHub repo. The framework is forced by
 `vercel.json` (otherwise it built as static).
 
-## Corrected 05.08 — a merge into `main` ships to PRODUCTION
+## Corrected twice on 05.08 — a merge into `main` ships to production SOMETIMES
+
+**Second correction, same day.** Of four merges into `main` within forty minutes, only
+two produced a Production deployment: `7c330c4` and `1d7c5c8` did, `8907282` and
+`733cb49` got a Preview and nothing else. Production ran an hour-old commit while `main`
+was two merges ahead, and the map answered without a fix that had already been merged.
+
+**The verification that looked fine and was not.** `gh api repos/…/commits/<sha>/status`
+returns `success` as soon as ANY check passes — and the Preview deployment is a check.
+So the poll went green while no production deployment existed at all. The honest check
+asks for the environment by name:
+
+```bash
+gh api "repos/OWNER/REPO/deployments?environment=Production&per_page=5" \
+  --jq "[.[] | select(.sha==\"$(git rev-parse origin/main)\")] | length"
+```
+
+Zero means production is still on an older commit, whatever the commit status says.
+
+**The manual path is not a relic — it is the fallback.** It works and it is the way to
+force production current:
+
+```bash
+gh workflow run "Deploy production" -f ref=main -f confirm_production=true
+```
+
+Measured: 40 seconds end to end, and the production URL served the merged code straight
+after.
+
+## First correction 05.08 — a merge into `main` ships to PRODUCTION
 
 Measured on PR #122, not assumed. Merging created **two** things within seconds: the
 `Deploy staging` workflow run, and a Vercel deployment in the GitHub environment

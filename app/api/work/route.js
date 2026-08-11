@@ -71,19 +71,17 @@ function defaultCreateStore(env) {
       if (error) throw new Error(`place frames load failed: ${error.message}`);
       return data ?? [];
     },
-    // The join that makes the studio distinction possible: place_class comes from the
-    // resolver's P31 ancestry walk, relation_kind from the edge.
+    // One call for the whole card (#129). `work_facts` returns the work's own facts AND
+    // the facts of the people who made it, each with the place it happened at, the
+    // sentence the source stated, and how many degrees it stands from this work.
+    //
+    // It replaces a join on work_place_links, which by construction could only ever
+    // return facts filed against the work — so "the director lived here" was reachable
+    // only by copying it onto every film they made, and nobody did.
     async loadPlaces(workId) {
-      const { data, error } = await client
-        .from("work_place_links")
-        .select(`relation_kind, confidence,
-                 places ( id, name, city, country, lat, lng, place_class,
-                          geocode_precision, confidence, wikidata_id, osm_building_id )`)
-        .eq("work_id", workId);
+      const { data, error } = await client.rpc("work_facts", { p_work_id: workId });
       if (error) throw new Error(`places load failed: ${error.message}`);
-      return (data ?? [])
-        .filter((row) => row.places)
-        .map((row) => ({ ...row.places, relation_kind: row.relation_kind }));
+      return data ?? [];
     },
   };
 }

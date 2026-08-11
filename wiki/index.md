@@ -29,6 +29,10 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 ## Concepts (how it works)
 
 - [demo-path](concepts/demo-path.md) — the one sacred scenario
+- [fact-architecture](concepts/fact-architecture.md) — a fact has identity, payload and its
+  own sentence; degree of separation; and the on_conflict outage found while writing it
+- [queue-review](concepts/queue-review.md) — what a rule may decide about a submission and
+  what nobody can; the two rules that were wrong first, and why 13,841 rows have no point
 - [personal-library](concepts/personal-library.md) — Letterboxd ZIP/CSV, privacy
 - [location-discovery](concepts/location-discovery.md) — three paths; a model may name a place, never locate one
 - [film-permits](concepts/film-permits.md) — the only primary source: the city that issued the permit
@@ -53,6 +57,8 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
   (film stills, "paste your Letterboxd handle")
 - [source-evaluation](sources/source-evaluation.md) — IMDb, Fandom and frame corpora:
   what we looked at, refused, and why it will not change
+- [commemorative-plaques](sources/commemorative-plaques.md) — plaques on facades:
+  47,064 public-domain points where the quote is already written on the wall (issue #125)
 - [feature-research](sources/feature-research.md) — competitors, APIs and legal
   notes behind `ROADMAP.md` and backlog issues #44–#77
 - `Context/brief-scenemap-design.md` — the original product brief

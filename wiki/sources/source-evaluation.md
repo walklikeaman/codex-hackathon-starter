@@ -1,5 +1,44 @@
 # Sources we looked at and did not take
 
+## Correction 05.08.2026: not a commercial project
+
+The owner clarified: this is a student demo and it is **not sold**. Restrictions of
+licence TYPE (CC BY-NC, non-commercial model weights) therefore stop blocking — their
+conditions are honoured as written, and all of it is revisited the moment selling is
+discussed.
+
+**Refusals below that rest on terms of use still stand.** Terms forbid the ACT, not the
+earnings, so scraping IMDb is forbidden regardless of money. The same goes for frame
+corpora whose owners hold no rights to the frames: non-commercial use of somebody else's
+work without rights is still use without rights.
+
+> **Correction 08.08.2026 — ReelStreets was named here and should not have been.**
+> Re-checked live before the scrape shipped: `robots.txt` disallows only `/wp-admin/`
+> and declares a sitemap; there is **no terms-of-use page at all** — `/terms`,
+> `/terms-of-use`, `/legal`, `/disclaimer` all 404, and the site publishes only
+> `/privacy-policy` and `/about-us`. No prohibition on crawling, robots, scraping or
+> extraction appears on any page. The single "automated" match is the GDPR clause about
+> automated decisions concerning people, which is not about access.
+>
+> What ReelStreets DOES state, at `/how-to-submit`, is that the screen captures remain
+> the copyright of their title holders. That is a rights claim about the IMAGES and it is
+> honoured: [[reelstreets-source]] stores image URLs as links for a reviewer, downloads
+> nothing, and records `source_license = 'unstated'`.
+>
+> The distinction this correction turns on is the same one the paragraph above draws:
+> **a licence says on what terms you may; a site's terms say whether you may at all.**
+> ReelStreets asserts the first and has never published the second. IMDb publishes both,
+> which is why it stays refused and ReelStreets does not.
+
+The rule: **a licence says on what terms you may; a site's terms say whether you may at
+all.**
+
+**Owner's decision 05.08 on sources in general:** collect any source and mark it
+unverified rather than discarding the lead. "Somebody said something happened here" is
+worth showing when the card says exactly that and names who said it.
+
+
+
 Recording a refusal is worth as much as recording a build: without this, the same
 appealing idea comes back every few weeks and gets researched again.
 

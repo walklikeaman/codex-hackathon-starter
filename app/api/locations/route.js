@@ -4,10 +4,15 @@ import {
   buildLocationsSparql,
   buildWikidataEntitiesUrl,
   buildWikidataSearchUrl,
+  buildWorkFameQuery,
   entityClaimIds,
+  entityClaimValues,
   entityText,
+  fameFromBindings,
+  rankWorksByFame,
   isWikidataId,
   isWorkKind,
+  locationFallbacks,
   locationsByDistance,
   locationsWithinRadius,
   normalizeWikidataEntityLocations,
@@ -25,6 +30,97 @@ import {
 } from "../../lib/scene-match-token.mjs";
 import { findInvertedPlaces } from "../../lib/inverted-places.mjs";
 import { DISPLAY, gradePlace } from "../../lib/place-grade.mjs";
+import { createClient } from "@supabase/supabase-js";
+import { MATCHED_BY, selectSubmissionPlaces } from "../../lib/submission-places.mjs";
+import { normalizeWorkTitle } from "../../lib/content-graph.mjs";
+
+// How many queue rows one work may contribute. Person of Interest alone has 961.
+const MAX_SUBMISSION_PLACES = 12;
+const SUBMISSION_FETCH_LIMIT = 200;
+
+// Everything the ingest found, reachable from a title search: 6,041 works and 30,189
+// geolocated rows that the live map could not see. Read with the anon key like the rest
+// of the graph — the queue is public-read under RLS — and a failure costs these extra
+// places, never the map.
+const SUBMISSION_FIELDS =
+  "id, place_name, area_hint, lat, lng, source_url, source_sentence, source_kind, status, status_reason";
+const SUBMISSION_COLUMNS = `${SUBMISSION_FIELDS}, works!inner(imdb_id, title_norm, kind)`;
+// The own-records path needs the work's own identity, because Wikidata gave us none.
+const OWN_WORK_COLUMNS = `${SUBMISSION_FIELDS}, works!inner(id, title, title_norm, kind)`;
+
+// One identifier is not enough, and Doctor Who is why.
+//
+// Wikidata's item for the series carries IMDb `tt0056751` — the 1963 series. Our queue
+// was filled under `tt0436992`, the 2005 revival: 566 rows against 3. Both are Doctor
+// Who, one identifier reaches three of them, and a search that answers with three is
+// wrong in the way that matters — the person asked for Doctor Who and we had 566.
+//
+// The same shape waits in every long-running series, every remake and every work whose
+// two sources picked different ids. So identifiers first, ALL of them — an item may
+// carry several P345 values, plus a TMDB id — and then the title, which finds the rest.
+//
+// The two are not equally strong and the card says which one it was: a title is shared
+// by works that have nothing to do with each other (Gladiator is two films), so a
+// title-matched row is labelled "matched by title" and asks to be checked.
+async function findSubmissionPlaces({ workEntity, work, kind, center, exclude, env = process.env }) {
+  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return [];
+
+  const imdbIds = entityClaimValues(workEntity, "P345").filter((id) => /^tt\d+$/.test(String(id)));
+  const tmdbId = entityClaimValues(workEntity, "P4947")[0] ?? null;
+  const titleNorm = normalizeWorkTitle(work.title ?? "");
+
+  try {
+    const client = createClient(url, anonKey, { auth: { persistSession: false } });
+    const base = () => client
+      .from("location_submissions")
+      .select(SUBMISSION_COLUMNS)
+      // NOT rejected, rather than pending. A row we have checked and believe must not
+      // vanish from the map the moment somebody believes it, which is what filtering on
+      // `pending` did — the review would have quietly deleted its own best results.
+      .neq("status", "rejected")
+      .not("lat", "is", null)
+      .limit(SUBMISSION_FETCH_LIMIT);
+
+    const rows = [];
+    const seen = new Set();
+    const collect = (data, matchedBy) => {
+      for (const row of data ?? []) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        rows.push({ ...row, matched_by: matchedBy });
+      }
+    };
+
+    if (imdbIds.length || tmdbId) {
+      const filters = [
+        imdbIds.length ? `imdb_id.in.(${imdbIds.join(",")})` : null,
+        tmdbId ? `tmdb_id.eq.${tmdbId}` : null,
+      ].filter(Boolean).join(",");
+      const { data, error } = await base().or(filters, { referencedTable: "works" });
+      if (error) throw new Error(error.message);
+      collect(data, MATCHED_BY.id);
+    }
+
+    // The title round runs even when the identifier found rows: 3 of Doctor Who's 569
+    // came from the id, and stopping there would have been the bug.
+    if (titleNorm) {
+      const { data, error } = await base()
+        .eq("works.title_norm", titleNorm)
+        .eq("works.kind", kind);
+      if (error) throw new Error(error.message);
+      collect(data, MATCHED_BY.title);
+    }
+
+    return selectSubmissionPlaces(rows, {
+      work, kind, center, limit: MAX_SUBMISSION_PLACES, exclude,
+    });
+  } catch (error) {
+    console.warn("submission queue unavailable", error?.message);
+    return [];
+  }
+}
 
 // Precision is an axis of its own, and it is the one that decides what a pin may claim.
 // "Skyfall was shot in Istanbul" can be perfectly evidenced and is still not a doorway;
@@ -75,9 +171,35 @@ async function searchWorks(query) {
   if (!response.ok) throw new Error(`Wikidata search responded with ${response.status}`);
   const payload = await response.json();
 
-  return (payload.search ?? [])
+  const matches = (payload.search ?? [])
     .filter((result) => isWikidataId(result.id))
     .map(({ id, label, description }) => ({ id, label, description }));
+
+  // Famous first. `wbsearchentities` orders by how well a label matches the typed
+  // string, which puts Adele's lyric video above the film called Skyfall and a
+  // parasitology journal above the film called Parasite. One extra query, and it is the
+  // difference between a juror naming their favourite film and seeing it, or seeing an
+  // empty map that reads as "we do not have that film".
+  const fameQuery = buildWorkFameQuery(matches.map((match) => match.id));
+  if (!fameQuery) return matches;
+
+  try {
+    const endpoint = new URL(WIKIDATA_ENDPOINT);
+    endpoint.searchParams.set("query", fameQuery);
+    endpoint.searchParams.set("format", "json");
+    const fameResponse = await fetch(endpoint, {
+      headers: { Accept: "application/sparql-results+json", "User-Agent": USER_AGENT },
+      next: { revalidate: 86400 },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!fameResponse.ok) return matches;
+    return rankWorksByFame(matches, fameFromBindings(await fameResponse.json()));
+  } catch (error) {
+    // Ordering is an improvement, not a precondition. If the service is slow the search
+    // runs in the order the API gave us, exactly as it did before.
+    console.warn("work fame ranking unavailable", error?.message);
+    return matches;
+  }
 }
 
 async function fetchLocationBindings(query) {
@@ -193,7 +315,24 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
 
   const workEntity = workEntities.get(matchedWorkId);
   const config = workKindConfig(kind);
-  const locationIds = entityClaimIds(workEntity, config.locationProperty);
+
+  // The work's own property first, then the weaker ones — but only if the strong one
+  // gave nothing. Measured on 24 famous titles, three returned an empty map: Spirited
+  // Away and Parasite have no P915 at all (one is animation, the other built its sets),
+  // and an empty map does not read as "nobody recorded the locations", it reads as "we
+  // do not have that film".
+  let via = null;
+  let locationIds = entityClaimIds(workEntity, config.locationProperty);
+  if (locationIds.length === 0) {
+    for (const fallback of locationFallbacks(kind)) {
+      const ids = entityClaimIds(workEntity, fallback.property);
+      if (ids.length === 0) continue;
+      via = fallback;
+      locationIds = ids;
+      break;
+    }
+  }
+
   const locationEntities = await fetchEntities(locationIds);
   // What each place IS, one batch for the whole result. Without it every place in a
   // title search would be ungraded — and the coarse ones, the countries and the
@@ -205,7 +344,7 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
     [...typeEntities].map(([typeId, entity]) => [typeId, entityText(entity, "labels")]),
   );
   const normalized = normalizeWikidataEntityLocations(workEntity, locationEntities, {
-    kind, typeLabels,
+    kind, typeLabels, via,
   });
   // Every place the work touches, nearest first. The radius no longer decides what
   // exists — a title search is not a question about the city on screen.
@@ -220,12 +359,14 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
   // It runs AFTER the statement search rather than beside it, and is given what that
   // search already found, so the same place cannot arrive twice. Its cost is bounded
   // and its failures are swallowed: these are extra places, never the answer.
+  const work = {
+    id: matchedWorkId,
+    title: matchedWork?.label ?? entityText(workEntity, "labels"),
+    year: stated[0]?.work_year ?? null,
+  };
+
   const candidates = await findInvertedPlaces({
-    work: {
-      id: matchedWorkId,
-      title: matchedWork?.label ?? entityText(workEntity, "labels"),
-      year: stated[0]?.work_year ?? null,
-    },
+    work,
     kind,
     center,
     radiusKm: radius,
@@ -234,16 +375,93 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
     onError: (error) => console.warn("inverted place search failed", error?.message),
   });
 
+  // And the queue: everything our own ingest found for this work. Read last so it can be
+  // deduplicated against both of the above, and so a slow database never delays the
+  // answer that Wikidata already gave.
+  const queued = await findSubmissionPlaces({
+    workEntity,
+    work,
+    kind,
+    center,
+    exclude: [...stated, ...candidates],
+  });
+
   // Every inverted hit is inside `nearcoord:`, so it is here by construction — but the
   // distance is still measured rather than assumed, because the client sorts on it.
-  const locations = [...stated, ...locationsByDistance(candidates, center, radius)];
+  const locations = [
+    ...stated,
+    ...locationsByDistance([...candidates, ...queued], center, radius),
+  ];
 
   return {
     matchedWork,
     locations,
     here: locations.filter((location) => location.in_radius).length,
-    candidate_count: candidates.length,
+    candidate_count: candidates.length + queued.length,
+    queued_count: queued.length,
   };
+}
+
+// What our own records know, when Wikidata does not recognise the title at all.
+//
+// Measured on a random sample of fourteen works drawn from the queue: FOUR came back
+// completely empty although we hold their places. "Wild West Tech" and "The Drive of
+// Life" are not in Wikidata under that name, or are not the kind we asked for — and the
+// queue was only ever consulted after a work had been matched there. So the product was
+// silent about places it already had, which is the exact failure this session keeps
+// finding: work that never reaches the live path.
+//
+// Matched by title and kind, and labelled as such on every card.
+async function findOwnWorkPlaces({ query, kind, center, env = process.env }) {
+  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const titleNorm = normalizeWorkTitle(query ?? "");
+  if (!url || !anonKey || !titleNorm) return { matchedWork: null, locations: [] };
+
+  try {
+    const client = createClient(url, anonKey, { auth: { persistSession: false } });
+    const { data, error } = await client
+      .from("location_submissions")
+      .select(OWN_WORK_COLUMNS)
+      // NOT rejected, rather than pending. A row we have checked and believe must not
+      // vanish from the map the moment somebody believes it, which is what filtering on
+      // `pending` did — the review would have quietly deleted its own best results.
+      .neq("status", "rejected")
+      .not("lat", "is", null)
+      .eq("works.title_norm", titleNorm)
+      .eq("works.kind", kind)
+      .limit(SUBMISSION_FETCH_LIMIT);
+
+    if (error) throw new Error(error.message);
+    if (!data?.length) return { matchedWork: null, locations: [] };
+
+    // Several rows of `works` can share a title — Doctor Who is two series. The one with
+    // the most places answers, and the rest come along: they are the same name and the
+    // card says the match was by title.
+    const byWork = new Map();
+    for (const row of data) {
+      const id = row.works?.id;
+      if (!id) continue;
+      byWork.set(id, [...(byWork.get(id) ?? []), row]);
+    }
+    const [bestId, rows] = [...byWork.entries()].sort((a, b) => b[1].length - a[1].length)[0] ?? [];
+    if (!bestId) return { matchedWork: null, locations: [] };
+
+    const work = { id: bestId, title: rows[0].works?.title ?? query, year: null };
+    return {
+      matchedWork: {
+        id: bestId,
+        label: work.title,
+        description: "from our own records — not identified in Wikidata",
+      },
+      locations: selectSubmissionPlaces(data, {
+        work, kind, center, limit: MAX_SUBMISSION_PLACES, matchedBy: MATCHED_BY.title,
+      }),
+    };
+  } catch (error) {
+    console.warn("own-records lookup failed", error?.message);
+    return { matchedWork: null, locations: [] };
+  }
 }
 
 export async function GET(request) {
@@ -272,18 +490,28 @@ export async function GET(request) {
     const workIds = workMatches.map((match) => match.id);
 
     if (workQuery && workIds.length === 0) {
-      return NextResponse.json({
-        center: { lat, lng },
-        radius_km: radius,
-        kind,
-        search_mode: "work",
-        matched_work: null,
-        locations: [],
-      });
+      // Wikidata does not know the title. Our own records still might.
+      const own = await findOwnWorkPlaces({ query: workQuery, kind, center: { lat, lng } });
+      return NextResponse.json(
+        {
+          center: { lat, lng },
+          radius_km: radius,
+          kind,
+          search_mode: "work",
+          matched_work: own.matchedWork,
+          here: own.locations.length,
+          candidates: own.locations.length,
+          queued: own.locations.length,
+          locations: addSceneMatchTokens(gradeLocations(
+            locationsByDistance(own.locations, { lat, lng }, radius),
+          )),
+        },
+        { headers: { "Cache-Control": SCENE_MATCH_TOKEN_CACHE_CONTROL } },
+      );
     }
 
     if (workQuery) {
-      const result = await findLocationsByTitle({
+      let result = await findLocationsByTitle({
         workMatches,
         kind,
         center: { lat, lng },
@@ -291,6 +519,22 @@ export async function GET(request) {
         limit,
         excludeLocationId,
       });
+
+      // Wikidata had candidates and none of them was this kind of work — "Wild West Tech"
+      // is a television documentary our records call a film. Ask our own records before
+      // answering with nothing.
+      if (!result.matchedWork) {
+        const own = await findOwnWorkPlaces({ query: workQuery, kind, center: { lat, lng } });
+        if (own.locations.length) {
+          result = {
+            matchedWork: own.matchedWork,
+            locations: locationsByDistance(own.locations, { lat, lng }, radius),
+            here: own.locations.length,
+            candidate_count: own.locations.length,
+            queued_count: own.locations.length,
+          };
+        }
+      }
 
       return NextResponse.json(
         {
@@ -306,6 +550,9 @@ export async function GET(request) {
           // How many of them are candidates rather than statements. The client says so
           // on the card; a count here lets it say so before opening one.
           candidates: result.candidate_count ?? 0,
+          // How many of them came from our own ingest queue rather than from a live
+          // service. Useful in one glance when the map looks thinner than it should.
+          queued: result.queued_count ?? 0,
           locations: addSceneMatchTokens(gradeLocations(result.locations)),
         },
         { headers: { "Cache-Control": SCENE_MATCH_TOKEN_CACHE_CONTROL } },

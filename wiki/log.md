@@ -231,6 +231,625 @@ updates.
 
 **Updated**: `wiki/concepts/moviemaps-source.md` (new), `wiki/index.md`,
 `wiki/sources/source-evaluation.md`, `.gitignore`, `test/moviemaps-source.test.mjs`
+## [2026-08-08] incident | The names were not the problem, and the first diagnosis said they were
+
+**Object**: `app/lib/place-name-head.mjs`, `scripts/geocode-submissions.mjs`,
+`app/lib/submission-review.mjs`, `wiki/concepts/queue-review.md`
+**Scenario**: bug · **Outcome**: ✅ corrected
+
+Earlier today this log said 13,841 rows had no coordinate because their `place_name` was a
+caption — 47% of movie-locations names past twelve words, 54% carrying the `<Film>
+location:` prefix the extractor was meant to cut. **Re-measured before starting the
+repair: 71 of 5,580 and zero.** Another branch fixed its extractor and re-ingested the
+source in the hours between. The repair being asked for had already happened.
+
+What the first measurement never checked is one column:
+
+```
+moviemaps      geocode_source = moviemaps        30,147
+open_plaques   geocode_source = open_plaques         53
+permit_record  geocode_source = opendata_paris       10
+reelstreets    geocode_source = reelstreets          27
+reelstreets    geocode_source = NULL               8,035
+movielocations geocode_source = NULL               5,580
+```
+
+**No geocoder has ever been run on this queue.** Every located row got its point from the
+source it was scraped from. The 13,637 pointless rows were never blocked by their names.
+
+**And the 508 long ReelStreets names are not captions either.** They are written
+descriptions of where a camera stood — *"Bristol Temple Meads station on Station Approach
+off Bath Road in Bristol, Avon"* — precise, deliberate, and unanswerable by a gazetteer.
+A different problem with a different fix.
+
+So the work became: turn a written location into something a gazetteer can answer.
+Measured on 120 rows —
+
+| asked | resolves |
+|---|---|
+| the name as stored | 0.8% |
+| the first comma clause alone | **31.7%** |
+| head + area, kept only if the head landed inside the area | **8.3%** |
+
+**The middle number is the trap.** Dropping the comma clause throws away the
+disambiguator, and the 31.7% includes Zorba (a restaurant on Leinster Gardens) in
+Colorado, St John's Square in Malta, the Federal Reserve Bank in Dallas and the Union
+League Club of Chicago in New York. `chooseCandidate` cannot catch these: it reports
+`unique` for a lone result wherever on earth it is, because its job is choosing between
+candidates, not checking one against the world.
+
+So the clause becomes the **area**, resolved separately, and the head is kept only if it
+landed within the same 100 km the geocoder already uses for a hint. Trying areas
+**most-specific-first** doubled the yield on its own (3.3% → 8.3%): a country centroid
+confirms nothing at a hundred kilometres, and anchoring "Kladruby Monastery, Kladruby,
+Czech Republic" to the country rejects a correct row that the village next door confirms.
+
+Two refusals earned their place the same way: `head_is_a_common_noun` ("the alley at the
+corner of…" reduces to "alley", which Wikidata places in Israel) and
+`road_is_a_line_not_a_point` ("A82 at Rannoch Moor…" reduces to "A82", whose point is the
+road's southern end in Glasgow — 80 km away, on the right road and in the wrong place).
+
+**The lesson for the handoff:** a measurement of a shared production table is a snapshot,
+not a fact. Two numbers in this log were already stale when they were written, and both
+were stale because another branch was working the same rows.
+
+## [2026-08-08] decision | The queue got its first verdicts, and the count that mattered was not 30,257
+
+**Object**: `app/lib/submission-review.mjs`, `scripts/review-submissions.mjs`,
+`app/api/locations/route.js`, `app/lib/submission-places.mjs`
+**Scenario**: feature · **Outcome**: ✅ success
+
+"30,257 rows, zero reviewed" reads as a clicking problem. Measured before writing
+anything, it is not one, and three numbers say why.
+
+**The 30,257 geolocated rows are 30,153 MovieMaps rows and 104 others.** Their names are
+clean — 22 characters on average, two rows over twelve words in the whole set — and their
+coordinates are one per place: **3,187 of 3,313 name-clusters hold exactly ONE distinct
+point**. So the obvious offline check, "do the rows agree with each other", proves
+nothing; they are the same number copied, not independent observations. Everything that
+would actually settle such a row needs the network.
+
+**13,841 rows have no coordinate, and mostly cannot get one, because the name is a
+caption.** 47% of movie-locations names run past twelve words and 54% still carry the
+`<Film> location:` prefix the extractor was meant to cut — which is why **zero** of its
+5,783 rows are geocoded, and reelstreets has 27 of 8,063. That is our extraction failing,
+not the source lying, and the review says so per row instead of burying it.
+
+**So a human queue of 30,257 rows is not a product** — the reviewer would hold no more
+information than we do. What shipped is the verdict itself: mechanical refusals, a
+source-class rule for claims a stranger can already check, and the weighted path for the
+signals the resolver in another branch is producing.
+
+**Applied to production: 90 verified, 914 rejected.** 53 plaques (the sentence is
+engraved on a wall at the coordinate — nothing else in the corpus is checkable that
+cheaply), 10 filming permits (the city that issued it is the authority), 27 rows carrying
+both a resolved Q-id and a statement. Rejected: 161 rows named "Google Maps" and kin —
+the caption of a map link — and 753 whose name is a photo credit, "Wikimedia /
+Alexanderm14".
+
+**Two rules were wrong first, and the live data said so both times.**
+
+`wikidata_entity` is a CLAIM signal in `place-review.mjs` and that is right there and
+wrong here. For a place discovered from a work's Wikidata statement, the entity IS the
+claim. For a queue row the Q-id is found the other way round — by asking what sits at the
+coordinate the scraper gave — so it proves the BUILDING exists and says nothing about
+whether a film was shot in it. It also scores 0.6, exactly the threshold, so without the
+correction 29 rows would have published "filmed here" on the strength of "this address is
+real".
+
+And `cited_source` first demanded that the sentence name the place it was filed under.
+Checked against real rows it was wrong in both directions: *"Bridge used in the first
+episode of series 1"* PASSED for Vauxhall Bridge on the word "bridge", while *"Jim wakes
+up from a coma in an abandoned hospital"* FAILED for Central Middlesex Hospital, which is
+a real statement about a real row. Prose does not repeat its own heading. What is worth
+excluding is the row that states nothing at all — `Source: Wikipedia`, `Source: IMDb` —
+and that is what it does now.
+
+**A verified row would have vanished off the map.** `/api/locations` filtered
+`status = 'pending'`, so believing a submission deleted it. Now it filters *not rejected*,
+and a checked row reads "Source checked" with the reason instead of "not yet verified by
+us". It is still a candidate and still outside the graph, and the card says both.
+
+**Only the decisive verdicts are stored.** A pending row's reason — no signal yet, no
+coordinate, the name is a caption — is derived and goes stale the moment a Q-id lands or
+the extractor is fixed. Writing 42,884 of those would stamp `reviewed_at` on rows nobody
+decided anything about, and the queue would report itself as reviewed when all that
+happened was a label. One script run re-derives them.
+
+**Reversible in one statement**, and the script prints the full breakdown every run.
+
+## [2026-08-08] incident | Another session is live in the same production database
+
+**Object**: `location_submissions`
+**Scenario**: chore · **Outcome**: ⚠️ carried forward
+
+Found while measuring the queue: the worktree `skype-ai-openrouter-movie-maps-bffab0`
+applied `submission_resolution_and_corroboration` to production at 21:34 — ten minutes
+after this session's own migration — and is running a Wikidata resolver against the queue
+right now. Its columns `wikidata_id` and `corroborated_by` exist in the live database and
+in **no file**; the count of resolved rows went 0 → 20 → 34 across three measurements
+forty minutes apart, and the table lost 210 rows to its deduplication in the same window.
+
+**That migration is deliberately NOT captured into `supabase/migrations/` here**, unlike
+the thirteen captured earlier today: it belongs to a branch that has not merged, and
+committing it from this side would collide with its own PR. It is drift with a known
+owner, which is a different thing from drift with none.
+
+Practical consequence for anyone measuring the queue: **quote the time.** Numbers in this
+log entry and in `submission-review.mjs` are as of 08.08 and were already moving as they
+were written.
+
+## [2026-08-08] incident | The graph could not be written to, and had not been since 31 July
+
+**Object**: `app/api/resolve/route.js`, `supabase/migrations/20260808010100_*`
+**Scenario**: bug · **Outcome**: ✅ fixed · #129
+
+Found while working #129 on paper, not while looking for it.
+
+`20260731234121_scene_links_allow_revisits` replaced `unique (work_id, place_id,
+relation_kind)` with two **partial** unique indexes so a story could revisit a place
+across scenes. The reasoning in that migration is careful and right about NULLs on
+Postgres 14. It missed that PostgREST sends `ON CONFLICT (work_id, place_id,
+relation_kind)` with **no WHERE clause**, and Postgres cannot infer a partial index from a
+bare inference clause. Probed against production:
+
+```
+ERROR 42P10: there is no unique or exclusion constraint matching the ON CONFLICT
+specification
+```
+
+`/api/resolve` is the only write path into the canonical graph. It has been failing on
+that upsert for eight days — *after* the Wikidata round-trips succeed, so the route looks
+like it is working. The graph has stood at **92 links and 70 places** the whole time while
+the review queue grew to 44,098 rows, and nothing reported it.
+
+**Fixed by a FULL index with `nulls not distinct`** — Postgres 15 gained it, this database
+is 17.6. Inference works again and the guarantee the split protected is intact: two
+scene-less rows for the same triple still collide, because their NULLs no longer compare
+as distinct. Verified by probing the real database inside a rolled-back transaction.
+
+**The lesson, and it is the second time this project has paid for it:** a schema change
+that is correct in SQL can still break the client that talks to it. `on_conflict` is a
+promise about an index shape, and nothing in the database tells you who relies on it.
+
+## [2026-08-08] decision | A fact has its own identity, its own payload and its own sentence
+
+**Object**: `supabase/migrations/20260808010000_*`, `20260808010100_*`,
+`app/lib/facts.mjs`, `app/lib/work-profile.mjs`, `app/api/work/route.js`
+**Scenario**: feature · **Outcome**: ✅ success · #129 · [[fact-architecture]]
+
+Step 1 of #129 asked for the schema to be worked through **on paper** first, against real
+examples. Ten were written out and six of them could not be expressed —
+[[fact-architecture]] holds the table. They cluster: every one appears the moment a source
+states **a specific claim, with a date, in a sentence**, which is exactly what plaques
+(#125) and music (#128) are.
+
+**Break 1 — one row per (work, place, kind).** Abbey Road plus The Beatles plus "recorded
+here" was one row for twelve recordings. A fact now carries `about` (which album, which
+episode, which scene) and `about` is part of the uniqueness key, so two facts of the same
+kind at one place are legal when they are about different things and still illegal when
+they are not. Proved on the live database, rolled back: three facts of the same kind at
+one place, told apart by `about`.
+
+**Break 2 — a fact about a person pinned to a work.** Rowling's café was seven rows, one
+per book, with the evidence copied seven times, and the eighth book would have made it
+eight. `creator_place_links` now exists with the same evidence contract the work facts got
+on 05.08: no source, no fact, checked at commit. It reaches a work through
+`work_creators`, and `work_facts()` uses `exists` rather than a join so a person who both
+wrote and directed does not contribute every fact twice. Proved live: two roles, one fact
+on the card.
+
+**And the sentence.** `placeRole()` builds the card's phrase from the relation kind, which
+was the only option while a fact was a bare Wikidata triple. A plaque hands over the whole
+sentence already written on the wall, and turning *"J. K. Rowling wrote some of the early
+chapters of Harry Potter in the rooms on the first floor of this building"* into "Where the
+author worked" throws away the part somebody crossed a city to read. Stored wording is now
+printed **verbatim** — trimmed and nothing else, because a quote that has been tidied
+cannot be checked against the wall it came from.
+
+**Degree of separation, computed once in SQL.** 0 the work itself, 1 its people, 2 what
+influenced it. 0 and 1 may enter a route; 2 is "nearby, and here is why". Without it,
+"Harry Potter places" becomes "places connected to anything Rowling ever touched" without
+anybody deciding to make it so.
+
+**Not done, deliberately:** `work_place_links` was NOT renamed — eight stored functions
+reference it by name and function bodies do not follow `ALTER TABLE RENAME`, so a rename
+would silently break every map RPC on the demo path. And #129's single polymorphic fact
+table was not built: two typed tables keep the foreign keys, and the `place_facts` view
+gives the one read surface the proposal was really after.
+
+Wired, not shelved: `/api/work` now answers from `work_facts()` in one call. 874 tests.
+
+## [2026-08-08] update | Thirteen migrations existed in production and in no file
+
+**Object**: `supabase/migrations/` (13 new files)
+**Scenario**: chore · **Outcome**: ✅ success
+
+The handoff warns that "the database has rules the repo does not describe". Measured:
+`supabase_migrations.schema_migrations` held **13 migrations with no file** —
+`map_points_rpc_geometry_bbox`, `map_works_with_poster`, `map_works_with_ratings`,
+`works_mc_path`, `tts_cache_bucket`, `place_frames`, `scene_links_allow_revisits`,
+`scene_stop_precision`, `works_source`, and the reelstreets and movielocations pairs.
+
+All 13 are now files, verbatim, under their live version numbers with a header saying
+where they came from. One of them turned out to contain the outage above, which is the
+argument for doing this at all: a rule you cannot read is a rule you cannot check.
+
+`scenemap_initial_schema` (14th) was deliberately **not** captured — its tables are
+dropped by `content_graph`, so the file would recreate dead history, and its comments are
+in Russian, which the repo does not allow.
+
+## [2026-08-07] decision | Handoff rewritten to the state that actually exists
+
+**Object**: `wiki/handoff.md`, `wiki/sources/commemorative-plaques.md`
+**Scenario**: chore · **Outcome**: ✅ success
+
+The handoff a session leaves behind is read by someone with no memory of it, so it is
+worth only as much as its worst wrong number. Three were wrong and are corrected.
+
+**"811 titles we do not hold" was never a measurement.** It came from a Title Case sweep
+that also produced "The Hospital" and "Junior High School". The honest figure is **49
+candidates, 13 resolvable** — and the difference matters because 811 makes plaques look
+like the next volume lever when they are not. The page said it, the source page said it,
+and both now say what was measured.
+
+**The next volume lever is the person path, and it is blocked on an empty table.** 2,952
+plaques name 1,479 creative people with Wikipedia links; reaching their works needs
+`creators` / `work_creators`, which hold nothing. That is a SOURCE problem, not a rules
+problem, and calling it correctly is what stops the next session from tuning a matcher
+that is already right.
+
+**The queue is the largest unfinished thing in the project**: 30,257 geolocated rows
+across 6,075 works, **zero reviewed**. Showing them as clearly-labelled candidates was
+this session's fix and it buys time; it is not a decision per row, and the handoff now
+says so in those words.
+
+Also recorded where it will be found: a merge into `main` does not reliably deploy
+production and `commits/<sha>/status` goes green on the Preview check; constraints exist
+in the live database that no migration in git describes; and the Open Plaques dump ships
+its own Null Island.
+
+## [2026-08-05] ingest | Titles on plaques became works, and the rules that made them true
+
+**Object**: `app/lib/plaque-title-resolve.mjs`
+**Scenario**: feature · **Outcome**: ✅ success · #125
+
+The plaque ingest could only link to works we already held, and that was the ceiling: of
+853 titles named on plaques stating production, **811 were works we did not have**. This
+resolves the title in Wikidata and creates the work carrying its q-id from birth.
+
+**The extractor first.** A crude Title Case sweep produced those 811, and they include
+"The Hospital", "Junior High School" and "Town & Country". Tightened to quoted strings
+and titles introduced by their kind ("the classic film X"), the same 140 plaques yield
+**49 candidates** — a number small enough to be checked by eye, which is the point.
+
+**Then three rules, and each was added because the previous version was wrong in a way
+that looked right:**
+
+| rule | resolved | wrong among them |
+|---|---|---|
+| exact title + is a film/series/book | 27 | 7 |
+| + the year written on the wall | 18 | ~4 |
+| + the title beside the claim | **13** | **0** |
+
+The instructive failures: **"The Lady Vanishes"** resolved to the 1976 remake although
+the plaque is about Gainsborough Studios **1924-1949**; **"Taj Mahal"** to a 1963 film
+although the plaque names a hangar in San Antonio; **"Decoration Day"** to a 1990 film
+although the plaque is about a cemetery tradition. Two years on a plaque are a RANGE, not
+two points — that is how The Wicked Lady (1945) was being rejected while the 1983 remake
+was not. And with no year at all, a match is only safe when exactly one work carries the
+title, because there is nothing to disambiguate with.
+
+**The verb chooses the kind.** "Zane Grey, the prolific author of western novels, lived
+here … Riders of the Purple Sage" is about the NOVEL; the 1918 adaptation would have the
+author writing a film he never made.
+
+**Written to the database, and the upsert matters as much as the insert.** Five of the
+thirteen already existed here under an IMDb id or a unique title, so they were ENRICHED
+with their Wikidata id rather than duplicated; eight are new. Works carrying a Wikidata
+id went from **15 to 28**. A title matching two of our rows is left alone — guessing
+which is the 1945 film is the mistake the year rule exists to prevent.
+
+**Live:** 53 plaque rows across 40 works. The new ones answer on production — The Wicker
+Man at Whithorn Library, You Only Live Twice at the Duck Inn where Fleming wrote it,
+Dial M For Murder at Ifield Green, Finnegans Wake at Bognor Regis, Crime and Punishment
+at Dostoevsky's flat on Kaznacheiskaya.
+
+## [2026-08-05] ingest | Plaques on the map: 43 places where the quote is on the wall
+
+**Object**: `app/lib/plaque-source.mjs`, `scripts/ingest-plaques.mjs`,
+`supabase/migrations/20260807020000_*`, `20260807020100_*`
+**Scenario**: feature · **Outcome**: ✅ success · #125, PR #138
+
+Coverage work, and the honest headline is that **plaques raise quality, not volume**.
+47,064 plaques carry a coordinate; after the rules, 50 of them state something about a
+work we hold, and 43 rows survived deduplication into the live queue across 31 works.
+
+**The rules ARE the feature, and each was measured on the whole world dump:**
+
+| rule | hits |
+|---|---|
+| normalised substring | 4,643 — "the club", "the beach", "the office" |
+| + case-sensitive on the original text | 346 |
+| + the claim word within sixty characters | **46, and they are real** |
+
+Without the last one a pub called The Crown is the series The Crown, and a
+cinematographer's credit list ("Among his film credits are Oklahoma, Doctor Dolittle,
+The Graduate") becomes four filming locations nobody claimed.
+
+**Refused before anything else:** 6,269 Stolpersteine and kindred memorials, 1,413 of
+them inside the phrase "lived here" — the phrase a naive filter keeps.
+
+**Three faults in the data itself**, each now a guard with a test. The dump carries
+**Null Island**: the Majestic Cinema in Leeds arrives as `latitude 0.0` with a correct
+longitude, and `finiteOrNull` cannot catch it because 0 is finite and a legal latitude.
+Some rows name the place `?`. And `organisations` is a JSON array written as text, which
+rendered as "Plaque erected by []".
+
+**Stored: the claim SENTENCE, not the wall.** The One Tun's inscription runs to nine
+hundred characters about saffron crops with the Oliver Twist claim in the first line —
+the same rule the Wikipedia extractor already follows, for the same reason.
+
+**Live now:** Midsomer Murders gained five pubs, Groundhog Day three Woodstock landmarks,
+plus Brief Encounter at Carnforth Station, The Railway Children at Oakworth, The Wicker
+Man, A Clockwork Orange, Billy Liar, Gainsborough Studios, Local Hero at the Pennan Inn,
+Moby Dick at Youghal.
+
+**Two paths measured and NOT taken**, so nobody re-measures them. Matching a person's
+plaque to their works through Wikidata gives 1,547 works for the 25 most-plaqued people
+and only **11 of ours** once the kind has to agree — Dickens wrote the NOVEL Oliver Twist
+and our row is the film. And the ceiling is not the matcher: of 853 titles named on
+plaques that state production, **811 are works we do not hold**. The lever for volume is
+creating those works from an identifier, not widening this filter.
+
+**Drift again:** the live evidence CHECK already carried `reelstreets` and
+`movielocations` branches that exist in no committed migration. Rewriting the constraint
+from what the repo knew was rejected by 8,063 rows — a constraint is written against the
+database that exists.
+
+## [2026-08-05] update | Coverage measured, and the map stopped hiding what we already know
+
+**Object**: `app/api/locations/route.js`
+**Scenario**: bugfix · **Outcome**: ✅ success
+**Code changes**: `#136`
+
+The owner asked how many works have fewer than five places. The answer led straight to a
+bug that was hiding a third of the base.
+
+**The queue, exactly.** 6,394 works have rows; **78.7% have fewer than five geolocated
+places**, the median is 2 and the mean 4.7. The distribution is a long thin tail: 5.3%
+have none, **39.8% have exactly one**, 17.1% have two, 16.5% three or four, and only 8.3%
+have ten or more. Split by kind: films 82.5% under five (median 2), series 45.5% (median
+5, and one series holds 961).
+
+**But the map answers from three sources**, so the queue's number is not what a person
+sees. Measured end to end on production, fourteen works drawn at random from the thin
+buckets: live sources ADDED places to ten of the fourteen — Altered States went from 3 to
+16, The Invisible Man from 1 to 6.
+
+**And four of the fourteen returned nothing at all**, although we hold their places. The
+queue was only ever consulted after Wikidata had identified the work, so when Wikidata
+does not know the title — "The Drive of Life" is not there under that name, "Wild West
+Tech" is a television documentary our records call a film and the type check refuses
+every candidate — the product stayed silent about places it already had. The same failure
+this session keeps finding: work that never reaches the live path.
+
+Both empty paths now ask our own records first, matched on title and kind, labelled
+"matched by title" on every card, with `matched_work` saying "from our own records — not
+identified in Wikidata".
+
+**After: 0 empty of 14** (was 4), and the juror scenario is 0 empty of 24 with a median
+of 1.26s.
+
+**Deployment lesson, and it cost the verification.** See [[deployment-pipeline]]: of four
+merges into `main` in forty minutes only two produced a Production deployment, and
+`gh api commits/<sha>/status` goes green on the PREVIEW check. Production was serving an
+hour-old commit while the poll said success. Ask for the environment by name, and use
+`gh workflow run "Deploy production"` when it has not fired.
+
+## [2026-08-05] rule-change | English everywhere, including GitHub
+
+**Object**: `AGENTS.md`, `wiki/log.md`, four issues and seven pull requests
+**Scenario**: decision · **Outcome**: ✅ success
+
+Owner's instruction (05.08): **the project is in English — the repository AND GitHub.**
+This replaces the earlier convention recorded in the handoff, "repo in English, GitHub
+issues in Russian", which was followed for issues #125, #127, #128, #129 and for the
+titles and bodies of PRs #122, #123, #126, #130–#133. All of them are rewritten.
+
+Five log entries written earlier today in Russian are translated here as well, along
+with `wiki/index.md` and the correction note in `wiki/sources/source-evaluation.md`.
+
+**What stays in Cyrillic, deliberately.** It is data, not prose:
+`wikipedia-source.mjs` holds the Russian section names the extractor queries
+("работа над картиной", "съёмки" …) — removing them removes a language edition; and
+`place-dedup.mjs`, `place-precision.md` and two tests use "Красная площадь" as the
+example that proves the name normaliser keeps non-Latin alphabets instead of emptying
+them. Both would be broken by translation, not improved.
+
+**Merge commit subjects on `main` are still Russian** — seven of them, from today. They
+are rewritable only by rewriting the branch's history, which is destructive and is the
+owner's call.
+
+## [2026-08-05] decision | The queue reached the map, and the owner ruled on MovieMaps
+
+**Object**: `app/lib/submission-places.mjs`, `app/api/locations/route.js`
+**Scenario**: feature · **Outcome**: ✅ success
+**Code changes**: `#132`
+
+The owner set the bar: the prototype must be FULLY working — not a demo on fifty films,
+but the whole base we collected. Measuring the gap showed how far off that was.
+
+**The measurement.** The database holds **38,270 submissions, every one `pending`, 30,212
+with a coordinate, across 6,054 works** — and **no route in `app/` reads
+`location_submissions`**. The live map answered from Wikidata alone, so a title search
+found places for **15** works while the ingest had facts for six thousand. Everything
+previous sessions pulled in was sitting in the dark.
+
+**The bridge is the IMDb id.** A work matched in Wikidata carries P345; the ingested works
+carry `imdb_id` — 6,041 of them, covering 30,189 geolocated rows. Wikidata q-ids cannot do
+it: only 15 of our works have one.
+
+**They arrive as candidates.** Hollow pin, "not yet verified by us", link to the source —
+the same treatment the inverted search got the same day. They never enter `places` or the
+graph. Bounded: nearest to the viewport first, twelve per work (Person of Interest alone
+has 961 rows), deduplicated against both earlier searches.
+
+**On production:** Notting Hill 10→15, The Dark Knight 14→26, Inception 20→34, Sense8
+2→14, Harry Potter 17→26. Parasite, which has no P915 at all in Wikidata, got a real
+Seoul street from the queue.
+
+**The owner's decision on MovieMaps.** The session that ingested those 30,161 rows wrote
+in its own research: "A MovieMaps row is a lead: strong enough to put in front of a
+reviewer, not licensed". Showing publicly is a different act from storing, so it was
+asked rather than assumed. The decision: **show them as unverified candidates.**
+
+The grounds, all measured: moviemaps.org has **no terms page at all** — `/terms`,
+`/legal` and `/copyright` are 404, so no prohibition exists to honour (which is what
+separates it from reelstreets, whose terms exist and forbid); we take **facts** — a place
+name and a coordinate — not their prose or their images; every row is labelled unverified
+and links back; the project is not commercial.
+
+
+## [2026-08-05] update | The juror scenario: 24 favourite films, three empty maps, zero after the fix
+
+**Object**: `app/lib/location-search.mjs`, `app/api/locations/route.js`
+**Scenario**: bugfix · **Outcome**: ✅ success
+
+The owner stated the demo's acceptance in one sentence: **someone on the jury names their
+favourite film, we type it in, and it is there — with no doubt that we have it.** Measured
+on production before touching anything, 24 well-known titles: **three came back empty** —
+Parasite, Spirited Away, Skyfall. The causes were different and both were worth fixing.
+
+**First: the wrong entity wins.** `wbsearchentities` ranks by label match and nothing
+else. "Skyfall" returns Adele's song, her lyric video and the soundtrack — **the film is
+not in the top eight at all**; "Parasite" returns a parasitology journal, two video games
+and the biological concept. The type check does not save it: a music video IS a film in
+Wikidata's hierarchy, so the lyric video passes and answers with nothing.
+
+What separates them is fame — sitelink counts: Skyfall film 78 against song 36 and video
+2; Parasite film 81 against the concept 46; Spirited Away film 109. The candidate list is
+now 15 deep and ordered by `wikibase:sitelinks` before the type check. **Type still has
+the last word** — a famous song can lead the list and still be refused for not being a
+film. This also closes the handoff's long-standing "Skyfall resolves to Adele's lyric
+video": 0 places before, 20 after, 13 of them in London.
+
+**Second: the work genuinely has no places.** Spirited Away and Parasite carry no P915 at
+all — one is animation, the other built its sets. An empty map does not read as "nobody
+recorded the locations", it reads as "we do not have that film", which is the one
+impression this product cannot afford. There is now a ladder: narrative location (P840),
+then country of origin (P495), each rung saying what it is — "Parasite is set in South
+Korea. No exact filming locations are recorded for it yet". A country renders as an area,
+never a doorway.
+
+**After: empty for 0 of 24.** 824 tests green.
+
+
+## [2026-08-05] rule-change | Not a commercial project — which changes some refusals and not others
+
+**Object**: `wiki/sources/source-evaluation.md`, issue #127
+**Scenario**: decision · **Outcome**: ✅ success
+
+The owner clarified (05.08): **this is a student demo and it is not sold.** The goal is to
+show a jury what can be built with AI, not to reach a market. So the note "SuperPoint and
+SuperGlue are refused over their non-commercial licence" was written under a wrong premise
+and is withdrawn.
+
+**What that changes.** Restrictions of LICENCE TYPE — CC BY-NC, non-commercial model
+weights — stop being blockers while nothing is sold: SuperPoint/SuperGlue, MusicBrainz
+supplementary data (CC BY-NC-SA), non-commercial Fandom wikis. Their conditions are
+honoured as written — attribution, share-alike — and the whole thing is revisited the
+moment selling is discussed.
+
+**What it does NOT change, and the difference is the point.** A prohibition in terms of
+use forbids the ACT, not the earnings: scraping IMDb, MovieMaps or Reelstreets stays
+forbidden whether or not money changes hands. And "the source has no rights to grant"
+(Film-Grab and similar frame corpora) stays too: non-commercial use of somebody else's
+work without rights is still use without rights.
+
+The rule in one line: **a licence says on what terms you may; a site's terms say whether
+you may at all.** The first depends on commerce, the second does not.
+
+The practical gain is modest — ALIKED + LightGlue under Apache/BSD already cover what
+SuperPoint/SuperGlue do. The real gain is elsewhere: Fandom's stop lists open up as DATA
+rather than only as a recall benchmark.
+
+
+## [2026-08-05] decision | Four directions the owner set: photo verification, music, facts, plaques
+
+**Object**: issues #125, #127, #128, #129
+**Scenario**: research · **Outcome**: ✅ success — researched and recorded, no code started
+
+Everything below was measured with live queries and licences read at the source.
+
+**#127 — verifying a place from photographs.** The headline: ready technology covers
+exactly half. Locating a photograph is solved and free — **MegaLoc** (MIT, CVPR 2025),
+**LightGlue** (Apache-2.0) + **ALIKED** (BSD-3), hloc, StreetCLIP. The other half is
+solved nowhere and is our product: those systems answer "where was this shot" with a
+probability, while our question is "is it true that film X was shot at address Y, and what
+proves it". The difference is practical: we hold a hypothesis (far cheaper than searching
+the planet), we need a **countable number of matched points** rather than a model's
+opinion, and we are **allowed to answer "we don't know"**. Half the pipeline is already
+written: `scene-frame-match`, `still-classify`, `mapillary` (with `compass_angle`),
+`building-snap`, `place-review`, `grounding`, `isMatchablePlace`.
+
+**#128 — music as a kind of work.** The owner decided we take it. Measured: Wikidata's
+`P483 recorded at` gives **5,464 recordings whose studio has a coordinate** (every early
+Beatles track → Abbey Road), music videos with `P915` number 111, UK plaques with a
+musical subject 1,248. MusicBrainz: core data CC0, supplementary CC BY-NC-SA. Personal
+library: **Last.fm reads a listening history from a nickname with no user auth**
+([[personal-collections-matrix]]); Spotify allows five test users in dev mode; Apple Music
+wants $99.
+
+**#129 — the architecture of facts, and this is the important one.** The schema expresses
+half of what the product needs, and both breaks are visible without code. First:
+`unique (work_id, place_id, relation_kind)` **forbids a second fact of the same kind** —
+Abbey Road and The Beatles is one row for twelve recordings. Second: a fact about a person
+is pinned to a work — Rowling's café is seven rows with the same evidence copied seven
+times, because `creator_place_links` does not exist. Proposed: one fact table with two
+kinds of subject, so the work card and the place card become one query read from
+different ends. Plus a **degree of separation** (0 about the work, 1 about its person, 2
+about what influenced it) visible in the interface — without it, "Harry Potter places"
+quietly becomes "places connected to anything Rowling ever touched".
+
+**Updated**: `wiki/sources/commemorative-plaques.md` (#125 recorded separately)
+
+
+## [2026-08-05] ingest | Plaques on facades: the quote is already written on the wall
+
+**Object**: `wiki/sources/commemorative-plaques.md`, issue #125
+**Scenario**: research · **Outcome**: ✅ success
+
+The owner's observation: the round plaques in London and Edinburgh say "filmed here",
+"recorded here", "written here". Checked with live queries — the source exists and it is
+better than anything before it.
+
+**Open Plaques, licensed PDDL — public domain.** Stronger than the ODbL and CC BY-SA this
+project already relies on. Dumps in CSV/JSON/GeoJSON; they ask people not to crawl.
+55,115 plaques, **47,064 with a coordinate**; the UK holds 17,371 and every one carries
+its inscription. A second, independent source is OSM (`memorial=plaque`): London 1,844,
+Edinburgh 172, through the same Overpass that already backs `/api/access`.
+
+**Why it fits perfectly:** the project's rule is a quote checked verbatim, and here the
+quote IS the object — it is already in the `inscription` field. And it lands on "where it
+was written or made": the Rowling plaque in Edinburgh, `My Beautiful Laundrette ... was
+filmed on this road`, `Hunky Dory & Ziggy Stardust ... were recorded here`, Bowie in
+Berlin. Plaques are also building precision at a street address — the rung Wikidata almost
+never gives.
+
+**Ours by subject role (UK):** film 538, music 1,248, books 1,802, 3,187 unique.
+
+**Two refusals, both measured, both coded before anything else.** The dump contains
+**6,269 Stolpersteine** and similar memorials to victims of Nazism, 1,413 of them inside
+the phrase "lived here / wohnte" — they do not go into a walking tour, and they are
+excluded explicitly and with a test. And a name is not an identifier: `Bowie` over the
+world dump returns a hundred Texas markers about Jim Bowie and Bowie County.
+
+**Open question for the owner:** music is a new kind of work. `work_kind` knows
+film/series/book, musicians are the largest group of plaque subjects, and "this album was
+recorded here" is neither a filming location nor a narrative one.
+
+
 ## [2026-08-05] decision | Shipped, and a merge turns out to be a release
 
 **Object**: `wiki/entities/deployment-pipeline.md`
