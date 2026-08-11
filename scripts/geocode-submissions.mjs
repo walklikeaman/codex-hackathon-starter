@@ -28,7 +28,7 @@ import { createGeocoder } from "../app/lib/geocode-client.mjs";
 import { WIKIDATA_LICENSE, cacheRow } from "../app/lib/geocode-wikidata.mjs";
 import { normalizePlaceName } from "../app/lib/place-dedup.mjs";
 import {
-  headIsInsideArea, radiusForAreaIndex, splitPlacePhrase,
+  anchorsFrom, headIsInsideAnyCandidate, radiusForAreaIndex, splitPlacePhrase,
 } from "../app/lib/place-name-head.mjs";
 
 const args = process.argv.slice(2);
@@ -93,7 +93,7 @@ async function readCache() {
   const cache = new Map();
   for (let offset = 0; ; offset += 1000) {
     const response = await fetch(
-      `${url}/rest/v1/geocode_cache?select=query_norm,lat,lng,source_id,match_reason&limit=1000&offset=${offset}&order=query_norm.asc`,
+      `${url}/rest/v1/geocode_cache?select=query_norm,lat,lng,source_id,match_reason,candidates&limit=1000&offset=${offset}&order=query_norm.asc`,
       { headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: "application/json" } },
     );
     if (!response.ok) throw new Error(`cache read failed: ${response.status} ${await response.text()}`);
@@ -113,15 +113,21 @@ function cacheStatements(decisions) {
     const hit = cacheRow(name, decision);
     const norm = normalizePlaceName(name);
     if (!norm) continue;
+    // Only what an anchor needs: a coordinate and an id per candidate. The label and the
+    // population are the chooser's business and it has already had its say.
+    const anchors = (decision?.candidates ?? [])
+      .filter(Boolean)
+      .map((candidate) => ({ wikidata_id: candidate.wikidata_id, lat: candidate.lat, lng: candidate.lng }));
+    const anchorJson = anchors.length > 0 ? quote(JSON.stringify(anchors)) + "::jsonb" : "null";
     rows.push(hit
-      ? `(${quote(norm)}, ${hit.lat}, ${hit.lng}, 'wikidata', ${quote(hit.source_id ?? "")}, ${quote(hit.license)}, ${quote(hit.match_reason)})`
-      : `(${quote(norm)}, null, null, 'wikidata', null, null, ${quote(decision?.reason ?? "no_candidate")})`);
+      ? `(${quote(norm)}, ${hit.lat}, ${hit.lng}, 'wikidata', ${quote(hit.source_id ?? "")}, ${quote(hit.license)}, ${quote(hit.match_reason)}, ${anchorJson})`
+      : `(${quote(norm)}, null, null, 'wikidata', null, null, ${quote(decision?.reason ?? "no_candidate")}, ${anchorJson})`);
   }
   if (rows.length === 0) return [];
   const statements = [];
   for (let i = 0; i < rows.length; i += 500) {
     statements.push(
-      "insert into geocode_cache (query_norm, lat, lng, source, source_id, license, match_reason) values\n  "
+      "insert into geocode_cache (query_norm, lat, lng, source, source_id, license, match_reason, candidates) values\n  "
       + rows.slice(i, i + 500).join(",\n  ")
       + "\non conflict (query_norm) do nothing;",
     );
@@ -136,9 +142,15 @@ async function geocodeCached(names, cache, geocode) {
   for (const name of names) {
     const cached = cache.get(normalizePlaceName(name));
     if (cached) {
+      // The candidates come back with the refusal, or the anchor test would quietly see
+      // fewer of them on a second run than on the first.
       answers.set(name, cached.lat === null
-        ? { place: null, reason: cached.match_reason }
-        : { place: { lat: cached.lat, lng: cached.lng, wikidata_id: cached.source_id }, reason: cached.match_reason });
+        ? { place: null, reason: cached.match_reason, candidates: cached.candidates ?? [] }
+        : {
+          place: { lat: cached.lat, lng: cached.lng, wikidata_id: cached.source_id },
+          reason: cached.match_reason,
+          candidates: cached.candidates ?? [],
+        });
     } else {
       unknown.push(name);
     }
@@ -185,17 +197,19 @@ for (const entry of split) {
   if (!head) { tally.head_unknown += 1; continue; }
   // The most specific area a gazetteer knows. A country centroid confirms nothing at a
   // hundred kilometres, which is why the specific end of the address is tried first.
-  const areaIndex = entry.areas.findIndex((name) => areaPoints.get(name)?.place);
+  // The first area the gazetteer can say ANYTHING about — a chosen place, or the
+  // candidates it refused to choose between (#149). `london` is a refusal here and a
+  // perfectly good thing to sanity-check a London street against.
+  const areaIndex = entry.areas.findIndex((name) => anchorsFrom(areaPoints.get(name)).length > 0);
   if (areaIndex < 0) { tally.area_unknown += 1; continue; }
-  const area = areaPoints.get(entry.areas[areaIndex]).place;
+  const anchors = anchorsFrom(areaPoints.get(entry.areas[areaIndex]));
   // How close the head must be depends on WHICH clause answered: an immediately
   // enclosing street demands metres, a district or county allows a hundred kilometres.
-  if (!headIsInsideArea(head, area, radiusForAreaIndex(areaIndex))) {
-    tally.outside_area += 1;
-    continue;
-  }
+  const verdict = headIsInsideAnyCandidate(head, anchors, radiusForAreaIndex(areaIndex));
+  if (!verdict.inside) { tally.outside_area += 1; continue; }
   tally.accepted += 1;
-  accepted.push({ row: entry.row, head, entry, areaName: entry.areas[areaIndex] });
+  if (verdict.considered > 1) tally.anchored_among_homonyms = (tally.anchored_among_homonyms ?? 0) + 1;
+  accepted.push({ row: entry.row, head, entry, areaName: entry.areas[areaIndex], verdict });
 }
 
 console.log(`\n${kind ?? "all"}: ${rows.length} rows`);
@@ -220,12 +234,16 @@ if (!sqlPath) {
     "--   where geocode_source = 'wikidata';",
     "",
   ];
-  for (const { row, head, entry, areaName } of accepted) {
+  for (const { row, head, entry, areaName, verdict } of accepted) {
     // `areaName` sits on the accepted record, not on the split — reading it off `entry`
     // wrote "inside undefined" into the provenance of 64 real coordinates. The points were
     // right and the note that says WHY they were kept was empty, which is the half that
     // makes a stored coordinate arguable rather than merely present.
-    const reason = `head ${JSON.stringify(entry.head)} inside ${JSON.stringify(areaName)}`;
+    // The strength of the check travels with it: "inside London" and "inside one of
+    // eleven places called London" are different claims, and a reader must be able to
+    // tell them apart without re-running anything.
+    const among = verdict.considered > 1 ? ` (1 of ${verdict.considered} of that name)` : "";
+    const reason = `head ${JSON.stringify(entry.head)} inside ${JSON.stringify(areaName)}${among}`;
     out.push(
       `update location_submissions set lat = ${head.lat}, lng = ${head.lng}, `
       + `geocode_source = 'wikidata', geocode_source_id = ${quote(head.wikidata_id ?? head.id ?? "")}, `

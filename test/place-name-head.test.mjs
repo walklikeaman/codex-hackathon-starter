@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   AREA_RADIUS_KM,
   IMMEDIATE_AREA_RADIUS_KM,
+  anchorsFrom,
   areasFromHint,
+  headIsInsideAnyCandidate,
   hintIsAnIndexBucket,
   headIsInsideArea,
   radiusForAreaIndex,
@@ -230,4 +232,60 @@ test("a worthless hint is asked rather than second-guessed", () => {
   assert.deepEqual(areasFromHint("Rest Of The World"), ["Rest Of The World"]);
   assert.deepEqual(areasFromHint(""), []);
   assert.deepEqual(areasFromHint(null), []);
+});
+
+// --- anchors: the area only has to be A place of that name (#149) ----------------
+
+test("a homonym the gazetteer refused still anchors a head", () => {
+  // chooseCandidate refuses `london` as an ambiguous homonym, and it is right to: London
+  // Ontario has a recorded population, so picking the English one would be inventing an
+  // answer about a place we intend to STORE. An anchor is never stored — it only has to
+  // answer "is this head roughly there".
+  const londons = [
+    { name: "London", lat: 51.507, lng: -0.128 },
+    { name: "London, Ontario", lat: 42.983, lng: -81.233 },
+    { name: "London, Kentucky", lat: 37.129, lng: -84.083 },
+  ];
+  const soho = { lat: 51.513, lng: -0.136 };
+  const zorbaInColorado = { lat: 39.706, lng: -107.695 };
+
+  const near = headIsInsideAnyCandidate(soho, londons);
+  assert.equal(near.inside, true);
+  assert.equal(near.anchor.name, "London");
+  assert.equal(near.considered, 3);
+
+  // The failure this whole mechanism exists for still fails.
+  assert.equal(headIsInsideAnyCandidate(zorbaInColorado, londons).inside, false);
+});
+
+test("the nearest candidate is the one reported, not the first", () => {
+  const candidates = [
+    { name: "far", lat: 51.9, lng: -0.128 },
+    { name: "near", lat: 51.514, lng: -0.136 },
+  ];
+  assert.equal(headIsInsideAnyCandidate({ lat: 51.513, lng: -0.136 }, candidates).anchor.name, "near");
+});
+
+test("how many candidates there were travels with the verdict", () => {
+  // "inside London" and "inside one of eleven places called London" are different
+  // claims. A check whose strength is invisible is a check that gets over-read.
+  const one = headIsInsideAnyCandidate({ lat: 51.5, lng: -0.1 }, [{ lat: 51.5, lng: -0.1 }]);
+  assert.equal(one.considered, 1);
+  assert.equal(headIsInsideAnyCandidate({ lat: 51.5, lng: -0.1 }, []).considered, 0);
+  assert.equal(headIsInsideAnyCandidate({ lat: 51.5, lng: -0.1 }, []).inside, false);
+});
+
+test("the tight tier still applies to a street-level area with homonyms", () => {
+  const streets = [{ lat: 51.505, lng: -0.090 }, { lat: 40.7, lng: -74.0 }];
+  const eightyKmAway = { lat: 51.020, lng: -0.911 };
+  assert.equal(headIsInsideAnyCandidate(eightyKmAway, streets, radiusForAreaIndex(0)).inside, false);
+  assert.equal(headIsInsideAnyCandidate(eightyKmAway, streets, radiusForAreaIndex(1)).inside, true);
+});
+
+test("a chosen place is the only anchor; a refusal offers all of them", () => {
+  assert.deepEqual(anchorsFrom({ place: { lat: 1, lng: 2 }, candidates: [{ lat: 1, lng: 2 }, { lat: 9, lng: 9 }] }),
+    [{ lat: 1, lng: 2 }]);
+  assert.equal(anchorsFrom({ place: null, reason: "ambiguous_homonyms", candidates: [{ lat: 1, lng: 2 }, { lat: 9, lng: 9 }] }).length, 2);
+  assert.deepEqual(anchorsFrom({ place: null, reason: "no_candidate", candidates: [] }), []);
+  assert.deepEqual(anchorsFrom(null), []);
 });

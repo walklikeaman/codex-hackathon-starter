@@ -315,6 +315,46 @@ everything, which costs two hours of wall clock and nothing else. An anon INSERT
 would fix the mechanics and is deliberately NOT added: an open write on this table lets a
 stranger poison a coordinate, and a poisoned cache produces confident wrong pins.
 
+## The anchor, and what it is honestly worth (#149)
+
+`chooseCandidate` refuses `london`, `paris`, `los angeles`, `cornwall` and `hampshire` as
+ambiguous homonyms, and that refusal is correct for a place we intend to STORE: London
+Ontario has a recorded population, so choosing the English one would be inventing an
+answer.
+
+An area in this pass is never stored. It answers one question — "is this head roughly
+there" — and that question does not need the homonym resolved. **If the head sits near ANY
+place bearing the area's name, the pair is coherent.** Zorba in Colorado is near no London
+on earth; the Millennium Biltmore is near a Los Angeles.
+
+So the candidate list travels with the decision, refusal included. Nothing about the
+chooser's rules changed: **loosening `dominantByPopulation` to make London resolve would
+break the refusal that is the feature**, and a second, looser policy for anchors is how
+two surfaces start disagreeing.
+
+**The check is weaker, and the stored reason says so.**
+
+```
+head "Radio City Music Hall" inside "Sixth Avenue" (1 of 3 of that name)
+head "Massachusetts State House" inside "Beacon Hill" (1 of 84 of that name)
+head "Warner Grand Theater" inside "San Pedro" (1 of 224 of that name)
+```
+
+224 places called San Pedro is an anchor that constrains very little, and the row says so
+rather than reading like a confirmation. **No cutoff was added**: a threshold at twenty
+would have refused Monkton Combe (26), Warner Grand (224) and Glasnevin Cemetery in
+Ireland (12), all of which are correct, and would have prevented nothing measurable. The
+strength is recorded instead of guessed at.
+
+Measured on 800 rows: `area_unknown` fell from **11.0%** of the earlier full pass to
+**2.9%**, and every accepted row was anchored among homonyms — including **Kladruby
+Monastery inside Kladruby**, the false negative this page recorded two days earlier.
+
+**And the cache had to learn it too.** A cached refusal stored no candidates, so a hit on
+`london` would have handed back a refusal with nothing to anchor against and silently
+defeated the test — the second run of a two-run job accepting fewer rows than the first,
+for no reason anybody could see. `geocode_cache.candidates` now carries them.
+
 ## Next, in order
 
 1. **Finish the gazetteer pass.** 13,637 rows have never been asked; the first batch of
