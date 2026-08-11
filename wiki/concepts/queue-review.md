@@ -272,6 +272,49 @@ break the refusal that is the feature.
 - `no_area_to_check_against` — nothing encloses the name, so nothing can confirm it. This
   is the rule that keeps Zorba out of Colorado.
 
+## The full pass, applied 11.08
+
+12,659 pending rows without a coordinate, one run:
+
+| outcome | rows |
+|---|---|
+| **accepted**, with a point and the area that confirmed it | **405** |
+| head not in Wikidata | 7,403 |
+| nothing enclosing the name to check against | 2,676 |
+| area not in Wikidata | 1,395 |
+| **head landed outside its area** — these would have been wrong pins | **693** |
+| head is a common noun / a road / too short | 87 |
+
+3.2% — lower than the 6–8% the movie-locations batches gave, because this run included
+ReelStreets, whose venues resolve far worse and whose hints are browse buckets. With the
+64 from the first batch that is **469 coordinates**, and `catalogue_index` went 6,075 →
+**6,250 works with at least one point**.
+
+Lacock Abbey, Knebworth House, Cliveden House, Waddesdon Manor, Alnwick Castle, the Royal
+Albert Hall, Schönbrunn Palace, Nonnberg Abbey, Luxor Temple, the Sacred Cenote at Chichén
+Itzá, Katz's Delicatessen, the Unisphere, Heatherden Hall at Pinewood.
+
+**Coarse areas rubber-stamp in a small country.** Spot-checked among the accepted:
+"Kidderpore Avenue" (Hampstead) confirmed by Cambridgeshire, "Mornington Crescent" (Camden)
+by East Sussex, "Alnwick Castle" (Northumberland) by Tyne and Wear. Every coordinate is
+right — the head resolved to the real place — but at 100 km a neighbouring county confirms
+nothing in south-east England. The check still does the job it was built for, which is
+ruling out Colorado; it is not evidence that the county is correct, and the stored reason
+should not be read as if it were.
+
+## The cache is built, wired, and empty
+
+The run learned **11,800 names** — 2,875 hits and 8,925 refusals — and `geocode_cache`
+holds 12. The script emits them as SQL, and this machine has the anon key rather than
+`SUPABASE_SERVICE_ROLE_KEY`, so loading them means moving a megabyte of statements by
+hand. It was not worth doing that way.
+
+**Anyone holding the service-role key can populate it in one run**: the script already
+writes both halves, and `--sql` output carries the inserts. Until then a re-run re-asks
+everything, which costs two hours of wall clock and nothing else. An anon INSERT policy
+would fix the mechanics and is deliberately NOT added: an open write on this table lets a
+stranger poison a coordinate, and a poisoned cache produces confident wrong pins.
+
 ## Next, in order
 
 1. **Finish the gazetteer pass.** 13,637 rows have never been asked; the first batch of
