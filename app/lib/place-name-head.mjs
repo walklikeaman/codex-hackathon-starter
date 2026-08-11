@@ -240,6 +240,44 @@ export function kmApart(a, b) {
   return Math.hypot(dLat, dLng);
 }
 
+// The anchor test (#149).
+//
+// `chooseCandidate` refuses `london`, `paris`, `los angeles`, `cornwall` and `hampshire`
+// as ambiguous homonyms, and it is right to: London Ontario has a recorded population, so
+// picking the English one would be inventing an answer about a place we intend to STORE.
+//
+// But an area here is never stored. It exists only to answer "is this head roughly
+// there", and that question does not need the homonym resolved: **if the head sits near
+// ANY place bearing the area's name, the pair is coherent.** Zorba in Colorado is not near
+// any London on earth; the Millennium Biltmore is near a Los Angeles.
+//
+// This is deliberately WEAKER than confirming against the one true area, and the verdict
+// says so — `considered` carries how many candidates the name had, so a reader can tell
+// "inside London, of which there is one" from "inside one of eleven Londons". A check
+// whose strength is invisible is a check that gets over-read.
+export function headIsInsideAnyCandidate(headPoint, candidates, radiusKm = AREA_RADIUS_KM) {
+  const list = (Array.isArray(candidates) ? candidates : []).filter(Boolean);
+  let nearest = null;
+  let nearestKm = Infinity;
+  for (const candidate of list) {
+    if (!headIsInsideArea(headPoint, candidate, radiusKm)) continue;
+    const km = kmApart(
+      { lat: Number(headPoint.lat), lng: Number(headPoint.lng) },
+      { lat: Number(candidate.lat), lng: Number(candidate.lng) },
+    );
+    if (km < nearestKm) { nearestKm = km; nearest = candidate; }
+  }
+  return { inside: nearest !== null, anchor: nearest, considered: list.length };
+}
+
+// What a decision from the geocoder offers as an anchor: the chosen place when it chose
+// one, and otherwise every candidate it refused to choose between.
+export function anchorsFrom(decision) {
+  if (!decision) return [];
+  if (decision.place) return [decision.place];
+  return Array.isArray(decision.candidates) ? decision.candidates : [];
+}
+
 // The verification. Both points must exist; an unresolved area refuses the row.
 export function headIsInsideArea(headPoint, areaPoint, radiusKm = AREA_RADIUS_KM) {
   const usable = (point) => point

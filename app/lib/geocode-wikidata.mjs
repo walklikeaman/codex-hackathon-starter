@@ -249,9 +249,20 @@ function kmApart(a, b) {
 // bigger one: the prose said "Cambridge" and we do not know which, so writing either
 // coordinate is inventing an answer. A `near` hint from the same prose is the only
 // thing that may break such a tie.
+// The candidate list travels WITH the decision, refusal or not (#149).
+//
+// A refusal used to throw the candidates away, and that is right for the question this
+// function answers — "which one of these is the place" — but it discards the answer to a
+// different question somebody else has to ask: "is this coordinate anywhere near a place
+// of that name at all". `london`, `paris` and `los angeles` all refuse here as ambiguous
+// homonyms, and every one of them is a perfectly good thing to sanity-check against.
+//
+// Returned rather than made public through a second, looser policy. Two definitions of
+// "which candidate wins" is how the two surfaces start disagreeing; one definition plus
+// the evidence it worked from is not.
 export function chooseCandidate(candidates, { near = null } = {}) {
   const all = (Array.isArray(candidates) ? candidates : []).filter(Boolean);
-  if (all.length === 0) return { place: null, reason: "no_candidate" };
+  if (all.length === 0) return { place: null, reason: "no_candidate", candidates: [] };
 
   // An entity whose OWN label is the name beats one that merely lists it as an alias.
   // This is evidence rather than a preference, and it is what separates the city of
@@ -260,7 +271,7 @@ export function chooseCandidate(candidates, { near = null } = {}) {
   const list = exact.length > 0 ? exact : all;
 
   if (list.length === 1) {
-    return { place: list[0], reason: exact.length > 0 && all.length > 1 ? "exact_label" : "unique" };
+    return { place: list[0], reason: exact.length > 0 && all.length > 1 ? "exact_label" : "unique", candidates: all };
   }
 
   if (near && finiteOrNull(near.lat) !== null && finiteOrNull(near.lng) !== null) {
@@ -272,7 +283,7 @@ export function chooseCandidate(candidates, { near = null } = {}) {
     // And it must clearly favour one; two candidates equally close to it decide nothing.
     const clearlyFavoured = kmApart(sorted[1], near) - kmApart(sorted[0], near) > RIVAL_DISTANCE_KM;
     if (winnerIsNearby && clearlyFavoured) {
-      return { place: sorted[0], reason: "nearest_to_hint" };
+      return { place: sorted[0], reason: "nearest_to_hint", candidates: all };
     }
   }
 
@@ -282,13 +293,13 @@ export function chooseCandidate(candidates, { near = null } = {}) {
   const allTogether = list.every((candidate) => kmApart(candidate, first) <= RIVAL_DISTANCE_KM);
   if (allTogether) {
     const best = [...list].sort((a, b) => (b.population ?? 0) - (a.population ?? 0))[0];
-    return { place: best, reason: "same_place_multiple_records" };
+    return { place: best, reason: "same_place_multiple_records", candidates: all };
   }
 
   const dominant = dominantByPopulation(list);
-  if (dominant) return { place: dominant, reason: "dominant_population" };
+  if (dominant) return { place: dominant, reason: "dominant_population", candidates: all };
 
-  return { place: null, reason: "ambiguous_homonyms" };
+  return { place: null, reason: "ambiguous_homonyms", candidates: all };
 }
 
 // A cache row. `source` and `license` are mandatory from the first write: once CC0,
