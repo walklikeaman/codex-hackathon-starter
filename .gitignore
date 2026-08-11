@@ -6,6 +6,8 @@
 *.pem
 
 # deps / build
+tools/scraperai/.venv/
+__pycache__/
 node_modules/
 .next/
 dist/
@@ -22,6 +24,24 @@ tmp/
 
 # scratch
 _probe_*
+
+# the scheduled refresh holds this while it runs (scripts/refresh-sources.sh)
+.refresh.lock
+.refresh.lock.d/
+
+# Scraped pages and harvest output — regenerate with the tools in
+# tools/scraperai/.
+#
+# state.json was tracked at first, reasoning that a scheduled run needs the
+# watermark to know where it got to. True, and beside the point: it holds one
+# entry per scraped record, so moviemaps' alone is 91,919 lines, it is rewritten
+# every run, and the branch had accumulated 128,003 lines of it. state.py's own
+# docstring already said losing it "costs a full pass, not correctness" — a
+# fresh machine does one ~2-hour crawl and is incremental forever after. Only
+# summary.json stays, which is a few dozen lines a human actually reads.
+tools/scraperai/.cache/
+data/*/*.ndjson
+data/*/state.json
 
 # Obsidian per-user state (shared config stays tracked)
 .obsidian/workspace.json

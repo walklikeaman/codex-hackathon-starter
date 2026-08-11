@@ -7,6 +7,230 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-08] update | The scrape goes on a timer, and dry-run stops lying
+
+**Object**: `scripts/refresh-sources.sh`, `.gitignore`
+**Scenario**: feature · **Outcome**: ✅ success
+**Code changes**: this commit
+
+**One command now does the whole pass**, and it is safe on a timer because every
+piece under it is incremental and idempotent: the harvesters compare each site's
+own `<lastmod>` (or the WordPress API's `modified_after`) against the watermark
+in `data/*/state.json` and fingerprint what they extracted, so a page that was
+merely re-rendered is not re-read; the ingests upsert on `(work_id, place_key)`.
+A run with nothing to do does nothing and says so.
+
+**Two things a scheduled job must get right that a hand-run script can ignore.**
+The Wikidata pass takes about 21 hours at a polite query rate, so without a lock
+the next night's run would start on top of it and both would crawl the same
+sites — `flock` holds the whole pipeline, with an atomic `mkdir` fallback because
+macOS has no `flock(1)`. And cron gets a near-empty PATH and no shell profile, so
+node, python and the keys are resolved explicitly rather than assumed. The
+resolver takes 1,200 pins per run rather than all 27,000: it skips what it has
+already answered, so a nightly slice drains the backlog over weeks without ever
+holding the slot.
+
+**`--dry-run` was lying twice, and both were found by the run timing out rather
+than answering.** It promised to decide nothing and write nothing, but reached
+only as far as the ingests — the harvesters still crawled three sites and spent
+model calls before deciding to write nothing. And the resolver's own dry mode
+skips the write while still querying WDQS, which is correct alone and wrong
+inside a pipeline check: 1,200 pins at a polite rate is an hour to prove a step
+is wired. Harvest and extract are now skipped explicitly under `--dry-run`, and
+the resolver's budget drops to five. Seventy seconds, seven steps, no failures.
+
+A failed step does not end the run — one site being down must not cost the other
+two and every ingest — but failures are named at the end and the exit code is
+non-zero. A scheduled job that fails quietly is worse than one that never ran:
+the data looks fresh and is not.
+
+**Updated**: `.gitignore` (the lock the job holds)
+
+## [2026-08-08] incident | Cross-source matching found a defect in 54% of a source
+
+**Object**: `tools/scraperai/movielocations.py`, `app/lib/{cross-source,wikidata-resolve}.mjs`,
+`scripts/{corroborate-sources,resolve-wikidata}.mjs`,
+`supabase/migrations/20260807213453`
+**Scenario**: bugfix · **Outcome**: ✅ success
+**Code changes**: this commit
+
+**Nothing from three scrapes can reach the map, and measuring why came first.**
+`place-review.mjs` weights `wikidata_entity` at 0.6 against a 0.6 threshold, so a
+canonical entity is the only single signal that verifies — and `cited_source +
+coordinate_agreement` combine by noisy-OR to 0.5875, just under. Not one of
+44,088 submissions had a Q-id. A second wall sits in front of that one:
+`disqualification()` refuses any row without a coordinate, and 13,819 have none.
+
+**So: resolve pins to Wikidata by coordinate AND name.** Measured properly
+before committing to a 21-hour run — 196 real pins, four candidate rules scored
+on one fetch so they stayed comparable. The surprise was that "one name contains
+the other" resolves FEWER than strict equality: a substring catches neighbours,
+the case turns ambiguous, and an ambiguous case is correctly discarded. The
+chosen rule drops a generic word only when BOTH names carry one, which is what
+stops "Victoria Park" collapsing onto "Victoria". 28.1%, and the ceiling is the
+data: 138 of 196 had some entity within 150 m but the rest are genuine
+neighbours, and Wikidata holds no entry for an ordinary house.
+
+**Cross-source corroboration earned its keep before writing a row.** Among pairs
+it declined, rows appeared like `Skyfall location: Silva escapes into the
+underground system: Ventilator …` — a whole caption sitting where a place name
+belongs. The movie-locations regex demanded "filming location" or "film
+location"; the site also writes plain "<Film> location:", and every one of those
+failed to split. **3,125 of 5,783 rows, 54% of the source**, shipped yesterday,
+past tests and past review, living a day in the database. Tests only checked
+captions of the format that was anticipated. Fixed with one optional word,
+re-parsed from cache with no network at all, the broken rows deleted (all
+`pending`, nothing referencing them) and the source re-ingested: median place
+name 84 → 37 characters, zero unsplit captions.
+
+Corroboration itself is modest — 89 rows gain agreement, 81 of them a coordinate
+they lacked — because sources write the same address very differently. Loosening
+that match is the next real task, and it is judgement at a scale of thousands
+rather than a rule.
+
+**Updated**: `test/cross-source.test.mjs`, `wiki/concepts/movielocations-source.md`
+
+## [2026-08-07] ingest | movie-locations.com, and three defects caught at the door
+
+**Object**: `tools/scraperai/{movielocations,crawler}.py`,
+`app/lib/movielocations-source.mjs`, `scripts/ingest-movielocations{,-works}.mjs`,
+`scripts/ingest-reelstreets.mjs`, `supabase/migrations/20260807165200|165213`
+**Scenario**: ingest · **Outcome**: ✅ success
+**Code changes**: this commit
+
+**A fifth source that needs no model at all.** movie-locations.com writes its
+captions as "<film> filming location: <scene>: <address>", so a regex finds the
+place during the scrape — no rate limit, no 14 hours, no chance of an invented
+place. 1,870 films, 6,200 locations, every one photographed, every film with a
+year. 657 works created and 5,783 submissions across 1,474 works.
+
+**1,590 of 1,870 films matched, 85%, against ReelStreets' 7.5% on its first
+run.** The matcher is the same one, unchanged. What changed is the catalogue: it
+had already grown past 7,000 works, so a new source finally has something to
+attach to. Worth remembering when judging the next source by its match rate.
+
+**Three defects, none of which announced itself.** 519 of 1,870 records — 28% —
+arrived as mojibake because the site declares UTF-8 in a `<meta>` tag and sends
+no charset header, so `requests` follows RFC 2616 and assumes ISO-8859-1. "Léon"
+was on its way into the catalogue as "LÃ©on", and the cache held the mis-decoded
+text too, so it had to be dropped and the site re-harvested. The crawler now
+trusts the header when it says something and the document when it does not,
+which is right for every site rather than this one.
+
+The other two were caught by their own output. A bracketed alternative title —
+"Harry Potter And The Philosopher's Stone (…Sorcerer's Stone)" — did not match
+the work we already hold and was proposed for creation, which is exactly the
+duplicate the works ingest is written timidly to avoid. And the ingest died on
+"ON CONFLICT DO UPDATE command cannot affect row a second time" because this
+site lists "Transformers: The Last Knight" twice, both entries matched one work,
+and `(work_id, place_key)` is a global key while the dedup was per film. The
+ReelStreets ingest carried the same latent bug and was fixed with it; it had
+simply not met a collision yet.
+
+**A concurrent session added a sixth kind while this landed.** `open_plaques`
+rewrote the same evidence constraint. Verified against the live database before
+shipping: all six kinds appear in both the enum and the constraint, so neither
+session's branch was lost.
+
+**Updated**: `wiki/concepts/movielocations-source.md` (new), `wiki/index.md`,
+`test/movielocations-source.test.mjs`
+
+## [2026-08-06] ingest | ReelStreets: prose a model had to read, and a 20/min ceiling
+
+**Object**: `tools/scraperai/{reelstreets,extract_places,state}.py`,
+`app/lib/reelstreets-source.mjs`, `scripts/ingest-reelstreets{,-works}.mjs`,
+`supabase/migrations/20260806143719|143733`
+**Scenario**: ingest · **Outcome**: ⚠️ partial — 465 of 3,536 films extracted so far
+**Code changes**: this commit
+
+**A fourth source, and the first whose addresses are sentences.** ReelStreets
+gives 3,536 films and 95,258 captures with no IMDb id and no coordinate; only
+1.5% of captions end in anything postcode-shaped, and one of the samples is a
+studio set rather than a place. So a model reads the place out of each caption —
+once per film, batching ~25, so 3,536 calls rather than 95,258 — and names it
+only. The geocoding cascade locates, separately. What ReelStreets has that
+nothing else does is 53,126 photographs of the place as it is today.
+
+**Three failures worth writing down, all of which only appear at scale.** An
+early prompt asked for a `kind` field beside the place; on films with 40+
+captions the free model silently stopped emitting it and every real place was
+recorded as unknown — 0% real, and it looked like a working run. Removing the
+redundancy rather than working around it took it to 89%. Malformed JSON
+reproduced byte for byte on retry at temperature 0, so batches now **split**
+instead of repeat. And `Connection error` was landing in the "model could not
+serialise this" branch, discarding 110 captions across 8 films before anyone
+noticed; transient errors now back off and retry.
+
+**The 20/min ceiling is per account, not per model.** OpenRouter's
+`free-models-per-min` is a shared bucket, so switching to another free model —
+including the cheap Chinese ones — changes nothing. Paid options were measured
+rather than chosen off the price list: `ling-2.6-flash` is twenty times cheaper
+than `qwen3.7-flash` and matches its recall, but drops the postcode, which is the
+difference between an address a geocoder resolves and a street name repeated
+across a city. The free model keeps it, so free won on quality as well as cost —
+at 4 films a minute, 14 hours.
+
+**Incremental collection, per Nikita 2026-08-06.** Both sites expose the right
+signal — MovieMaps dates every sitemap entry, ReelStreets' API takes
+`modified_after` — but timestamps lie in both directions, so `state.py` also
+fingerprints what was extracted. The ReelStreets fingerprint covers the captions
+alone, so a film that merely gained a photograph is not re-read by the model.
+That is where it pays: a full pass is 14 hours, forty changed captions is
+seconds.
+
+Result: 354 works created, 8,063 submissions across 380 works, all `pending`,
+every one with imagery. The works ingest creates only where no work with that
+title exists, because with no external id there is no unique index to lean on —
+verified after the fact that none of the catalogue's 159 duplicate
+`(title_norm, year)` groups involves a row it created.
+
+**Updated**: `wiki/concepts/reelstreets-source.md` (new), `wiki/index.md`,
+`.gitignore`, `test/reelstreets-source.test.mjs`, `scripts/set-openrouter-key.sh`
+
+## [2026-08-05] ingest | MovieMaps: 18k geocoded places, and a licence nobody wrote
+
+**Object**: `tools/scraperai/`, `app/lib/moviemaps-source.mjs`,
+`scripts/ingest-moviemaps.mjs`, `scripts/ingest-moviemaps-works.mjs`,
+`scripts/check-service-key.mjs`, `supabase/migrations/20260805003943|003954|120555`
+**Scenario**: ingest · **Outcome**: ✅ success
+**Code changes**: `d1d9077`, `b5720e6`, `9f8540b`, `cbffe3f`
+
+**The coordinates were never in the HTML.** MovieMaps draws its map client-side, so a
+parser reading the rendered page gets names and no points. Every detail page ends with
+the call the site makes to its own JavaScript — `moviemaps.loadPublic('MovieDetail', …)`
+— carrying coordinates, city, country, Street View camera pose and the fictional name
+each place plays. One movie page geocodes an entire film. Reading that instead of the
+markup is the difference between a gazetteer with invisible holes and 18,048 locations
+where **every single one** has both a coordinate and a street address. Full harvest:
+24,089 pages, 0 errors, 102 minutes, 90,764 frames.
+
+**The site publishes no licence at all** — /about, /terms, /legal and /copyright all 404.
+So every row carries `source_license = 'unstated'`: not a guess at a permissive one, and
+not the `CC BY-SA 4.0` default removed when [[film-permits]] landed, for exactly this
+reason. A MovieMaps row is a lead, not licensed content. Its 90,738 frame links are
+stored for the **reviewer** and never enter `work_images` — that is the Film-Grab
+refusal in [[moviemaps-source]]'s sibling page applied, not waived: a permissive footer
+grants nothing when the copyright is the studio's, and here there is not even a footer.
+
+**A CASE with no ELSE let a whole source owe no evidence.** Adding `moviemaps` to
+`submission_source_kind` opened a hole in the provenance rule written one migration
+earlier: the evidence CHECK is a CASE over `source_kind` with no ELSE, a CASE that
+matches nothing returns NULL, and a CHECK treats NULL as **passed**. Every moviemaps row
+would have satisfied the rule by not being named in it. It now ends in `else false`.
+
+Two more worth keeping. **A check that ran a select proved nothing** — `works` is
+publicly readable, so the anon key passed the "can this key write" test; it now probes a
+write and reads the JWT's own role claim. And **`works.source` had to exist before the
+import**, because the catalogue was 15 deliberate rows and became 6,044; without the
+column nobody could later tell a curated work from a scraped one.
+
+Result: 6,029 works (5,380 films, 649 series) and 30,170 submissions, all `pending`,
+reconciling exactly with the harvest — 30,386 links less 216 duplicate place keys. The 15
+curated rows kept their `wikidata_id` and `tmdb_id`; the works ingest inserts and never
+updates.
+
+**Updated**: `wiki/concepts/moviemaps-source.md` (new), `wiki/index.md`,
+`wiki/sources/source-evaluation.md`, `.gitignore`, `test/moviemaps-source.test.mjs`
 ## [2026-08-08] incident | The names were not the problem, and the first diagnosis said they were
 
 **Object**: `app/lib/place-name-head.mjs`, `scripts/geocode-submissions.mjs`,

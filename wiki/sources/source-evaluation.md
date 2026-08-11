@@ -8,9 +8,27 @@ conditions are honoured as written, and all of it is revisited the moment sellin
 discussed.
 
 **Refusals below that rest on terms of use still stand.** Terms forbid the ACT, not the
-earnings, so scraping IMDb or Reelstreets is forbidden regardless of money. The same goes
-for frame corpora whose owners hold no rights to the frames: non-commercial use of
-somebody else's work without rights is still use without rights.
+earnings, so scraping IMDb is forbidden regardless of money. The same goes for frame
+corpora whose owners hold no rights to the frames: non-commercial use of somebody else's
+work without rights is still use without rights.
+
+> **Correction 08.08.2026 — ReelStreets was named here and should not have been.**
+> Re-checked live before the scrape shipped: `robots.txt` disallows only `/wp-admin/`
+> and declares a sitemap; there is **no terms-of-use page at all** — `/terms`,
+> `/terms-of-use`, `/legal`, `/disclaimer` all 404, and the site publishes only
+> `/privacy-policy` and `/about-us`. No prohibition on crawling, robots, scraping or
+> extraction appears on any page. The single "automated" match is the GDPR clause about
+> automated decisions concerning people, which is not about access.
+>
+> What ReelStreets DOES state, at `/how-to-submit`, is that the screen captures remain
+> the copyright of their title holders. That is a rights claim about the IMAGES and it is
+> honoured: [[reelstreets-source]] stores image URLs as links for a reviewer, downloads
+> nothing, and records `source_license = 'unstated'`.
+>
+> The distinction this correction turns on is the same one the paragraph above draws:
+> **a licence says on what terms you may; a site's terms say whether you may at all.**
+> ReelStreets asserts the first and has never published the second. IMDb publishes both,
+> which is why it stays refused and ReelStreets does not.
 
 The rule: **a licence says on what terms you may; a site's terms say whether you may at
 all.**
@@ -81,6 +99,12 @@ Getty and Alamy editorial frame grabs *are* genuinely licensed per asset, and pe
 pricing kills an archive. Shutterstock's editorial terms explicitly forbid "displaying
 content as a 'gallery' … through which third parties may search", which is a description
 of this product.
+
+**MovieMaps (2026-08-05) is the same category with less cover** — no footer at all, and
+each image page carries its own "Copyright Touchstone Pictures". Its 90,764 frames were
+therefore taken as **links for the reviewer** and never as content, while its geodata was
+taken as leads. That is not an exception to this section; it is this section applied.
+See [[moviemaps-source]].
 
 ## The trap worth remembering: a fictional place that geocodes cleanly
 
