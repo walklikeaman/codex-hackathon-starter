@@ -355,6 +355,41 @@ Monastery inside Kladruby**, the false negative this page recorded two days earl
 defeated the test — the second run of a two-run job accepting fewer rows than the first,
 for no reason anybody could see. `geocode_cache.candidates` now carries them.
 
+## The anchored pass, applied 12.08
+
+Same corpus as the earlier pass, minus the rows it had already placed:
+
+| | without anchors | with anchors |
+|---|---|---|
+| rows | 12,659 | 12,254 |
+| **accepted** | 405 | **600** |
+| `area_unknown` | 1,395 | **396** |
+| `outside_area` | 693 | 1,094 |
+| `head_unknown` | 7,403 | 7,401 |
+
+The anchor gave about a thousand rows something to check against; **600 passed containment
+and 400 failed it**. Nothing else moved — the dominant loss is still a venue Wikidata does
+not hold.
+
+**596 of the 600 were anchored among homonyms.** The median name had 12 candidates and the
+90th percentile 53, so the "(1 of N)" note is not an edge case, it is the normal state of
+this check.
+
+Two of them show how loose it can be while the coordinate stays right:
+
+```
+head "Piccadilly Circus" inside "Ireland" (1 of 12 of that name)
+head "Vaux-le-Vicomte" inside "California" (1 of 69 of that name)
+```
+
+Piccadilly Circus is in London and Vaux-le-Vicomte is in Seine-et-Marne; both coordinates
+are correct, and both anchors were satisfied by a hamlet somewhere that happens to share
+the name. **The check rules out the wrong continent and very little else** — which is what
+it was built to do, and the row says how firmly.
+
+**Running total: 1,063 coordinates from the gazetteer**, `catalogue_index` at **6,392
+works** with at least one point, 11,581 pending rows still without one.
+
 ## Next, in order
 
 1. **Finish the gazetteer pass.** 13,637 rows have never been asked; the first batch of
