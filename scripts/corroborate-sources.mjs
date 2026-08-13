@@ -33,6 +33,11 @@ async function main() {
   }
   const db = createClient(url, key, { auth: { persistSession: false } });
 
+  // Ordered by id, and that is not cosmetic. Postgres gives no stable order
+  // across pages without one, so a row can arrive on two pages while another
+  // arrives on none: the first run of this pass wrote 1,741 updates and left
+  // 1,733 rows, the difference being eight rows read twice and eight never read.
+  //
   // Only works that more than one source touched can corroborate anything, but
   // finding those costs the same scan as reading everything, so read it once
   // and group in memory. 44k rows of five columns is small.
@@ -41,6 +46,7 @@ async function main() {
   for (let from = 0; ; from += 1000) {
     const { data, error } = await db.from("location_submissions")
       .select("id, work_id, source_kind, place_name, lat, lng")
+      .order("id")
       .range(from, from + 999);
     if (error) throw new Error(error.message);
     if (!data.length) break;
@@ -79,6 +85,30 @@ async function main() {
       console.log(`     ${u.id}  ${u.lat.toFixed(4)}, ${u.lng.toFixed(4)}  from ${u.geocode_source}`);
     }
     return;
+  }
+
+  // Rows that USED to corroborate and no longer do must lose the claim. This
+  // pass recomputes from scratch every time — a rule change is exactly when it
+  // is re-run — and a version that only ever wrote left 275 rows carrying
+  // agreement that the corrected rule had withdrawn. Retracting is as much a
+  // part of the pass as asserting.
+  const keep = new Set(updates.map((u) => u.id));
+  const stale = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from("location_submissions")
+      .select("id").not("corroborated_by", "is", null).range(from, from + 999);
+    if (error) throw new Error(error.message);
+    if (!data.length) break;
+    for (const row of data) if (!keep.has(row.id)) stale.push(row.id);
+    if (data.length < 1000) break;
+  }
+  if (stale.length > 0) {
+    console.log(`\n   ${stale.length} rows no longer corroborate — withdrawing`);
+    for (let i = 0; i < stale.length; i += WRITE_BATCH) {
+      const { error } = await db.from("location_submissions")
+        .update({ corroborated_by: null }).in("id", stale.slice(i, i + WRITE_BATCH));
+      if (error) throw new Error(error.message);
+    }
   }
 
   // One row at a time within a batch: these are per-row values, not a shared

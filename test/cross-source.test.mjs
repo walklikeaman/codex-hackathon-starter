@@ -3,10 +3,12 @@ import test from "node:test";
 
 import {
   clusterByPlace,
+  describeSamePlace,
   corroborateWork,
   corroborationsFor,
   hasPoint,
 } from "../app/lib/cross-source.mjs";
+import { namesMatch } from "../app/lib/place-dedup.mjs";
 
 const mm = (o = {}) => ({ id: "mm1", source_kind: "moviemaps", place_name: "The Bradbury Building", lat: 34.0505, lng: -118.2478, ...o });
 const rs = (o = {}) => ({ id: "rs1", source_kind: "reelstreets", place_name: "Bradbury Building", lat: null, lng: null, ...o });
@@ -81,4 +83,62 @@ test("a whole work resolves to one update list", () => {
   // Three rows in the Bradbury cluster all gain; the lone Union Station does not.
   assert.equal(updates.length, 3);
   assert.ok(updates.every((u) => u.corroborated_by.length >= 1));
+});
+
+
+// Judged by hand from the 4,681 near-miss pairs the strict rule turned down.
+// These are the record of that judgement, not examples invented to fit a regex.
+test("the same place written two ways corroborates", () => {
+  const same = [
+    ["Carlton Hotel", "Hotel Carlton"],                                     // word order
+    ["West Wycombe Park, Buckinghamshire", "West Wycombe Park, West Wycombe, Buckinghamshire"],
+    ["Lacock Abbey", "Sacristy, Lacock Abbey, Lacock, Wiltshire"],          // a room inside
+    ["Rosslyn Chapel", "Rosslyn Chapel, Roslin, Midlothian, Scotland"],
+    ["Jacob Wirth", "Jacob Wirth, Stuart Street, Boston"],
+    ["Charing Cross Underground Station", "Ventilator Shaft, Charing Cross Underground Station, London"],
+  ];
+  for (const [a, b] of same) {
+    assert.ok(describeSamePlace(a, b), `${a} should corroborate ${b}`);
+  }
+});
+
+test("an extra word INSIDE the name makes it a different place", () => {
+  // The trap the first version of this rule fell into, caught by a test written
+  // before it existed: these are two museums standing in the same square.
+  assert.ok(!describeSamePlace("National Gallery", "National Portrait Gallery"));
+
+  // Refused knowingly, and it is a true match: the extra words sit inside the
+  // name with no comma to mark them as context, so no rule can tell this from
+  // the pair above. Being wrong in this direction costs a missed agreement
+  // rather than a false one.
+  assert.ok(!describeSamePlace(
+    "Old Royal Naval College",
+    "the Painted Hall of the Royal Naval College, Greenwich, London",
+  ));
+
+  // Where the extra words ARE context they arrive comma-separated, and a part
+  // of the longer name still reads exactly as the shorter one.
+  assert.ok(describeSamePlace("Rosslyn Chapel", "Rosslyn Chapel, Roslin, Midlothian, Scotland"));
+});
+
+test("two things of the same KIND are not the same place", () => {
+  // Every one of these shares a word and nothing else. Without the generic-word
+  // filter the last band of pairs is 82% this.
+  const different = [
+    ["Broughton Castle", "Arundel Castle, West Sussex"],                    // "castle"
+    ["560 Granville Street", "Smithfield Street, London EC1"],              // "street"
+    ["East 5th Street", "Bank Building, 650 South Spring Street, downtown Los Angeles"],
+    ["Ursulines Avenue & Royal Street", "Fairmont Royal York Hotel, Front Street, Toronto"],
+    ["Astoria Boulevard Station", "31st Street at Ditmars Boulevard, Astoria, Queens"],
+  ];
+  for (const [a, b] of different) {
+    assert.ok(!describeSamePlace(a, b), `${a} must not corroborate ${b}`);
+  }
+});
+
+test("corroboration is looser than merging, and only here", () => {
+  // place-dedup stays strict: merging makes a claim about the world, agreeing
+  // only raises a candidate towards review.
+  assert.ok(describeSamePlace("Lacock Abbey", "Sacristy, Lacock Abbey, Lacock, Wiltshire"));
+  assert.ok(!namesMatch("Lacock Abbey", "Sacristy, Lacock Abbey, Lacock, Wiltshire"));
 });

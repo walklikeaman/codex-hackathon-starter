@@ -20,6 +20,92 @@
 
 import { namesMatch, normalizePlaceName } from "./place-dedup.mjs";
 
+// Words that name a KIND of place rather than the place. Two names sharing only
+// these are two different things of the same type — "Broughton Castle" and
+// "Arundel Castle", "560 Granville Street" and "Smithfield Street". Judged over
+// 4,681 near-miss pairs: in the least similar band this single filter removes
+// 2,235 of 2,733 as noise.
+const GENERIC_PLACE_WORDS = new Set([
+  "street", "road", "avenue", "lane", "place", "square", "court", "drive", "way",
+  "park", "garden", "gardens", "castle", "abbey", "church", "cathedral", "hotel",
+  "station", "bridge", "house", "building", "tower", "hall", "centre", "center",
+  "club", "school", "college", "university", "library", "theatre", "theater",
+  "cinema", "museum", "palace", "mansion", "bank", "market", "beach", "island",
+  "river", "lake", "mountain", "hill", "boulevard", "terrace", "crescent",
+  "close", "walk", "yard", "gate", "cross", "green", "common", "wood", "farm",
+  "manor", "city", "town", "village",
+  // Directions and size words qualify a name, they do not make one.
+  "north", "south", "east", "west", "upper", "lower", "great", "little", "old",
+  "new", "saint",
+]);
+
+const SHORT_WORDS = new Set(["the", "of", "a", "in", "at", "on", "and", "st", "de", "la", "le"]);
+
+// How much of the two names must coincide. Chosen from judgement rather than
+// taste: every pair sampled at 0.4 and above was a true match — "Rosslyn
+// Chapel" against "Rosslyn Chapel, Roslin, Midlothian", "Jacob Wirth" against
+// "Jacob Wirth, Stuart Street, Boston" — while below it the pairs are things
+// like "Astoria Boulevard Station" against "31st Street at Ditmars Boulevard".
+export const NAME_OVERLAP = 0.4;
+
+function meaningfulWords(value) {
+  return new Set(
+    normalizePlaceName(value).split(" ").filter((w) => w.length > 3 && !SHORT_WORDS.has(w)),
+  );
+}
+
+// Do these two names describe the same place, for the purpose of CORROBORATION?
+//
+// Looser than place-dedup's namesMatch on purpose, and the asymmetry is the
+// reason: merging two rows into one place makes a claim about the world, while
+// agreeing that two sources describe the same spot only raises a candidate
+// towards review. So the same three sites writing "West Wycombe Park,
+// Buckinghamshire" and "West Wycombe Park, West Wycombe, Buckinghamshire" can
+// corroborate each other here without place-dedup being relaxed anywhere.
+//
+// Two conditions, both required. The shared words must include one that is not
+// merely the KIND of place, and enough of the two names must coincide.
+export function describeSamePlace(a, b) {
+  if (namesMatch(a, b)) return true;   // the strict rule still wins outright
+
+  const left = meaningfulWords(a);
+  const right = meaningfulWords(b);
+  if (left.size === 0 || right.size === 0) return false;
+
+  const shared = [...left].filter((word) => right.has(word));
+  if (shared.length === 0) return false;
+  if (!shared.some((word) => !GENERIC_PLACE_WORDS.has(word))) return false;
+
+  // The trap this rule fell into first: "National Gallery" and "National
+  // Portrait Gallery" share every word of the shorter name and differ by one
+  // inserted inside the NAME, which makes them different institutions standing
+  // in the same square. Where the extra words are administrative context they
+  // arrive as their own comma-separated part — "Rosslyn Chapel, Roslin,
+  // Midlothian" — so a part of the longer name still reads exactly as the
+  // shorter one.
+  //
+  // So a strict subset is accepted only when some part of the longer name is
+  // the shorter name entire. This knowingly loses true matches where the extra
+  // word sits inside the name and is harmless — "Old Royal Naval College"
+  // against "the Painted Hall of the Royal Naval College" — and that is the
+  // right direction to be wrong in: a false agreement tells a reviewer two
+  // sources concur when only one does.
+  const subset = [...left].every((w) => right.has(w)) || [...right].every((w) => left.has(w));
+  const sameSize = left.size === right.size;
+  if (subset && !sameSize) {
+    const [shorter, longer] = left.size < right.size ? [left, b] : [right, a];
+    const partMatchesWhole = longer
+      .split(",")
+      .map((part) => meaningfulWords(part))
+      .some((part) => part.size === shorter.size && [...shorter].every((w) => part.has(w)));
+    if (!partMatchesWhole) return false;
+    return true;
+  }
+
+  const union = new Set([...left, ...right]).size;
+  return shared.length / union >= NAME_OVERLAP;
+}
+
 // A source's own pin is worth more than a borrowed one, and moviemaps is the
 // only scrape that measures its own. Ordering decides which row donates.
 export const COORDINATE_DONORS = Object.freeze(["moviemaps", "permit_record", "wikipedia"]);
@@ -40,7 +126,7 @@ export function clusterByPlace(rows) {
   for (const row of rows ?? []) {
     if (!normalizePlaceName(row?.place_name)) continue;
     const found = clusters.find((cluster) =>
-      cluster.some((member) => namesMatch(member.place_name, row.place_name)));
+      cluster.some((member) => describeSamePlace(member.place_name, row.place_name)));
     if (found) found.push(row);
     else clusters.push([row]);
   }

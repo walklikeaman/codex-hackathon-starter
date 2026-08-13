@@ -179,3 +179,29 @@ test("a frame match helps but cannot publish a place on its own", () => {
   assert.equal(verdict.status, STATUS.pending);
   assert.ok(SIGNAL_WEIGHTS.frame_match < VERIFY_THRESHOLD);
 });
+
+test("a second source agreeing is a claim signal, a second row is not", () => {
+  const base = { place_name: "The Bradbury Building", source_kind: "moviemaps", lat: 34.05, lng: -118.24 };
+
+  // Another site naming the same place for the same work.
+  assert.ok(placeSignals({ ...base, corroborated_by: [{ source_kind: "reelstreets" }] })
+    .includes("independent_corroboration"));
+
+  // The same site twice is one claim duplicated, not two people agreeing.
+  assert.ok(!placeSignals({ ...base, corroborated_by: [{ source_kind: "moviemaps" }] })
+    .includes("independent_corroboration"));
+
+  assert.ok(!placeSignals({ ...base }).includes("independent_corroboration"));
+  assert.ok(!placeSignals({ ...base, corroborated_by: [] }).includes("independent_corroboration"));
+  // Malformed entries must not be counted as a source.
+  assert.ok(!placeSignals({ ...base, corroborated_by: [{ submission_id: "x" }] })
+    .includes("independent_corroboration"));
+});
+
+test("corroboration needs a second signal before it publishes", () => {
+  // 0.5 alone: real evidence, not authority. Both sites are scrapes of secondary
+  // material and may be repeating a common upstream.
+  assert.ok(combineSignals(["independent_corroboration"]) < VERIFY_THRESHOLD);
+  // With two independent geocoders landing together it clears the bar.
+  assert.ok(combineSignals(["independent_corroboration", "coordinate_agreement"]) >= VERIFY_THRESHOLD);
+});

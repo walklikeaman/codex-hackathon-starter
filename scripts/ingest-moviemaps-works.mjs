@@ -61,6 +61,7 @@ async function existingImdbIds(db) {
       .from("works")
       .select("imdb_id")
       .not("imdb_id", "is", null)
+      .order("id")
       .range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
     for (const row of data ?? []) seen.add(row.imdb_id);

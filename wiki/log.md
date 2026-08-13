@@ -7,6 +7,48 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-08] update | Corroboration wired to its data, and three faults it exposed
+
+**Object**: `app/lib/{cross-source,place-review}.mjs`,
+`scripts/corroborate-sources.mjs` and every paged read in `scripts/ingest-*.mjs`
+**Scenario**: rule-change · **Outcome**: ✅ success
+**Code changes**: this commit
+
+**The signal existed and was dead.** `independent_corroboration` was defined at
+weight 0.5 and listed among the claim signals, but `placeSignals` never emitted
+it — declared, reasoned about, and connected to nothing. Wiring it to
+`corroborated_by` counts distinct SOURCES rather than rows, so a single site
+cannot corroborate itself.
+
+**The matching rule was read off 4,681 pairs rather than chosen.** Judged by
+hand, the decisive finding was not a threshold but which word is shared:
+`Broughton Castle` against `Arundel Castle` share only the KIND of place, and
+that single filter removes 2,235 of the 2,733 least-similar pairs. Everything
+at 0.4 overlap and above was a true match in every sample. Corroboration
+169 → 1,754.
+
+**A test written days earlier caught what forty judged pairs had not.** The new
+rule matched **National Gallery** to **National Portrait Gallery** — two museums
+in one square. The missed class: an extra word INSIDE the name that changes
+which institution it is. Administrative context arrives comma-separated, so a
+part of the longer name still reads as the shorter one; that is now the guard,
+and it knowingly refuses `Old Royal Naval College` against `the Painted Hall of
+the Royal Naval College`, which is structurally identical and genuinely the same
+place. A false agreement tells a reviewer two sources concur when one does.
+
+**Two faults in the pass itself, both found by a number that would not
+reconcile.** It wrote 1,741 updates and left 1,733 rows: paged reads had no
+`ORDER BY`, and Postgres gives no stable order across pages without one, so
+eight rows were read twice and eight never read. Fixed in all six scripts that
+page. And the pass only ever asserted, never retracted, leaving 298 rows
+carrying agreement the corrected rule had withdrawn — recomputing from scratch
+is the whole point when a rule changes.
+
+Standing: 43,888 submissions, 5,041 with a Wikidata entity, 1,754 corroborated.
+
+**Updated**: `wiki/concepts/cross-source.md` (new), `wiki/index.md`,
+`test/{cross-source,place-review}.test.mjs`
+
 ## [2026-08-08] update | The scrape goes on a timer, and dry-run stops lying
 
 **Object**: `scripts/refresh-sources.sh`, `.gitignore`

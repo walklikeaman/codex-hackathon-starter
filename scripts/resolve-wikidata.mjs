@@ -77,6 +77,7 @@ async function main() {
     const { data, error } = await db.from("location_submissions")
       .select("id, place_name, lat, lng")
       .eq("source_kind", SOURCE_KIND).not("lat", "is", null).is("wikidata_id", null)
+      .order("id")
       .range(from, from + 999);
     if (error) throw new Error(error.message);
     if (!data.length) break;

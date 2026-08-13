@@ -106,6 +106,7 @@ async function loadWorksByImdb(db) {
       .from("works")
       .select("id, title, kind, year, imdb_id")
       .not("imdb_id", "is", null)
+      .order("id")
       .range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
     for (const work of data ?? []) byImdb.set(work.imdb_id, work);

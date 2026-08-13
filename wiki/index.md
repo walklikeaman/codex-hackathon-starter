@@ -39,6 +39,7 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [moviemaps-source](concepts/moviemaps-source.md) — 18k geocoded places from a scrape; a lead, not a licence
 - [reelstreets-source](concepts/reelstreets-source.md) — prose read by a model, 53k photographs of the place today, no coordinates
 - [movielocations-source](concepts/movielocations-source.md) — captions a regex can read; no model call anywhere
+- [cross-source](concepts/cross-source.md) — two sites naming one place; the rule judged off 4,681 pairs, and the trap a test caught
 - [model-providers](concepts/model-providers.md) — which model answers, and the request shape both honour
 - [geocoding-cascade](concepts/geocoding-cascade.md) — names → points via Wikidata; refusing homonyms is the feature
 - [wikipedia-enrichment](concepts/wikipedia-enrichment.md) — Production prose → review queue, quote checked verbatim

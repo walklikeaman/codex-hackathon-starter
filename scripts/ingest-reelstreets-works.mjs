@@ -61,6 +61,7 @@ async function loadWorksByTitle(db) {
     const { data, error } = await db
       .from("works")
       .select("id, title, title_norm, kind, year")
+      .order("id")
       .range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
     for (const work of data ?? []) {

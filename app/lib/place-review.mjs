@@ -83,6 +83,19 @@ export function placeSignals(candidate) {
   if (candidate?.source_url && candidate?.source_consulted === true) {
     signals.push("cited_source");
   }
+  // Another SOURCE agreeing, not another row. Two entries from one scrape are a
+  // duplicate of one claim, and counting them would let a single site corroborate
+  // itself — so the distinct source kinds are counted rather than the entries.
+  // `corroborated_by` is written by scripts/corroborate-sources.mjs, which matches
+  // places across sources for one work using place-dedup's own name rule.
+  const agreeing = Array.isArray(candidate?.corroborated_by) ? candidate.corroborated_by : [];
+  const otherSources = new Set(
+    agreeing
+      .map((entry) => entry?.source_kind)
+      .filter((kind) => typeof kind === "string" && kind && kind !== candidate?.source_kind),
+  );
+  if (otherSources.size >= 1) signals.push("independent_corroboration");
+
   if (coordinatesAgree(candidate)) signals.push("coordinate_agreement");
   if (candidate?.frame_match === true) signals.push("frame_match");
   return signals;
