@@ -54,6 +54,10 @@ import { isWalkableStop, trailStops } from "../lib/story-trail.mjs";
 import { normalizePlaceName } from "../lib/place-dedup.mjs";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
 import { libraryImportSummary, matchLibrary } from "../lib/library-match.mjs";
+import {
+  DEFAULT_LAYER_ID, MAP_LAYERS, layerById, readStoredLayerId, writeStoredLayerId,
+} from "../lib/map-layers.mjs";
+import { externalPlaceLinks } from "../lib/place-links.mjs";
 import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { createCoalescingRunner } from "../lib/coalesce.mjs";
 import { WALKING_SPEED_KMH, haversineKm, isLatLng } from "../lib/geo.mjs";
@@ -1140,6 +1144,19 @@ export default function SceneMapApp() {
   }, [activeLocation, filmImageRetry]);
 
   const sourceLocations = liveLocations ?? fallbackLocations;
+  // Which basemap the map is drawn on. Read from storage on mount rather than during
+  // render: the server has no localStorage, and reading it inline makes the first client
+  // render disagree with the server's and blank the map.
+  const [basemapId, setBasemapId] = useState(DEFAULT_LAYER_ID);
+  useEffect(() => {
+    if (typeof window !== "undefined") setBasemapId(readStoredLayerId(window.localStorage));
+  }, []);
+  const basemap = useMemo(() => layerById(basemapId), [basemapId]);
+  const chooseBasemap = useCallback((id) => {
+    setBasemapId(layerById(id).id);
+    if (typeof window !== "undefined") writeStoredLayerId(window.localStorage, id);
+  }, []);
+
   const films = useMemo(
     () => liveLocations ? worksFromLocations(sourceLocations) : fallbackFilms,
     [liveLocations, sourceLocations],
@@ -2013,14 +2030,37 @@ export default function SceneMapApp() {
   return (
     <main className="scene-shell">
       <section className="map-stage" aria-label="GloryMap locations map">
+        {/* The product's question is not "where is this" but "is this the building I saw
+            in the film", and you cannot answer that on a grey street map. Satellite gives
+            the roof and the footprint, street gives the name and the doorway. */}
+        <div className="basemap-switch" role="group" aria-label="Base map">
+          {MAP_LAYERS.map((layer) => (
+            <button
+              key={layer.id}
+              type="button"
+              className={`basemap-option${layer.id === basemap.id ? " is-active" : ""}`}
+              aria-pressed={layer.id === basemap.id}
+              title={layer.hint}
+              onClick={() => chooseBasemap(layer.id)}
+            >
+              {layer.label}
+            </button>
+          ))}
+        </div>
         {/* minZoom was 11 — a city. You could not zoom out to Britain, so the
             behaviour this whole viewport change exists for was unreachable by
             hand. 5 shows a country; below that the answer stops being a set of
             stops somebody could walk. */}
         <MapContainer center={mapCenter} zoom={12} minZoom={5} maxZoom={17} zoomControl={false}>
+          {/* Keyed by id so Leaflet replaces the layer instead of mutating the one it
+              has: without the key the attribution of the previous provider stays on
+              screen under the new provider's tiles, which is an attribution bug rather
+              than a cosmetic one. */}
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            key={basemap.id}
+            attribution={basemap.attribution}
+            url={basemap.url}
+            maxZoom={basemap.maxZoom}
           />
           <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
@@ -3016,6 +3056,27 @@ export default function SceneMapApp() {
               Find place images
               <ExternalLink size={15} />
             </a>
+            {/* Deep links, never embeds: Street View is the only free way to see the
+                facade from the pavement without going there, and their imagery is not
+                licensed to be pulled into our own map. */}
+            {externalPlaceLinks({
+              name: activeLocation.name,
+              lat: activeLocation.position?.[0],
+              lng: activeLocation.position?.[1],
+            }).length > 0 && (
+              <div className="external-place-links">
+                {externalPlaceLinks({
+                  name: activeLocation.name,
+                  lat: activeLocation.position?.[0],
+                  lng: activeLocation.position?.[1],
+                }).map((link) => (
+                  <a key={link.id} className="ghost-button" href={link.url} target="_blank" rel="noopener noreferrer">
+                    {link.label}
+                    <ExternalLink size={14} />
+                  </a>
+                ))}
+              </div>
+            )}
             <button className="wide-button" type="button" onClick={() => addRouteStop(activeLocation)}>
               <Route size={18} />
               Add to route
