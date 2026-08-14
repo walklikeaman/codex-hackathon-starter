@@ -21,7 +21,7 @@ production: empty for **0 of 24** famous titles, median 1.3 s.
 | | |
 |---|---|
 | main | see `git log` — the fact architecture (#129) landed 08.08 |
-| tests | 934, `node --test test/*.test.mjs`, zero network |
+| tests | 991, `node --test test/*.test.mjs`, zero network |
 | works | 7,063 · **28 with a Wikidata id** · 70 places · 92 verified links |
 | queue | 43,888 submissions, 30,257 geolocated — **90 verified, 914 rejected, the rest pending with a reason** (08.08; another branch is deduplicating, so this moves) |
 | by source | moviemaps 30,153 · reelstreets 8,062 · movielocations 5,580 · open_plaques 53 · wikipedia 36 · permits 10 |

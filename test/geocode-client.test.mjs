@@ -152,17 +152,62 @@ test("splitting stops rather than recursing forever", async () => {
 });
 
 test("a rate limit waits and asks again, rather than dropping the names", async () => {
+  // Counted by NAME LOOKUPS rather than by fetches: the winner is checked against its own
+  // headquarters afterwards (#152), and that extra call is not a retry.
+  let lookups = 0;
   let attempts = 0;
   const fetchImpl = async (url, options) => {
     attempts += 1;
-    if (attempts === 1) return { ok: false, status: 429 };
     const names = [...options.body.get("query").matchAll(/"([^"]+)"@en/g)].map((m) => m[1]);
+    if (names.length === 0) return { ok: true, json: async () => ({ results: { bindings: [] } }) };
+    lookups += 1;
+    if (lookups === 1) return { ok: false, status: 429 };
     return { ok: true, json: async () => ({ results: { bindings: [binding(names[0], "Q7", 3, 4)] } }) };
   };
 
   const resolved = await createGeocoder({ fetchImpl, sleep: noSleep })(["Hankley Common"]);
-  assert.equal(attempts, 2);
+  assert.equal(lookups, 2);
+  assert.ok(attempts > lookups, "the winner is checked against its headquarters as well");
   assert.equal(resolved.get("Hankley Common").place.wikidata_id, "Q7");
+});
+
+test("an entity sitting on its own headquarters is refused after it was chosen", async () => {
+  // The New York Public Library resolves twenty metres from New York City. It is the
+  // winner by every rule the chooser has, and it is still not a place you can walk to.
+  const fetchImpl = async (url, options) => {
+    const query = options.body.get("query");
+    if (query.includes("wdt:P159")) {
+      return { ok: true, json: async () => ({ results: { bindings: [{
+        place: { value: "http://www.wikidata.org/entity/Q219555" },
+        lat: { value: "40.7127753" }, lng: { value: "-74.0059728" },
+        hqLat: { value: "40.712777777" }, hqLng: { value: "-74.006111111" },
+      }] } }) };
+    }
+    return { ok: true, json: async () => ({ results: {
+      bindings: [binding("New York Public Library", "Q219555", 40.7127753, -74.0059728)] } }) };
+  };
+
+  const resolved = await createGeocoder({ fetchImpl, sleep: noSleep })(["New York Public Library"]);
+  const decision = resolved.get("New York Public Library");
+  assert.equal(decision.place, null);
+  assert.equal(decision.reason, "point_inherited_from_its_organisation");
+});
+
+test("a headquarters check that cannot run keeps the winners and says so", async () => {
+  // Fails open on purpose: a check we did not make must not silently delete six hundred
+  // coordinates.
+  const notes = [];
+  const fetchImpl = async (url, options) => {
+    const query = options.body.get("query");
+    if (query.includes("wdt:P159")) return { ok: false, status: 503 };
+    return { ok: true, json: async () => ({ results: {
+      bindings: [binding("Hankley Common", "Q7", 3, 4)] } }) };
+  };
+
+  const resolved = await createGeocoder({ fetchImpl, sleep: noSleep, onNote: (n) => notes.push(n) })(
+    ["Hankley Common"]);
+  assert.equal(resolved.get("Hankley Common").place.wikidata_id, "Q7");
+  assert.ok(notes.some((note) => /headquarters check 503/.test(note)));
 });
 
 test("waiting out a rate limit does not spend the budget for splitting", async () => {

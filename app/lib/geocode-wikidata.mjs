@@ -302,6 +302,75 @@ export function chooseCandidate(candidates, { near = null } = {}) {
   return { place: null, reason: "ambiguous_homonyms", candidates: all };
 }
 
+// An entity that has no place of its own, only the one it inherited (#152).
+//
+// The New York Public Library resolves to Q219555 and its P625 is
+// `-74.0059728, 40.7127753`. New York City's own coordinate is `-74.006111111,
+// 40.712777777`. **They are the same point to about twenty metres** — the organisation
+// has no location, it has the city's, copied. The film used the Fifth Avenue main branch,
+// five kilometres away, and nothing on the card would have looked wrong.
+//
+// The issue proposed preferring P276/P159 for organisation-like entities. Measured across
+// all 1,063 rows the gazetteer has placed, that is BACKWARDS:
+//
+//   Columbia University   own = the Morningside campus (right)   P159 = New York City, 11.2 km away
+//   LACMA                 own = Wilshire Boulevard (right)       P159 = Los Angeles,   10.7 km away
+//   Am. Museum of Nat.Hist own = Central Park West (right)        P159 = New York City,  8.0 km away
+//
+// 380 of the 1,063 are organisation-like and 61 have a P276/P159 more than a kilometre
+// from where they sit. Preferring it would have moved sixty-one correct pins.
+//
+// So the test is the OPPOSITE comparison, and only against P159. A building's P276 is the
+// street it stands on and legitimately shares its point — the British Museum is one metre
+// from Great Russell Street, the Radcliffe Camera six from Radcliffe Square; fifty placed
+// rows look like that and all are correct. A headquarters that close is different: it
+// means the entity was never given a place, only an address in a city.
+export const INHERITED_POINT_M = 100;
+
+export function inheritsEnclosingPoint(own, headquarters) {
+  const usable = (point) => finiteOrNull(point?.lat) !== null && finiteOrNull(point?.lng) !== null;
+  if (!usable(own) || !usable(headquarters)) return false;
+  const metresPerDegree = 111320;
+  const dy = (Number(own.lat) - Number(headquarters.lat)) * metresPerDegree;
+  const dx = (Number(own.lng) - Number(headquarters.lng)) * metresPerDegree
+    * Math.cos((Number(own.lat) * Math.PI) / 180);
+  return Math.hypot(dx, dy) <= INHERITED_POINT_M;
+}
+
+// Asked about the WINNERS only, after choosing, and never folded into
+// `buildGeocodeQuery`. That query already answers 500, 502 and 504 under sustained load —
+// three times in one afternoon — and a second hop to the headquarters' own coordinate is
+// exactly the kind of weight that pushed the class closure to a 65-second timeout. One
+// cheap lookup over a hundred ids costs a single extra query per hundred names.
+export const MAX_IDS_PER_HQ_QUERY = 100;
+
+export function buildHeadquartersQuery(wikidataIds) {
+  const ids = [...new Set((Array.isArray(wikidataIds) ? wikidataIds : [])
+    .filter((id) => /^Q[1-9]\d*$/.test(String(id))))].slice(0, MAX_IDS_PER_HQ_QUERY);
+  if (ids.length === 0) return null;
+  return `SELECT ?place ?lat ?lng ?hqLat ?hqLng WHERE {
+  VALUES ?place { ${ids.map((id) => "wd:" + id).join(" ")} }
+  ?place p:P625/psv:P625 ?node .
+  ?node wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lng .
+  ?place wdt:P159 ?hq .
+  ?hq p:P625/psv:P625 ?hqNode .
+  ?hqNode wikibase:geoLatitude ?hqLat ; wikibase:geoLongitude ?hqLng .
+}`;
+}
+
+// Which of the asked-about entities sit on their headquarters' point.
+export function inheritedPointIds(bindings) {
+  const inherited = new Set();
+  for (const row of Array.isArray(bindings) ? bindings : []) {
+    const qid = String(row?.place?.value ?? "").split("/").pop();
+    if (!/^Q[1-9]\d*$/.test(qid)) continue;
+    const own = { lat: finiteOrNull(row?.lat?.value), lng: finiteOrNull(row?.lng?.value) };
+    const hq = { lat: finiteOrNull(row?.hqLat?.value), lng: finiteOrNull(row?.hqLng?.value) };
+    if (inheritsEnclosingPoint(own, hq)) inherited.add(qid);
+  }
+  return inherited;
+}
+
 // A cache row. `source` and `license` are mandatory from the first write: once CC0,
 // CC BY and ODbL results are mixed in one table without them, nobody can say what
 // attribution the data owes.
