@@ -2,21 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  MAX_NAMES_PER_QUERY,
+  NOTABLE_POPULATION,
+  QUERY_GAP_MS,
+  RIVAL_DISTANCE_KM,
+  WIKIDATA_LICENSE,
   buildGeocodeQuery,
+  buildHeadquartersQuery,
   cacheRow,
   chooseCandidate,
   dominantByPopulation,
   gazetteerName,
   groupByName,
+  inheritedPointIds,
+  inheritsEnclosingPoint,
   isGeocodableName,
   isPlaceType,
-  MAX_NAMES_PER_QUERY,
-  NOTABLE_POPULATION,
-  QUERY_GAP_MS,
   retryPlan,
-  RIVAL_DISTANCE_KM,
   sparqlLiteral,
-  WIKIDATA_LICENSE,
 } from "../app/lib/geocode-wikidata.mjs";
 
 const at = (lat, lng, extra = {}) => ({ wikidata_id: "Q1", name: "X", lat, lng, ...extra });
@@ -306,4 +309,68 @@ test("a comma clause is left alone — it IS the gazetteer name", () => {
   // Stripping it would turn an answerable name into an ambiguous one.
   assert.equal(gazetteerName("Cambridge, Massachusetts"), "Cambridge, Massachusetts");
   assert.equal(gazetteerName("Hashima Island"), "Hashima Island");
+});
+
+// --- an entity that has no place of its own, only its city's (#152) --------------
+
+test("the New York Public Library sits on New York City and is refused", () => {
+  // Q219555's own P625 is -74.0059728, 40.7127753. New York City's is -74.006111111,
+  // 40.712777777 — the same point to about twenty metres. The film used the Fifth Avenue
+  // main branch, five kilometres away.
+  assert.equal(
+    inheritsEnclosingPoint({ lat: 40.7127753, lng: -74.0059728 }, { lat: 40.712777777, lng: -74.006111111 }),
+    true,
+  );
+});
+
+test("an organisation that really is where it says is kept", () => {
+  // Measured across all 1,063 placed rows: the closest genuine headquarters gap is
+  // Brasenose College at 252 m from Oxford's own point. Everything correct sits above the
+  // threshold, and the three worst offenders are kilometres away — which is exactly why
+  // the rule refuses instead of preferring P159.
+  const brasenose = { lat: 51.753194, lng: -1.254722 };
+  const oxford = { lat: 51.7548, lng: -1.2544 };
+  assert.equal(inheritsEnclosingPoint(brasenose, oxford), false);
+
+  // Columbia University: own point is the Morningside campus, headquarters is New York
+  // City 11.2 km away. Preferring the headquarters would have moved a correct pin.
+  assert.equal(
+    inheritsEnclosingPoint({ lat: 40.8075, lng: -73.961944 }, { lat: 40.712777, lng: -74.006111 }),
+    false,
+  );
+});
+
+test("a missing coordinate on either side proves nothing", () => {
+  assert.equal(inheritsEnclosingPoint({ lat: 51.5, lng: -0.1 }, null), false);
+  assert.equal(inheritsEnclosingPoint(null, { lat: 51.5, lng: -0.1 }), false);
+  // Null Island is a legal pair of numbers and the signature of one never parsed.
+  assert.equal(inheritsEnclosingPoint({ lat: 0, lng: 0 }, { lat: 51.5, lng: -0.1 }), false);
+});
+
+test("the headquarters question is asked separately, of the winners only", () => {
+  // Never folded into buildGeocodeQuery: that query already answers 500, 502 and 504
+  // under sustained load, and a second hop to the headquarters' coordinate is the kind
+  // of weight that made the class closure time out at 65 seconds.
+  const query = buildHeadquartersQuery(["Q219555", "Q49088", "not-an-id", "Q219555"]);
+  assert.match(query, /VALUES \?place \{ wd:Q219555 wd:Q49088 \}/);
+  assert.match(query, /wdt:P159/);
+  assert.ok(!query.includes("rdfs:label"), "the winner is already chosen; this only checks it");
+  assert.equal(buildHeadquartersQuery([]), null);
+  assert.equal(buildHeadquartersQuery(["nonsense"]), null);
+});
+
+test("only the entities that sit on their headquarters come back", () => {
+  const point = (lat, lng) => ({ value: String(lat) });
+  const rows = [
+    { place: { value: "http://www.wikidata.org/entity/Q219555" },
+      lat: { value: "40.7127753" }, lng: { value: "-74.0059728" },
+      hqLat: { value: "40.712777777" }, hqLng: { value: "-74.006111111" } },
+    { place: { value: "http://www.wikidata.org/entity/Q49088" },
+      lat: { value: "40.8075" }, lng: { value: "-73.961944" },
+      hqLat: { value: "40.712777" }, hqLng: { value: "-74.006111" } },
+  ];
+  const inherited = inheritedPointIds(rows);
+  assert.ok(inherited.has("Q219555"));
+  assert.ok(!inherited.has("Q49088"));
+  assert.equal(inheritedPointIds(null).size, 0);
 });

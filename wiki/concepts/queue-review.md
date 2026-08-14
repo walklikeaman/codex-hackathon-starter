@@ -390,6 +390,53 @@ it was built to do, and the row says how firmly.
 **Running total: 1,063 coordinates from the gazetteer**, `catalogue_index` at **6,392
 works** with at least one point, 11,581 pending rows still without one.
 
+## An entity with no place of its own (#152)
+
+The New York Public Library resolves to `Q219555`, whose P625 is `-74.0059728,
+40.7127753`. New York City's own coordinate is `-74.006111111, 40.712777777` — **the same
+point to about twenty metres**. The organisation has no location; it has the city's,
+copied. The film used the Fifth Avenue main branch, five kilometres away, and nothing on
+the card would have looked wrong.
+
+**The issue's proposed fix is backwards, and the measurement says so.** Across all 1,063
+rows the gazetteer has placed:
+
+| | |
+|---|---|
+| organisation-like (P31 descends from `Q43229`) | **380** (35.7%) |
+| of those, Wikidata gives a P276/P159 point | 137 |
+| and that point is more than 1 km away | **61** |
+
+Preferring it would have moved those sixty-one:
+
+```
+Columbia University          own = the Morningside campus (right)   P159 = New York City, 11.2 km
+LACMA                        own = Wilshire Boulevard (right)       P159 = Los Angeles,   10.7 km
+American Museum of Nat. Hist own = Central Park West (right)        P159 = New York City,  8.0 km
+Sardi's                      own = the Theater District (right)     P276 = 5.3 km
+```
+
+**So the test is the opposite comparison, and only against P159.** A building's P276 is
+the street it stands on and legitimately shares its point — the British Museum is one
+metre from Great Russell Street, the Radcliffe Camera six from Radcliffe Square; **50 of
+the placed rows look like that and all are correct**. A *headquarters* that close means
+something different: the entity was never given a place, only an address in a city.
+
+**The threshold is measured, not chosen.** NYPL's gap is ~20 m. The closest genuine
+headquarters gap among placed rows is Brasenose College at **252 m** from Oxford's own
+point. 100 m sits five times above the first and two and a half times below the second.
+
+**Cost on the existing corpus: zero.** Not one of the 1,063 placed rows carries the
+signature, so nothing had to be re-pointed. The rule exists because NYPL passed every
+automated check and was caught only by a human reading 34 rows — which does not scale to
+batches of 600.
+
+**Asked separately, of the winners only.** Never folded into `buildGeocodeQuery`: that
+query answered 500, 502 and 504 three times in one afternoon, and a second hop to the
+headquarters' coordinate is the weight that made the class closure time out at 65 seconds.
+One lookup per hundred winners. **It fails open** — a check that could not run must not
+silently delete six hundred coordinates.
+
 ## Next, in order
 
 1. **Finish the gazetteer pass.** 13,637 rows have never been asked; the first batch of
