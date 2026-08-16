@@ -134,6 +134,10 @@ export function placeSummary(place) {
     osm_building_id: place?.osm_building_id ?? null,
     confidence: finiteOrNull(place?.confidence),
     wikidata_id: place?.wikidata_id ?? null,
+    // How many sources back this fact. Carried to the card and printed even when it is
+    // zero: a place with nothing recorded behind it is a thing a reader is entitled to
+    // notice, and 8 of the 92 links in the graph are exactly that.
+    evidence_count: Number.isFinite(Number(place?.evidence_count)) ? Number(place.evidence_count) : null,
     source_url: place?.wikidata_id ? `https://www.wikidata.org/wiki/${place.wikidata_id}` : null,
   };
 }

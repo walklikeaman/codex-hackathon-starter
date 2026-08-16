@@ -17,6 +17,7 @@
 
 import { useEffect, useState } from "react";
 import { ExternalLink, MapPin, X } from "lucide-react";
+import { workPath } from "../lib/work-url.mjs";
 
 const ROLE_HINT = {
   studio: "The pin is the studio itself — the scene it portrays is somewhere else.",
@@ -106,6 +107,15 @@ export default function WorkProfile({ film, onClose, onSelectPlace }) {
         <div className="work-profile-body">
           {state.status === "loading" && <p className="work-profile-note">Loading the film…</p>}
           {state.status === "error" && <p className="work-profile-note">Could not load this film.</p>}
+
+          {/* The drawer is a way into the map; the page is the thing you can send to
+              somebody. Only a work we actually hold has one — a film reached live through
+              Wikidata has no row here and therefore no address of its own. */}
+          {workPath(data?.work) && (
+            <a className="work-profile-permalink" href={workPath(data.work)}>
+              Open as a page — a link you can share
+            </a>
+          )}
 
           {data?.links?.length > 0 && (
             <nav className="work-profile-links" aria-label="External sources">

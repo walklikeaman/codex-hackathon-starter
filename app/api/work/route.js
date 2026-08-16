@@ -242,6 +242,9 @@ export function createWorkProfileHandler({
 
     return Response.json({
       work: {
+        // Our own id, and the card page needs it: a TMDB id addresses a film on TMDB,
+        // not a work in this graph, and the permanent link has to point at ours.
+        id: work?.id ?? null,
         title: work?.title ?? null,
         kind: stillsKey.kind,
         year: work?.year ?? null,
