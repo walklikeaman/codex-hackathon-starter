@@ -431,3 +431,11 @@ test("a person's place sorts below every place the work itself was shot at", () 
   ]);
   assert.deepEqual(sorted.map((p) => p.id), ["shot", "author"]);
 });
+
+test("the card is told how many sources back a place", () => {
+  // Printed even when zero: 8 of the 92 links in the graph carry no evidence row, and a
+  // reader is entitled to notice that.
+  assert.equal(placeSummary(place({ evidence_count: 3 })).evidence_count, 3);
+  assert.equal(placeSummary(place({ evidence_count: 0 })).evidence_count, 0);
+  assert.equal(placeSummary(place()).evidence_count, null);
+});
