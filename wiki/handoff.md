@@ -1,4 +1,4 @@
-# Handoff — 2026-08-07, end of the wiring session
+# Handoff — 2026-08-15, end of the surfaces session
 
 Written because a session ended, not because the work did. `wiki/log.md` is the
 chronicle and `wiki/index.md` lists the concept pages. **This page is only the things
@@ -20,12 +20,12 @@ production: empty for **0 of 24** famous titles, median 1.3 s.
 
 | | |
 |---|---|
-| main | see `git log` — the fact architecture (#129) landed 08.08 |
-| tests | 991, `node --test test/*.test.mjs`, zero network |
-| works | 7,063 · **28 with a Wikidata id** · 70 places · 92 verified links |
-| queue | 43,888 submissions, 30,257 geolocated — **90 verified, 914 rejected, the rest pending with a reason** (08.08; another branch is deduplicating, so this moves) |
-| by source | moviemaps 30,153 · reelstreets 8,062 · movielocations 5,580 · open_plaques 53 · wikipedia 36 · permits 10 |
-| geocoded by us | **1,063** from the gazetteer pass (12.08, after #149). 11,581 pending rows still have no point, most because the venue is not in Wikidata at all |
+| main | `136b30c` — "A film has an address (#146)", deployed and verified on Production |
+| tests | 1,021, `node --test test/*.test.mjs`, zero network |
+| works | 7,063 · **6,392 with at least one located place** (`catalogue_index`) |
+| queue | ~43,900 submissions · **90 verified, 914 rejected**, the rest pending ([[queue-review]]) |
+| geocoded by us | **1,063** from the gazetteer pass; ~11,500 pending rows still have no point, most because the venue is not in Wikidata at all |
+| surfaces | the map (`/`) and **the film card (`/work/<slug>--<uuid>`)**. That is all of them. |
 
 **The map answers from three stores at once**, and this is the thing to understand before
 touching [app/api/locations/route.js](app/api/locations/route.js):
@@ -42,18 +42,26 @@ touching [app/api/locations/route.js](app/api/locations/route.js):
 
 ## What is built and NOT wired up
 
-One thing, named precisely: **`statement`, `about` and `stated_year` have a reader and no
-writer.** The work card prints them; nothing fills them yet, because `/api/resolve`
-deliberately leaves `statement` null — a P915 statement says a work and a place are related
-and no more. The first real producer is the 53 Open Plaques rows in the queue (see step 2
-below) — 90 of which now carry a verdict. `creator_place_links` is the same: the table,
-the evidence trigger and the card path all exist, and `creators` still holds zero rows.
+Three things, named precisely:
 
-That is worth keeping true. The project's most repeated
-failure is finished work that never reaches the live path: it happened with posters,
-ratings, three audio features, the personal library, the map filter, then all three place
-modules, then the entire 30k-row ingest. **Before writing a module, grep for its callers**
-(`grep -rn "from .*<module>" app/`); if the answer is zero, wire that before writing more.
+- **`statement`, `about` and `stated_year` have a reader and no writer.** The film card
+  prints them; nothing fills them. `/api/resolve` leaves `statement` null on purpose — a
+  P915 statement says a work and a place are related and no more. The first real producer
+  would be the 53 Open Plaques rows in the queue, and promoting them crosses "nothing from
+  the queue enters the graph", so it is the owner's call.
+- **`creator_place_links` exists and `creators` holds zero rows.** So **no fact of distance
+  1 or 2 exists anywhere**, and the film card's two lower blocks have never been seen with
+  live data.
+- **`geocode_cache` is built, wired and empty.** The last run learned ~12,000 names; loading
+  them needs `SUPABASE_SERVICE_ROLE_KEY`, which this machine does not have. An anon INSERT
+  policy would fix the mechanics and is deliberately NOT added: an open write there lets a
+  stranger poison a coordinate.
+
+That is worth keeping true. The project's most repeated failure is finished work that never
+reaches the live path: posters, ratings, three audio features, the personal library, the map
+filter, all three place modules, then the entire 30k-row ingest. **Before writing a module,
+grep for its callers** (`grep -rn "from .*<module>" app/`); if the answer is zero, wire that
+before writing more.
 
 ## Traps that cost real time, all found by measurement
 
@@ -210,41 +218,33 @@ and `work_creators` hold zero rows, and filling them is a source problem, not a 
 
 ## Next, in the order I would take it
 
-1. ~~**#129 — the fact architecture.**~~ **Done 08.08** — see [[fact-architecture]]. A fact
-   now has identity (`about` in the uniqueness key), a payload (`about`, `stated_year`), its
-   own sentence (`statement`, printed verbatim), a person subject (`creator_place_links`)
-   and a degree of separation. `place_facts` reads both ends; `work_facts(work_id)` is the
-   whole card in one call. **Steps 4 and 5 of the issue are the remainder**: the place card
-   over that view, and distance shown in the interface rather than only carried in the API.
-2. **The queue.** First verdicts landed 08.08 — see [[queue-review]] and the log. What
-   remains, in order:
-   - ~~**Repair the names.**~~ **Measured 08.08 and the diagnosis was wrong** — another
-     branch had already fixed its extractor (47% long → 1.3%). The real reason 13,637 rows
-     have no point is that **no geocoder has ever been run on this queue**: every located
-     row got its point from the source it was scraped from. `place-name-head.mjs` +
-     `scripts/geocode-submissions.mjs` now do it, at a measured **8.3%** — and the
-     tempting 31.7% is a trap that puts a London restaurant in Colorado. See
-     [[queue-review]]. **The pass is bounded and resumable; most of the 13,637 are still
-     waiting for it.**
-   - **A human surface** for the rows a rule leaves pending, ranked so an hour of somebody's
-     attention changes the map the most. `scripts/review-submissions.mjs` prints the
-     backlog; nothing renders it.
-   - **Promoting a verified submission into a fact** — the 90 verified rows carry the
-     sentence `statement` was built for. That crosses "nothing from the queue enters the
-     graph", so it is the owner's call.
-3. **#125 — the person path in plaques.** Needs `creators` / `work_creators` filled, or a
-   Wikidata person→works bridge. This is the next real volume lever, and it is a SOURCE
-   problem, not a rules problem.
-4. **#128 — music.** The owner said yes. Wikidata `P483` gives 5,464 recordings whose
-   studio has a coordinate; Last.fm reads a listening history from a nickname with no
-   auth. Needs `work_kind = music` and a `recorded_at` relation first.
-5. **#127 — photo verification.** Ready technology covers half of it (MegaLoc MIT,
-   LightGlue Apache-2.0, ALIKED BSD-3); verifying a claim rather than guessing a
-   coordinate is ours. Stage 0 is a benchmark set of 30–50 places where the truth is
-   known — without it every threshold is invented.
+The product has **two surfaces** and everything else is reachable only by dragging a map.
+That is the critical path, and the three parts of it are one problem:
 
-Open issues carried forward: #129, #128, #127, #125, #121, #114, #108, #107, #97, #96,
-#95, #92.
+1. **#145 — one search box.** Cities and films, grouped, fast. Both halves exist
+   (`/api/search` over our own database, `/api/cities` over Nominatim) and nothing joins
+   them. Do not await them together — that makes the fast half as slow as the network one.
+   It now has somewhere to lead.
+2. **#158 — a directory.** 6,392 works and ~31,000 places with no URL between them.
+   `catalogue_index` is the right source; `/work/<slug>` already exists as the destination.
+3. **#160 — the place card as tabs**, a copyable coordinate, and a count of what is on
+   screen. Also carries step 4 of #129 — the place card read from `place_facts`.
+
+Then, in rough order of value:
+
+4. **#157 — comments and visitor photos.** The moderation spine already exists; what needs
+   deciding is who may write, EXIF stripping, licence, and that `rejected` hides a row but
+   does not delete a file.
+5. **#161 — the walk survives bad signal.** Becomes critical the day somebody first walks a
+   route; nobody does yet.
+6. **#159 — the dated satellite lens.** The most distinctive idea from either reference and
+   the most on-brand: the place as it was when the camera was there. Esri Wayback is free,
+   196 releases, **oldest 2014-02-20** — so it cannot answer for Vertigo, and the card must
+   say so rather than showing 2014 under a 1958 film.
+
+**Not to be built**, decided after studying both references: points/leaderboards (they
+reward volume, and 914 rejections this week were good work), selling user maps, ads styled
+as results, live-GPS buddy tracking, AI-generated "lore", and a 1–5 safety score.
 
 ## Open decisions for the owner
 
