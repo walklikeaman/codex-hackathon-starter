@@ -67,7 +67,12 @@ jobs:
           status="$(curl -sS --max-time 30 -o /tmp/home.html -w '%{http_code}' "$base/")"
           echo "GET / -> ${status}"
           test "${status}" = "200"
-          for path in "/api/search?q=sky" "/api/cities/suggest?q=lond"; do
+          for page in "/directory" "/directory/films/s"; do
+            code="$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' "${base}${page}")"
+            echo "GET ${page} -> ${code}"
+            test "${code}" = "200"
+          done
+          for path in "/api/search?q=sky" "/api/cities/suggest?q=lond" "/api/directory/films?letter=s"; do
             echo "--- GET ${path}"
             curl -sS --max-time 30 -o /tmp/probe.json -w 'status %{http_code} in %{time_total}s\n' "${base}${path}"
             head -c 700 /tmp/probe.json

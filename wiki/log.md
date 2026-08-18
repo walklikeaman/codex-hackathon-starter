@@ -7,6 +7,47 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-19] incident | Two sessions built #158 at the same time, and the other one was better
+
+**Object**: `app/components/SceneMapApp.jsx`, `.github/workflows/deploy-production.yml`
+**Scenario**: process · **Outcome**: ⚠️ partial — a day of work discarded, two gaps in the
+surviving version closed
+**Code changes**: this commit
+
+**A whole directory was built here and thrown away, and that is the right outcome.** This
+session shipped #145 and its follow-up, then started #158 from the same handoff line that
+another session was already working from. By the time the branch was pushed, `main` held
+`9439a5a` — a directory with letter pages, city pages, a derived gazetteer, migrations and
+a sitemap. Mine had a works list and an honest refusal of the city half. Theirs answered
+the city half properly. **The duplicate was dropped in full rather than merged**: two
+implementations of one surface is worse than either.
+
+Both sessions reached the same finding independently, which is worth recording because it
+is the finding that decides the whole feature: **a name in an address is a label, only a
+point is an identity.** Measured here: 32,148 located rows carry 17,709 distinct
+`area_hint` values, "London" (440) sitting beside "2601 Lougheed Highway, Coquitlam, BC V3C
+5X9, Canada" (132). Measured there, more usefully: "London" as a name spreads 10,959 km.
+The conclusion is the same and their answer — a disc with a measured anchor — is the one
+that ships.
+
+**What survived from this branch is two gaps in theirs**, both instances of the failure
+this project keeps repeating — finished work that never reaches the live path:
+
+- **The directory had a way back to the map and no way in from it.** The card links to
+  `/directory`; the map, which is where every visitor lands, did not. "Browse everything"
+  now sits beside "Use my location".
+- **The production smoke step did not know the new surface exists.** It now asks for
+  `/directory`, `/directory/films/s` and `/api/directory/films` by name, so a deploy that
+  leaves the directory 500ing fails loudly rather than quietly.
+
+**The process lesson, and it is not "coordinate better" — it is cheaper than that.** The
+handoff already warns that another session runs in the same production database. It now
+also has to warn that another session takes the same NEXT STEP: the numbered list at the
+bottom of the handoff is read by everybody who starts, and nothing marks an item as taken.
+**Before starting a numbered item, fetch and look at what `main` and the open PRs already
+contain** — a `git fetch origin && git log --oneline HEAD..origin/main` costs one second
+and would have cost this session nothing.
+
 ## [2026-08-19] update | A city is a point and a radius, and the catalogue almost pointed at 6,378 empty rooms
 
 **Object**: `app/lib/{city-gazetteer,directory,submission-places,work-card}.mjs`,

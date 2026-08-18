@@ -37,6 +37,7 @@ import {
   User,
   X,
   Layers,
+  List,
   LogIn,
 } from "lucide-react";
 import {
@@ -2459,6 +2460,14 @@ export default function SceneMapApp() {
             <LocateFixed size={16} />
             Use my location
           </button>
+          {/* The directory shipped with a way back to the map and no way in from it. The
+              map answers "what is here"; the directory answers "what have you got", which
+              is the question nobody could ask while the only way in was to know a title
+              already. */}
+          <a className="use-location-button" href="/directory">
+            <List size={16} />
+            Browse everything
+          </a>
         </div>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
