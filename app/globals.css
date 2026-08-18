@@ -545,7 +545,12 @@ h2 {
   font-weight: 800;
 }
 
-.primary-button:disabled {
+/* `.wide-button` joined this on 19.08 (#160). It never had a disabled look, so a button
+   that refuses to act looked identical to one that would — "Recreate this shot" without a
+   reference image, and now "Build route" below three stops, which the Route tab puts in
+   front of the reader every time they open it. */
+.primary-button:disabled,
+.wide-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
   filter: grayscale(0.6);
@@ -3379,3 +3384,77 @@ figcaption a {
 .directory-pager a { color: #f0a83c; text-decoration: none; }
 .directory-pager a:hover { text-decoration: underline; }
 .directory-pager-state { color: rgba(236, 232, 225, 0.5); font-size: 0.82rem; }
+
+/* The place card as tabs (#160). The card was one scroll holding the sentence, the
+   badge, the evidence, the voice guide, two images and the route controls; the split
+   keeps the sentence about the place at the top of its own tab. */
+.place-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin: 0 0 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.place-tabs button {
+  position: relative;
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: rgba(236, 232, 225, 0.55);
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+}
+.place-tabs button:hover { color: rgba(236, 232, 225, 0.85); }
+.place-tabs button.is-active { color: #fff; border-bottom-color: #f0a83c; }
+/* A route this place is already on, said without a word. */
+.place-tab-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 0.35rem;
+  border-radius: 50%;
+  background: #f0a83c;
+  vertical-align: middle;
+}
+
+/* `:not([hidden])`, and it is not decoration. The browser's own `[hidden] { display:
+   none }` is a bare attribute selector, so ANY class rule setting `display` outranks it
+   and the hidden panel keeps its grid — observed here as both tabs rendering at once,
+   route controls underneath the voice guide. */
+.place-route-panel:not([hidden]) { display: grid; gap: 0.75rem; }
+.place-route-note { margin: 0; color: rgba(236, 232, 225, 0.7); font-size: 0.9rem; }
+
+/* The coordinate, made takeable. It stays typographically a value rather than becoming
+   a button-looking control: the number is the content, the copy is the affordance. */
+.coordinate-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.coordinate-copy > span { border-bottom: 1px dashed rgba(255, 255, 255, 0.28); }
+.coordinate-copy:hover > span { border-bottom-color: rgba(255, 255, 255, 0.6); }
+.coordinate-copy svg { flex: none; opacity: 0.65; }
+.coordinate-copy-failed {
+  display: block;
+  margin-top: 0.25rem;
+  color: #f0c98c;
+  font-size: 0.78rem;
+}
+
+.location-empty {
+  margin: 0.5rem 0 0;
+  color: rgba(236, 232, 225, 0.55);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}

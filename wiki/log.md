@@ -7,6 +7,45 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-19] update | The place card in two tabs, and three bugs that only looking could find
+
+**Object**: `app/lib/place-card.mjs`, `app/components/SceneMapApp.jsx`, `app/globals.css`
+**Scenario**: feature (#160) · **Outcome**: ✅ success
+**Code changes**: this commit
+
+**The card is Details / Route**, the coordinate is copyable, and the panel counts places and
+films apart. No Discussion tab: #157 is not built, and a tab that opens onto nothing is the
+padding this project refuses elsewhere.
+
+**Three defects, each found by opening the page rather than by reading the diff.** The card
+rendered BOTH tabs at once, because the browser's own `[hidden] { display: none }` is a bare
+attribute selector and any class setting `display` outranks it — route controls sat under
+the voice guide. The panel printed "No places in view" over a map drawing five pins, because
+Leaflet answers `getBounds()` on a zero-sized container with a degenerate box, and a box with
+no height is a map that has not been laid out rather than a viewport holding nothing. And the
+heading contradicted its own list: counting the viewport while listing the whole selection
+put "6 places from 4 films" above ten rows.
+
+**One old defect surfaced by the new layout.** `.wide-button` never had a disabled
+appearance while `.primary-button` did, so a button that refuses to act looked exactly like
+one that would. It has always been true of "Recreate this shot" with no reference image; the
+Route tab simply put "Build route" in front of the reader every time.
+
+**The count is deliberately not debounced and the fetch still is.** One is a network request
+per gesture and the other is a filter over a list already in memory; debouncing the count
+would leave the panel describing the previous viewport for 400 ms after every drag.
+
+**Copy failure is said out loud.** `navigator.clipboard` is undefined outside a secure
+context and rejects while the document is unfocused — verified live, where the write was
+refused and the card said so rather than doing nothing.
+
+**Verification.** 1,101 tests (+19). Driven live: the tabs switch and only one panel renders,
+the copied string is byte-for-byte what the card prints, adding this place turns the button
+into "Remove from route" and marks the tab, and dragging the map moves the heading and the
+list together (10 → 4 → 12, rows matching each time).
+
+**Updated**: `wiki/concepts/place-card.md` (new), `wiki/index.md`, `wiki/handoff.md`,
+`test/place-card.test.mjs`
 ## [2026-08-19] incident | Two sessions built #158 at the same time, and the other one was better
 
 **Object**: `app/components/SceneMapApp.jsx`, `.github/workflows/deploy-production.yml`

@@ -21,7 +21,7 @@ production: empty for **0 of 24** famous titles, median 1.3 s.
 | | |
 |---|---|
 | main | `de13ff0` — "An Olympiad is not a city (#165)", deployed and verified on Production |
-| tests | 1,082, `node --test test/*.test.mjs`, zero network |
+| tests | 1,101, `node --test test/*.test.mjs`, zero network |
 | works | 7,063 · **6,392 with at least one located place** (`catalogue_index`) |
 | queue | ~43,900 submissions · **90 verified, 914 rejected**, the rest pending ([[queue-review]]) |
 | geocoded by us | **1,063** from the gazetteer pass; ~11,500 pending rows still have no point, most because the venue is not in Wikidata at all |
@@ -106,6 +106,11 @@ it. Splitting a unique constraint into two PARTIAL indexes on 31.07 killed the o
 path into the graph for eight days — `ERROR 42P10`, raised *after* the Wikidata work had
 succeeded, so the route looked busy. See [[fact-architecture]]. When you change a unique
 index, grep for `onConflict`.
+
+**`[hidden]` loses to any class that sets `display`.** The browser's own
+`[hidden] { display: none }` is a bare attribute selector, so one `display: grid` on a class
+renders a hidden tab panel anyway. Found as "both tabs are showing at once", which reads as
+a React state bug and is not one.
 
 **Never run `next build` while the dev server is up** — it clobbers `.next`. Check
 `lsof -ti:3000`.
@@ -253,8 +258,10 @@ That is the critical path, and the three parts of it are one problem:
    cost. It also forced the fix that made it worth having: the card now shows the review
    queue as labelled candidates, because only **14 of 6,392** directory rows led to a card
    with anything on it at all.
-3. **#160 — the place card as tabs**, a copyable coordinate, and a count of what is on
-   screen. Also carries step 4 of #129 — the place card read from `place_facts`.
+3. ~~**#160 — the place card as tabs**~~ Shipped 19.08: Details / Route, a copyable
+   coordinate, and a panel that counts places and films apart ([[place-card]]). **Step 4 of
+   #129 — the place card read from `place_facts` — is NOT done** and is the remaining half
+   of that issue.
 
 Then, in rough order of value:
 
