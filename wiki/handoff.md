@@ -142,6 +142,12 @@ gave Adele's lyric video and "Parasite" an academic journal. The fix that works,
 now used in three places: take 15 candidates, rank by `wikibase:sitelinks`, and only then
 check the type.
 
+**Another session takes the same next step, not only the same database.** On 18–19.08 two
+sessions built #158 simultaneously from this page's own numbered list; one directory was
+finished and discarded. Nothing here marks an item as taken, so **before starting one, run
+`git fetch origin && git log --oneline HEAD..origin/main` and look at the open PRs.** One
+second against a day.
+
 ## Rules of the house
 
 - **English everywhere — the repository AND GitHub** (owner's rule). Cyrillic survives
