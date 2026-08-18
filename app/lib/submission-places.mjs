@@ -171,3 +171,73 @@ export function selectSubmissionPlaces(rows, {
 
   return chosen;
 }
+
+// ---------- the same rows, on the film card (#158) ----------
+//
+// Measured 18.08 while building the directory: the graph holds 92 facts across 15 works,
+// and `catalogue_index` — the view the directory is built on — holds 6,392. So **14 of
+// 6,392** works reachable from the directory had anything at all to show on their card.
+// A directory whose every row led to "No places recorded for this work yet" would be a
+// signpost to six thousand empty rooms, which is a worse answer to #158 than no directory.
+//
+// So the card shows these rows too, under the same rule the map has followed since 05.08:
+// a candidate is shown, labelled as a candidate, with a link to whoever said it, and it
+// does NOT become a fact. It is kept out of `placeBlocks` entirely rather than given a
+// distance — a fact has an identity, a subject and a degree of separation
+// ([[fact-architecture]]), and a queue row has none of those. Handing it a distance of 0
+// would make it indistinguishable from something we checked.
+//
+// The sentence is built by the same `submissionDescription` the map uses. Two copies of
+// "not yet verified by us" is how one of them quietly stops being true.
+
+// Verified-then-alphabetical. A row somebody has actually looked at leads, and the rest
+// is a stable order rather than whatever the database returned.
+const CANDIDATE_ORDER = { verified: 0, pending: 1 };
+
+export function submissionToCandidate(row, { work, matchedBy = MATCHED_BY.id } = {}) {
+  const name = String(row?.place_name ?? "").trim();
+  if (!name) return null;
+
+  const labels = SOURCE_LABELS[row?.source_kind] ?? { title: "Source record", who: "an external source" };
+  const lat = finiteOrNull(row?.lat);
+  const lng = finiteOrNull(row?.lng);
+
+  return {
+    id: row?.id ?? null,
+    name,
+    // The badge carries the review state, because on this block that is the single thing
+    // a reader most needs to know before believing anything else on the row.
+    precision: row?.status === "verified" ? "Source checked" : "In review",
+    sentence: submissionDescription(row, work?.title ?? "this work", matchedBy),
+    // Whoever said it, in the meta line. Never "filmed on location": nobody has checked.
+    role_label: labels.who,
+    // The area the source named. It is not a city we resolved — `location_submissions`
+    // has no city column — so it is printed as the hint it is.
+    city: String(row?.area_hint ?? "").trim() || null,
+    country: null,
+    lat,
+    lng,
+    // Deliberately null rather than 0. `evidence_count` on a fact means "how many sources
+    // back this", and a queue row has not been through the process that counts them; a 0
+    // would read as "nobody backs it", which is the opposite of what it means.
+    evidence_count: null,
+    source_url: row?.source_url ?? null,
+    status: row?.status ?? "pending",
+    matched_by: row?.matched_by ?? matchedBy,
+  };
+}
+
+export function selectWorkCandidates(rows, { work, limit = 60, matchedBy = MATCHED_BY.id } = {}) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => !isRefusedSource(row?.source_kind))
+    // The queue's own rule, and the map's: read NOT REJECTED, never `pending`. Filtering
+    // on `pending` once meant believing a row that a reviewer had deleted.
+    .filter((row) => row?.status !== "rejected")
+    .map((row) => submissionToCandidate(row, { work, matchedBy }))
+    .filter(Boolean)
+    .sort((left, right) =>
+      (CANDIDATE_ORDER[left.status] ?? 2) - (CANDIDATE_ORDER[right.status] ?? 2)
+      || left.name.localeCompare(right.name))
+    // Person of Interest alone holds 961 rows. A card is a page somebody reads.
+    .slice(0, Math.max(0, limit));
+}

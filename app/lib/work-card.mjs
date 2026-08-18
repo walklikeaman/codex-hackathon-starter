@@ -56,9 +56,21 @@ export function placeBlocks(places) {
 // It exists because thin coverage and a broken page look identical otherwise. 39.8% of the
 // works in the queue have exactly one place; a card that shows one pin with no comment
 // invites the reader to assume something failed.
-export function coverageLine({ places, tally }) {
+export function coverageLine({ places, tally, candidates = 0 }) {
   const all = Array.isArray(places) ? places : [];
-  if (all.length === 0) return "No places recorded for this work yet.";
+  // The number the QUEUE holds, not the number this page prints. They differ on a work
+  // with more candidates than a card should list, and printing the display cap as the
+  // count is the silent-truncation failure this project has agreed not to ship.
+  const waiting = Math.max(0, Number(candidates) || 0);
+
+  if (all.length === 0) {
+    // A card with nothing checked but a queue behind it used to say "No places recorded",
+    // which was true of the graph and false of the page directly under it. Measured 18.08:
+    // that was 6,378 of the 6,392 works the directory addresses.
+    return waiting > 0
+      ? `Nothing verified yet — ${waiting} candidate${waiting === 1 ? "" : "s"} from our sources, below.`
+      : "No places recorded for this work yet.";
+  }
 
   const routable = all.filter((place) => place.routable !== false).length;
   const nearby = all.length - routable;
@@ -67,7 +79,25 @@ export function coverageLine({ places, tally }) {
   const parts = [`${all.length} place${all.length === 1 ? "" : "s"}`];
   if (onLocation > 0) parts.push(`${onLocation} filmed on location`);
   if (nearby > 0) parts.push(`${nearby} nearby rather than in the film`);
+  // Counted separately from the places, never added to them: the number before the dot is
+  // what we stand behind, and this is what we have not checked.
+  if (waiting > 0) parts.push(`${waiting} unverified candidate${waiting === 1 ? "" : "s"}`);
   return `${parts.join(" · ")}.`;
+}
+
+// The sentence over the candidates block. It states the source of the rows and the fact
+// that nobody has checked them, because the block below is the only part of this card
+// that is not something we are willing to assert.
+export function candidatesNote(shown, total = shown) {
+  const n = Math.max(0, Number(shown) || 0);
+  const all = Math.max(n, Number(total) || 0);
+  if (all === 0) return null;
+  // When the card cannot print them all, it says so. Person of Interest holds 961 rows,
+  // and a page that lists 60 of them without a word reads as though 60 were all there is.
+  const count = all > n
+    ? `${n} of ${all} places`
+    : `${n} place${n === 1 ? "" : "s"}`;
+  return `${count} named by a source we have not checked. Each row says who said it and links to where.`;
 }
 
 // Which stills may be shown and what the caption is allowed to claim.

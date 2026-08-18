@@ -1,4 +1,4 @@
-# Handoff — 2026-08-15, end of the surfaces session
+# Handoff — 2026-08-19, end of the directory session
 
 Written because a session ended, not because the work did. `wiki/log.md` is the
 chronicle and `wiki/index.md` lists the concept pages. **This page is only the things
@@ -20,12 +20,13 @@ production: empty for **0 of 24** famous titles, median 1.3 s.
 
 | | |
 |---|---|
-| main | `136b30c` — "A film has an address (#146)", deployed and verified on Production |
-| tests | 1,021, `node --test test/*.test.mjs`, zero network |
+| main | `de13ff0` — "An Olympiad is not a city (#165)", deployed and verified on Production |
+| tests | 1,082, `node --test test/*.test.mjs`, zero network |
 | works | 7,063 · **6,392 with at least one located place** (`catalogue_index`) |
 | queue | ~43,900 submissions · **90 verified, 914 rejected**, the rest pending ([[queue-review]]) |
 | geocoded by us | **1,063** from the gazetteer pass; ~11,500 pending rows still have no point, most because the venue is not in Wikidata at all |
-| surfaces | the map (`/`) and **the film card (`/work/<slug>--<uuid>`)**. That is all of them. |
+| surfaces | the map (`/`), the film card (`/work/<slug>--<uuid>`) and — since 19.08 — **the directory** (`/directory`, `/directory/films/<letter>`, `/city/<slug>`). That is all of them. |
+| graph vs queue | **92 facts across 15 works** in the graph against **6,392 works** in the queue. What a reader sees on a card for the other 6,377 is a labelled candidate ([[directory]]). |
 
 **The map answers from three stores at once**, and this is the thing to understand before
 touching [app/api/locations/route.js](app/api/locations/route.js):
@@ -109,6 +110,19 @@ index, grep for `onConflict`.
 **Never run `next build` while the dev server is up** — it clobbers `.next`. Check
 `lsof -ti:3000`.
 
+**A character range in SQL is resolved against the collation, and this database is not in
+the C locale.** `~ '^[a-z]'` and `between 'a' and 'b'` both put `Á` inside the `a` bucket
+under `en_US.UTF-8`. Use `strpos` over an explicit alphabet when the answer has to match
+what JavaScript would say.
+
+**Both halves of a sentence must be measured over the same rows.** The directory index first
+read "6,392 films with 20,296 places" — a global work count beside a count of only what sat
+near a listed city. Each number was right; the sentence was not.
+
+**Supabase IS reachable from this machine**, contrary to the note left on 18.08 — the REST
+host answers, and every page of the directory was verified live from here against production
+data before the deploy. Wikidata and Nominatim were not retested.
+
 **`Number("")` is 0 and 0 is finite.** Four Null Island incidents. `finiteOrNull` exists
 for it — and it is not enough on its own: the Open Plaques dump ships a Leeds cinema with
 `latitude 0.0` and a correct longitude, which only an explicit zero check catches.
@@ -117,7 +131,9 @@ for it — and it is not enough on its own: the Open Plaques dump ships a Leeds 
 Bowie; `namesMatch` accepted one extra word and turned "Notting Hill Bookshop" into the
 district; a union of Overpass `around` statements returns ONE result set, so an element
 fetched for another point is still in the list — the name has to be inside the query and
-checked again on the way out.
+checked again on the way out. **And a third time, on 19.08**: grouping the located rows by
+the city written in their address gives "London" a spread of 10,959 km and "Richmond" 8,097
+km, so a city page is a coordinate and a radius and the name is decoration ([[directory]]).
 
 **Do not guess Q-ids.** Query by title and year.
 
@@ -225,8 +241,12 @@ That is the critical path, and the three parts of it are one problem:
    never awaited together, and every film row links to its card. The city half is
    Wikidata rather than Nominatim — a type-ahead is auto-complete, which that policy
    refuses; `/api/cities` survives behind one clicked row. See [[search-box]].
-2. **#158 — a directory.** 6,392 works and ~31,000 places with no URL between them.
-   `catalogue_index` is the right source; `/work/<slug>` already exists as the destination.
+2. ~~**#158 — a directory.**~~ Shipped 19.08: an index, 27 letter pages addressing every
+   work, and 56 city pages, all server-rendered and in a sitemap. **A city is a point and a
+   radius, never a name** — see [[directory]] for the six derivation rules and what each one
+   cost. It also forced the fix that made it worth having: the card now shows the review
+   queue as labelled candidates, because only **14 of 6,392** directory rows led to a card
+   with anything on it at all.
 3. **#160 — the place card as tabs**, a copyable coordinate, and a count of what is on
    screen. Also carries step 4 of #129 — the place card read from `place_facts`.
 
@@ -259,6 +279,10 @@ as results, live-GPS buddy tracking, AI-generated "lore", and a 1–5 safety sco
   39.8% have exactly one. Live sources add places to about two thirds of them.
 - The inverted search returns some **non-places with coordinates** — "Eurovision Young
   Musicians 2018" for Harry Potter in Edinburgh.
+- **A city row lists the same venue twice** when two sources spell it differently: Skyfall
+  in London shows both "Broadgate Tower" and "Broadgate Tower, Bishopsgate, London". The
+  `distinct` in `city_catalogue` is on the exact string; `place-dedup.mjs` already knows how
+  to collapse these and is not wired into that query ([[directory]]).
 - A **one-word title** ("Dracula", "Trainspotting") contributes nothing to the inverted
   search: `isSearchableEntity` needs two words, so such a work depends entirely on its
   fan-out.
