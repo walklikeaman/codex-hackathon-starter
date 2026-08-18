@@ -7,6 +7,68 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-18] update | One search box, and the city half could not be Nominatim
+
+**Object**: `app/lib/city-search.mjs`, `app/api/cities/suggest/route.js`,
+`app/components/{SearchBox.jsx,SceneMapApp.jsx}`, `app/lib/work-search.mjs`
+**Scenario**: feature (#145) · **Outcome**: ✅ success
+**Code changes**: this commit
+
+**Two fields became one, and the interesting half of the work was not the merge.** A city
+field and a title field sat next to each other, each hitting a different service, neither
+able to suggest the other's kind. The box now answers both, grouped — films and books
+first, cities and places under their own heading — with the kind obvious at a glance and
+one keyboard walk through the two groups.
+
+**The design rule is the refusal to average two latencies.** `/api/search` is one indexed
+query on our own database; the gazetteer is a network call. Awaiting them together makes
+the fast half as slow as the slow one on every keystroke, so they are two requests with
+two debounces (140 ms and 320 ms) and two groups that paint independently. Films are
+listed FIRST for a reason that is correctness rather than taste: the slower group must
+grow the list downward, or its arrival pushes the row under the cursor out from under it.
+For the same reason the cursor is held by KEY and not by index, and every request carries
+a serial as well as an abort — an abort and a resolve can race, and the loser still calls
+`setState`.
+
+**The city half could not be built on the endpoint that already existed, and that is the
+decision worth keeping.** `/api/cities` asks Nominatim, which is fine as it stands — one
+request per submitted form. A type-ahead is a different act: the OSMF usage policy names
+auto-complete search on the public instance as unacceptable use outright, the same policy
+that already cost us the bulk path ([[geocoding-cascade]]). So suggestions come from
+Wikidata through `wikibase:mwapi`: CC0, nothing owed, and the same entity search
+Wikidata's own box runs. **Nominatim was not deleted and was not made a per-keystroke
+fallback either** — that would hammer it on exactly the queries Wikidata cannot answer.
+It sits behind one row, "Look “x” up as a place", offered when the gazetteer finds
+nothing or does not answer. One request, clicked for.
+
+**Two rules were inherited rather than re-derived, and both are already paid for.** No
+`P279*` closure — 65 seconds and a 504 for a single name, measured in July; requiring a
+coordinate does most of that work and `isPlaceType` drops the shipwrecks. And ranking by
+`wikibase:sitelinks` rather than by label match, because `wbsearchentities` ranks by
+string similarity and nothing else: London Q84 carries ~400 sitelinks against London,
+Ontario's ~94, the same signal that stops "Skyfall" resolving to a lyric video.
+
+**A failing gazetteer is a state, not an error.** The route answers 200 with
+`unavailable: true`, so the box degrades into the search that existed before #145 instead
+of into an error nobody can act on. Each empty state names which kind was searched.
+
+**And the box now has somewhere to lead.** Every film row carries a real link to its card
+at `/work/<slug>--<uuid>` — built by `workPath`, the function the page itself parses, so
+the two cannot drift. Clicking the row still shows the film on the map: that is the
+[[demo-path]], and a search box attached to a map should not navigate away from it.
+
+**Verification, and its limit.** 1,037 tests (16 new), and the box driven with Playwright
+against a production build: the film group paints while the city request is still open,
+the city group appends below without moving the cursor, ArrowDown walks both groups as
+one list, `aria-activedescendant` follows, Escape closes. What ran live here was the
+DEGRADED path — Wikidata, Nominatim and Supabase are all unreachable from this machine
+(filtered egress), so the ranking is covered by fixtures and the live shape is verified on
+production after the deploy. The two `cancelled` results in `artwork-api.test.mjs` are
+older than this change and reproduce on `main`.
+
+**Updated**: `wiki/concepts/search-box.md` (new), `wiki/index.md`,
+`test/{city-search,work-search}.test.mjs`, `app/globals.css`
+
 ## [2026-08-08] update | The scrape goes on a timer, and dry-run stops lying
 
 **Object**: `scripts/refresh-sources.sh`, `.gitignore`

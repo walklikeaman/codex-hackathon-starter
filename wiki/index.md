@@ -29,6 +29,8 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 ## Concepts (how it works)
 
 - [demo-path](concepts/demo-path.md) — the one sacred scenario
+- [search-box](concepts/search-box.md) — one field, two kinds of answer, two latencies; why the
+  city half is Wikidata and not Nominatim
 - [fact-architecture](concepts/fact-architecture.md) — a fact has identity, payload and its
   own sentence; degree of separation; and the on_conflict outage found while writing it
 - [queue-review](concepts/queue-review.md) — what a rule may decide about a submission and

@@ -78,6 +78,20 @@ test("formatSuggestions tolerates a work with no poster or year", () => {
   assert.equal(row.poster_thumb_url, null);
   assert.equal(row.year, null);
   assert.equal(row.place_count, 0);
+  // Not a uuid, so there is no page to point at — and a link to nowhere is worse than
+  // no link. The dropdown renders the row without its card.
+  assert.equal(row.path, null);
+});
+
+test("a suggestion carries the address of the film's own page", () => {
+  // The search now has somewhere to lead: the card shipped in #146. The path is built
+  // by the same function the page parses, so a title corrected later cannot break a
+  // link already sent.
+  const [row] = formatSuggestions([{
+    work_id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+    title: "Skyfall", kind: "film", year: 2012,
+  }], "sky");
+  assert.equal(row.path, "/work/skyfall-2012--3f2504e0-4f89-41d3-9a0c-0305e82c3301");
 });
 
 // --- route -------------------------------------------------------------------
