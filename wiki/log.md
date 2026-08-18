@@ -11,7 +11,7 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 **Object**: `app/lib/{city-gazetteer,directory,submission-places,work-card}.mjs`,
 `app/api/directory/{cities,city,films}/route.js`, `app/{directory,city}/**`, `app/sitemap.js`,
-`app/api/work/route.js`, `supabase/migrations/2026081821*.sql`, `scripts/build-city-gazetteer.sql`
+`app/api/work/route.js`, `supabase/migrations/2026081820*.sql`, `scripts/build-city-gazetteer.sql`
 **Scenario**: feature (#158) · **Outcome**: ✅ success
 **Code changes**: this commit
 
