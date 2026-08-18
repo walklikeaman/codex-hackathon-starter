@@ -19,7 +19,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { GET as workRoute } from "../../api/work/route.js";
-import { coverageLine, placeBlocks, stillsCaption, workLinks } from "../../lib/work-card.mjs";
+import { candidatesNote, coverageLine, placeBlocks, stillsCaption, workLinks } from "../../lib/work-card.mjs";
 import { workIdFromSlug, workPath } from "../../lib/work-url.mjs";
 
 export const dynamic = "force-dynamic";
@@ -44,15 +44,19 @@ export async function generateMetadata({ params }) {
   const { slug } = await params;
   const data = await loadWork(slug);
   if (!data) return { title: "Not found · GloryMap" };
-  const { work, places } = data;
+  const { work, places, candidates, candidates_total: candidatesTotal } = data;
   const count = Array.isArray(places) ? places.length : 0;
+  const waiting = Number(candidatesTotal) || (Array.isArray(candidates) ? candidates.length : 0);
   return {
     title: `${work.title}${work.year ? ` (${work.year})` : ""} · GloryMap`,
     // The description states the count rather than selling the page. A film we hold one
-    // place for should not be advertised as a tour.
+    // place for should not be advertised as a tour, and one whose places are all still
+    // candidates must not be described as though somebody had checked them.
     description: count > 0
       ? `${count} place${count === 1 ? "" : "s"} recorded for ${work.title}, each with the source that stated it.`
-      : `No places recorded for ${work.title} yet.`,
+      : waiting > 0
+        ? `${waiting} unverified candidate place${waiting === 1 ? "" : "s"} for ${work.title}, each with the source that named it.`
+        : `No places recorded for ${work.title} yet.`,
   };
 }
 
@@ -92,7 +96,10 @@ export default async function WorkPage({ params }) {
   const data = await loadWork(slug);
   if (!data) notFound();
 
-  const { work, places = [], tally, stills = [], stills_verified: verified, stills_note: note, ratings = [], links = [] } = data;
+  const {
+    work, places = [], tally, stills = [], stills_verified: verified, stills_note: note,
+    ratings = [], links = [], candidates = [], candidates_total: candidatesTotal = candidates.length,
+  } = data;
   const blocks = placeBlocks(places);
   const caption = stillsCaption({ stills, verified, note });
   const canonical = workPath(work);
@@ -107,7 +114,7 @@ export default async function WorkPage({ params }) {
         </h1>
         {/* Coverage before anything else. Thin coverage and a broken page look identical
             otherwise, and thin is the normal state here. */}
-        <p className="work-coverage">{coverageLine({ places, tally })}</p>
+        <p className="work-coverage">{coverageLine({ places, tally, candidates: candidatesTotal })}</p>
         {!work.in_graph && (
           <p className="work-note">
             This work is not in our graph — what follows comes from what we could look up live.
@@ -146,6 +153,19 @@ export default async function WorkPage({ params }) {
         </section>
       ))}
 
+      {candidates.length > 0 && (
+        // Set apart with the same treatment distance 2 gets, and for the same reason: a
+        // reader must never mistake a row nobody has checked for one we stand behind.
+        // Nothing here is in the graph, and the block says so before the first row.
+        <section className="work-block is-aside" aria-label="Candidates from our sources">
+          <h2>Candidates, not yet verified</h2>
+          <p className="work-block-note">{candidatesNote(candidates.length, candidatesTotal)}</p>
+          <ul className="work-places">
+            {candidates.map((candidate) => <PlaceRow key={candidate.id} place={candidate} />)}
+          </ul>
+        </section>
+      )}
+
       {stills.length > 0 && (
         <section className="work-block" aria-label="Frames">
           <h2>Frames</h2>
@@ -163,6 +183,11 @@ export default async function WorkPage({ params }) {
 
       <footer className="work-footer">
         <a href={canonical}>Permanent link to this film</a>
+        {" · "}
+        {/* The way out of a single card and into the rest of the catalogue. Without it a
+            shared link is a dead end: the reader has one film and no way to learn there
+            are 6,392 more. */}
+        <Link href="/directory">Browse the directory</Link>
       </footer>
     </main>
   );

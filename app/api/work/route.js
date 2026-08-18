@@ -15,6 +15,7 @@ import {
   profileRatings,
   sourceLinks,
 } from "../../lib/work-profile.mjs";
+import { selectWorkCandidates } from "../../lib/submission-places.mjs";
 import { posterUrl, POSTER_SIZES } from "../../lib/work-artwork.mjs";
 import { selectTmdbBackdrops, tmdbImageUrl } from "../../lib/tmdb-images.mjs";
 
@@ -82,6 +83,34 @@ function defaultCreateStore(env) {
       const { data, error } = await client.rpc("work_facts", { p_work_id: workId });
       if (error) throw new Error(`places load failed: ${error.message}`);
       return data ?? [];
+    },
+    // The review queue for this work (#158). Measured 18.08: the graph holds 92 facts
+    // across 15 works while the catalogue the directory is built on holds 6,392, so
+    // without this the directory led 6,378 of its rows to a card saying "No places
+    // recorded". These arrive as CANDIDATES and stay out of the graph — the map has
+    // shown them on those terms since 05.08.
+    //
+    // NOT REJECTED rather than PENDING: filtering on `pending` once meant believing a
+    // row a reviewer had already thrown out. Ordered so a card is deterministic, and
+    // capped well above what a card prints so the cap never decides the content.
+    async loadCandidates(workId) {
+      // `count: "exact"` rides on the same request — PostgREST answers the total in
+      // Content-Range while returning only the limited rows. It is here so the card can
+      // say "60 of 62" rather than printing its own display cap as if it were the
+      // number we hold: Person of Interest alone has 961 rows.
+      const { data, count, error } = await client
+        .from("location_submissions")
+        .select(
+          "id, place_name, area_hint, source_sentence, source_kind, source_url, status, status_reason, lat, lng",
+          { count: "exact" },
+        )
+        .eq("work_id", workId)
+        .neq("status", "rejected")
+        .not("lat", "is", null)
+        .order("place_name", { ascending: true })
+        .limit(200);
+      if (error) throw new Error(`candidates load failed: ${error.message}`);
+      return { rows: data ?? [], total: count ?? (data?.length ?? 0) };
     },
   };
 }
@@ -178,16 +207,20 @@ export function createWorkProfileHandler({
     let places = [];
     let classified = [];
     let placeFrames = [];
+    let submissions = { rows: [], total: 0 };
 
     if (store) {
       try {
         work = await store.loadWork(query);
         if (work) {
-          [ratings, places, classified, placeFrames] = await Promise.all([
+          [ratings, places, classified, placeFrames, submissions] = await Promise.all([
             store.loadRatings(work.id),
             store.loadPlaces(work.id),
             store.loadClassifiedImages(work.id),
             store.loadPlaceFrames(work.id),
+            // A store written before #158 has no loadCandidates. An older injected store
+            // should lose the candidates block, not the whole card.
+            store.loadCandidates ? store.loadCandidates(work.id) : { rows: [], total: 0 },
           ]);
         }
       } catch (error) {
@@ -258,6 +291,13 @@ export function createWorkProfileHandler({
       ratings: profileRatings(ratings),
       places: summarised,
       tally: placeTally(summarised),
+      // Kept out of `places` on purpose. A fact has an identity, a subject and a degree
+      // of separation; a queue row has none of those, and giving it a distance would put
+      // it in a block beside things we checked.
+      candidates: selectWorkCandidates(submissions?.rows ?? submissions, { work }),
+      // What the queue holds, not what this page prints. Without it the card stated its
+      // own display cap as a count — "60 unverified candidates" for a work with 62.
+      candidates_total: submissions?.total ?? (Array.isArray(submissions) ? submissions.length : 0),
       stills,
       stills_verified: stillsVerified,
       // The caption states exactly which of the two cases this is. Promising verified

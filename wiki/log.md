@@ -7,6 +7,67 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-19] update | A city is a point and a radius, and the catalogue almost pointed at 6,378 empty rooms
+
+**Object**: `app/lib/{city-gazetteer,directory,submission-places,work-card}.mjs`,
+`app/api/directory/{cities,city,films}/route.js`, `app/{directory,city}/**`, `app/sitemap.js`,
+`app/api/work/route.js`, `supabase/migrations/2026081821*.sql`, `scripts/build-city-gazetteer.sql`
+**Scenario**: feature (#158) · **Outcome**: ✅ success
+**Code changes**: this commit
+
+**The product had two surfaces and now has three.** 6,392 works and 32,148 located rows had
+no URL between them; there is now an index, 27 letter pages addressing every work, and 56
+city pages, all server-rendered and in a sitemap.
+
+**The decision the whole feature rests on is a refusal to trust a name.** Grouping the
+located rows by the city written in their address gives "London" a spread of 10,959 km
+(London, Ontario), "Richmond" 8,097 km, 48 works under "Ontario" — a province — and 80 under
+"Unnamed Road". So a city page is a **disc**: a measured anchor and a 20 km radius, with the
+name as decoration. It is the third time this project has learned that a name is not an
+identifier, after `Bowie` on Overpass and `wbsearchentities` on Skyfall.
+
+**Each rule in the gazetteer cost a measurement.** A country is the component that comes
+LAST — Canada 1.000, France 0.912, Ireland 0.813 against Vancouver 0.000 — and without that
+test "Canada" wins 902 names, lands on Vancouver's own coordinate and **shadows Vancouver off
+the list**. The anchor is the MEDIAN, because the mean puts Paris in the Atlantic and the
+densest point moves London to Greenwich, where 51 rows share one coordinate. A venue is a
+name written always the same way, which is what removes "Mini Hollywood", "Bryant Park" and
+"Bonneville Salt Flats", each arriving with 40-53 works looking like a small town. And of two
+candidates within 40 km only the more-named survives — without it Westminster, Lambeth, St.
+James's and City of Westminster each return **the same 656 works as London** and each gets
+its own page, which is precisely the padded directory the issue asks us not to build.
+
+**Paris is added by hand and marked.** It fails the spread rule because two thirds of the
+rows naming it are in Texas and Ontario. Loosening the rule enough to admit it also admits
+"s/n" — Spanish for "no street number" — which takes 87 works and shadows Madrid. One
+exception, stated, beat a threshold that lets in nonsense.
+
+**The lie that nearly shipped, and it was found by clicking one link.** The directory is
+built on the queue; the film card is built on the graph. The graph holds **92 facts across 15
+works** and the catalogue holds **6,392** — so **14 of 6,392** rows led anywhere. Every other
+row pointed at a card reading "No places recorded for this work yet", which is a worse answer
+to #158 than no directory at all. The card now shows the queue on the map's terms since
+05.08: labelled a candidate, linked to its source, kept out of `placeBlocks` entirely rather
+than given a distance, because a fact has an identity and a subject and a queue row has
+neither. The header counts them apart — *23 places · 15 filmed on location · 62 unverified
+candidates* — and the block says "60 of 62" when it cannot print them all.
+
+**Two smaller measurements worth keeping.** Filing the A-Z on the raw `title_norm` put
+**1,427 of 6,392 works under T**, because half our sources write "The Dark Knight" and half
+write "Bulls, The"; stripping only a LEADING article fixes both conventions at once and T
+fell to 330. And the index first read "6,392 films with 20,296 places" — a global work count
+beside a count of only what sits near a listed city. Two halves of one sentence have to be
+measured over one set of rows.
+
+**Verification.** 1,082 tests (+45), and every page driven live against production data from
+this machine — the directory index, London (656 films, Killing Eve first with 78 places),
+the `#` letter page, a page past the end folding back to the first, and both card states:
+a work with only candidates and Skyfall with 23 facts beside 62 candidates. Supabase turned
+out to be reachable from here, contrary to the note in the handoff.
+
+**Updated**: `wiki/concepts/directory.md` (new), `wiki/index.md`, `wiki/handoff.md`,
+`app/globals.css`, `test/{directory,directory-api,submission-places}.test.mjs`
+
 ## [2026-08-18] incident | The first live answer put the Olympics above Derry
 
 **Object**: `app/lib/city-search.mjs`, `test/city-search.test.mjs`

@@ -3257,3 +3257,125 @@ figcaption a {
   text-decoration: none;
 }
 .work-profile-permalink:hover { text-decoration: underline; }
+
+/* The directory (#158). Same reading page as the film card — one column, generous
+   measure — because it is the same act: looking something up, not operating a map. */
+.directory-page {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+  color: #ece8e1;
+}
+
+.directory-header h1 { font-size: 2rem; margin: 0 0 0.4rem; line-height: 1.15; }
+.directory-lede { color: rgba(236, 232, 225, 0.78); margin: 0 0 0.5rem; }
+.directory-note {
+  color: rgba(236, 232, 225, 0.55);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin: 0 0 0.5rem;
+  max-width: 40rem;
+}
+.directory-empty { color: rgba(236, 232, 225, 0.55); }
+
+.directory-block { margin-top: 2.5rem; }
+.directory-block h2 { font-size: 1.05rem; margin: 0 0 0.6rem; }
+
+.directory-country { margin-top: 1.4rem; }
+.directory-country h3 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(236, 232, 225, 0.45);
+  margin: 0 0 0.5rem;
+}
+
+.directory-cities {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.4rem;
+}
+.directory-cities a {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.6rem;
+  background: rgba(255, 255, 255, 0.025);
+  color: inherit;
+  text-decoration: none;
+}
+.directory-cities a:hover { border-color: rgba(255, 255, 255, 0.35); }
+.directory-city-name { font-size: 0.95rem; }
+
+/* The count is never decoration here: it is what stops a reader opening a city that
+   holds two pins expecting a walk. */
+.directory-count {
+  flex: none;
+  font-size: 0.78rem;
+  color: rgba(236, 232, 225, 0.5);
+  font-variant-numeric: tabular-nums;
+}
+
+.directory-letters {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.directory-letters a,
+.directory-letter.is-empty {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.6rem;
+  color: inherit;
+  text-decoration: none;
+}
+.directory-letters a:hover { border-color: rgba(255, 255, 255, 0.35); }
+.directory-letter { font-weight: 600; text-transform: uppercase; }
+/* A letter we hold nothing for stays visible and unclickable, so the alphabet does not
+   silently change length between visits. */
+.directory-letter.is-empty { opacity: 0.3; }
+
+.directory-works { list-style: none; padding: 0; margin: 1.5rem 0 0; display: grid; gap: 0.35rem; }
+.directory-works a {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.2rem 0.8rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.6rem;
+  color: inherit;
+  text-decoration: none;
+}
+.directory-works a:hover { border-color: rgba(255, 255, 255, 0.32); background: rgba(255, 255, 255, 0.03); }
+.directory-work-title { font-size: 1rem; }
+.directory-work-places {
+  grid-column: 1 / 2;
+  font-size: 0.8rem;
+  color: rgba(236, 232, 225, 0.5);
+  line-height: 1.45;
+}
+.directory-works.is-city a { align-items: start; }
+
+.directory-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2rem;
+  font-size: 0.9rem;
+}
+.directory-pager a { color: #f0a83c; text-decoration: none; }
+.directory-pager a:hover { text-decoration: underline; }
+.directory-pager-state { color: rgba(236, 232, 225, 0.5); font-size: 0.82rem; }

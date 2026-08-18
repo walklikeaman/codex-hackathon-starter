@@ -129,3 +129,91 @@ test("a place the live search already found is not shown twice", () => {
   );
   assert.deepEqual(chosen, []);
 });
+
+// --- the same rows, on the film card (#158) ---------------------------------------
+
+import { candidatesNote, coverageLine } from "../app/lib/work-card.mjs";
+import { selectWorkCandidates, submissionToCandidate } from "../app/lib/submission-places.mjs";
+
+test("a candidate on the card is badged by review state, not by precision", () => {
+  // On this block the review state is the single thing a reader most needs before
+  // believing anything else on the row, so it takes the badge the graph uses for
+  // geocode precision.
+  const pending = submissionToCandidate(row(), { work: WORK });
+  assert.equal(pending.precision, "In review");
+  assert.equal(
+    submissionToCandidate(row({ status: "verified" }), { work: WORK }).precision,
+    "Source checked",
+  );
+});
+
+test("a candidate carries who said it and where to check it", () => {
+  const candidate = submissionToCandidate(row(), { work: WORK });
+  assert.equal(candidate.role_label, "MovieMaps");
+  assert.equal(candidate.source_url, "https://moviemaps.org/movies/xyz");
+  assert.match(candidate.sentence, /Not yet verified by us/);
+  // The area the source named, printed as the hint it is: location_submissions has no
+  // city column and nothing here resolved one.
+  assert.equal(candidate.city, "London");
+});
+
+test("a candidate's evidence count is null and never zero", () => {
+  // On a fact, `evidence_count` means "how many sources back this". A queue row has not
+  // been through the process that counts them, and a 0 would read as "nobody backs it" —
+  // the opposite of what an unreviewed row means.
+  assert.equal(submissionToCandidate(row(), { work: WORK }).evidence_count, null);
+});
+
+test("a rejected row never reaches the card", () => {
+  // The queue's rule, and the map's: read NOT REJECTED. Filtering on `pending` once meant
+  // believing a row a reviewer had already thrown out.
+  const chosen = selectWorkCandidates(
+    [row({ id: "a", status: "rejected" }), row({ id: "b", place_name: "Golborne Road" })],
+    { work: WORK },
+  );
+  assert.deepEqual(chosen.map((c) => c.name), ["Golborne Road"]);
+});
+
+test("a row somebody checked leads the ones nobody has", () => {
+  const chosen = selectWorkCandidates(
+    [
+      row({ id: "a", place_name: "Alpha" }),
+      row({ id: "b", place_name: "Zulu", status: "verified" }),
+    ],
+    { work: WORK },
+  );
+  assert.deepEqual(chosen.map((c) => c.name), ["Zulu", "Alpha"]);
+});
+
+test("a row with no coordinate or no name is not a candidate", () => {
+  const chosen = selectWorkCandidates(
+    [row({ id: "a", place_name: "  " }), row({ id: "b", lat: null, lng: null })],
+    { work: WORK },
+  );
+  // The nameless one is dropped outright; the one without a point keeps its name but
+  // cannot claim a location.
+  assert.equal(chosen.length, 1);
+  assert.equal(chosen[0].lat, null);
+});
+
+test("the card counts what the queue holds, not what it managed to print", () => {
+  // Person of Interest holds 961 rows. A card that lists 60 and says "60" states its own
+  // display cap as a count — the silent truncation this project does not ship.
+  const many = Array.from({ length: 62 }, (_, i) =>
+    row({ id: `id-${i}`, place_name: `Place ${String(i).padStart(2, "0")}` }));
+  const shown = selectWorkCandidates(many, { work: WORK });
+  assert.equal(shown.length, 60);
+  assert.match(candidatesNote(shown.length, 62), /^60 of 62 places/);
+  assert.match(coverageLine({ places: [], candidates: 62 }), /62 candidates/);
+});
+
+test("a work with facts counts its candidates apart from them", () => {
+  // The number before the dot is what we stand behind. Adding the two together is how a
+  // card starts claiming 83 verified places for a film with 23.
+  const line = coverageLine({
+    places: [{ routable: true }, { routable: true }],
+    tally: { on_location: 2 },
+    candidates: 62,
+  });
+  assert.equal(line, "2 places · 2 filmed on location · 62 unverified candidates.");
+});
