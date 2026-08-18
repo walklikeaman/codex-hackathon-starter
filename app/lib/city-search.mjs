@@ -79,7 +79,8 @@ export function buildCitySuggestQuery({ query, limit = MAX_CITY_SUGGESTIONS } = 
 
   // `wdt:P625` is required rather than OPTIONAL: a thing with no coordinate is not
   // somewhere the map can go, whatever else it is.
-  return `SELECT ?item ?itemLabel ?itemDescription ?coord ?typeLabel ?population ?sitelinks ?areaM2 WHERE {
+  return `SELECT ?item ?itemLabel ?itemDescription ?coord ?typeLabel ?population ?sitelinks ?areaM2
+       ?startTime ?pointInTime WHERE {
   SERVICE wikibase:mwapi {
     bd:serviceParam wikibase:endpoint "www.wikidata.org" .
     bd:serviceParam wikibase:api "EntitySearch" .
@@ -89,6 +90,12 @@ export function buildCitySuggestQuery({ query, limit = MAX_CITY_SUGGESTIONS } = 
     ?item wikibase:apiOutputItem mwapi:item .
   }
   ?item wdt:P625 ?coord .
+  # A thing that HAPPENED is not a thing that IS. Measured on production: "lond" put
+  # the 2012 Summer Olympics second, above Derry, because an Olympiad has a venue
+  # coordinate and 200 Wikipedias. One property separates the two classes without any
+  # taxonomy — a city has no start time.
+  OPTIONAL { ?item wdt:P580 ?startTime . }
+  OPTIONAL { ?item wdt:P585 ?pointInTime . }
   OPTIONAL { ?item wdt:P31 ?type . }
   OPTIONAL { ?item wdt:P1082 ?population . }
   OPTIONAL { ?item wikibase:sitelinks ?sitelinks . }
@@ -140,6 +147,8 @@ export function cityCandidatesFromBindings(payload) {
       population: finiteOrNull(row?.population?.value),
       sitelinks: finiteOrNull(row?.sitelinks?.value) ?? 0,
       area_km2: areaM2 === null ? null : areaM2 / SQUARE_METRES_PER_SQUARE_KM,
+      // An event, not a place: see the query.
+      dated: Boolean(row?.startTime?.value || row?.pointInTime?.value),
       type_labels: typeLabel ? [typeLabel] : [],
     });
   }
@@ -151,19 +160,32 @@ function isPlaceCandidate(candidate) {
   // The label service answers a missing English label with the bare Q-id. A row whose
   // only name is "Q1490" is not something to offer anybody as a destination.
   if (/^Q\d+$/.test(candidate.name)) return false;
+  // Something with a date on it is an occurrence — an Olympiad, a festival, a battle —
+  // and it is in this list only because the venue carries the coordinate.
+  if (candidate.dated) return false;
   // An entity carries several P31s and only needs one of them to be a place; requiring
   // all of them would drop a city that is also a "former municipality".
   return candidate.type_labels.length === 0 || candidate.type_labels.some(isPlaceType);
 }
 
-// Fame decides the order, never the answer — the same rule the work search follows. A
-// candidate nobody wrote an article about sorts last rather than being refused: a small
-// town is still where somebody means to go, it is just not what "London" means.
+// Somewhere people LIVE, as opposed to somewhere that merely has a coordinate. A
+// settlement or an administrative area states how many live there or how big it is;
+// a university, a bridge and a pub state neither. The group is called cities and
+// places, in that order, and this is the order.
+function isInhabited(candidate) {
+  return candidate.population !== null || candidate.area_km2 !== null;
+}
+
+// Fame decides the order within each band, never the answer — the same rule the work
+// search follows. A candidate nobody wrote an article about sorts last rather than being
+// refused: a small town is still where somebody means to go, it is just not what
+// "London" means.
 export function rankCitySuggestions(candidates, { limit = MAX_CITY_SUGGESTIONS } = {}) {
   return (Array.isArray(candidates) ? candidates : [])
     .filter(isPlaceCandidate)
     .sort((left, right) =>
-      right.sitelinks - left.sitelinks
+      (isInhabited(right) ? 1 : 0) - (isInhabited(left) ? 1 : 0)
+      || right.sitelinks - left.sitelinks
       || (right.population ?? 0) - (left.population ?? 0)
       || left.name.length - right.name.length)
     .slice(0, Math.max(1, limit));

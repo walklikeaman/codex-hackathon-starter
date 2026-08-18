@@ -109,6 +109,49 @@ test("a shipwreck with a coordinate is not a place to go", () => {
   assert.deepEqual(ranked, []);
 });
 
+test("a thing that happened is not a thing that is", () => {
+  // Found on production, not in review: "lond" put the 2012 Summer Olympics SECOND,
+  // above Derry, because an Olympiad has a venue coordinate and 200 Wikipedias behind
+  // it. A city has no start time; that one property separates the classes with no
+  // taxonomy and no subclass walk.
+  const ranked = rankCitySuggestions(cityCandidatesFromBindings(payload([
+    binding({
+      item: { value: "http://www.wikidata.org/entity/Q8577" },
+      itemLabel: { value: "2012 Summer Olympics" },
+      itemDescription: { value: "Games of the XXX Olympiad, in London, United Kingdom" },
+      typeLabel: { value: "Summer Olympic Games" },
+      population: undefined,
+      sitelinks: { value: "201" },
+      startTime: { value: "2012-07-27T00:00:00Z" },
+    }),
+    binding(),
+  ])));
+  assert.deepEqual(ranked.map((row) => row.name), ["London"]);
+});
+
+test("somewhere people live outranks somewhere that merely has a coordinate", () => {
+  // The group is called cities and places, in that order. A university has more
+  // sitelinks than a small city and is still not what somebody moving a map means.
+  const ranked = rankCitySuggestions(cityCandidatesFromBindings(payload([
+    binding({
+      item: { value: "http://www.wikidata.org/entity/Q170027" },
+      itemLabel: { value: "University of London" },
+      typeLabel: { value: "university" },
+      population: undefined,
+      sitelinks: { value: "120" },
+    }),
+    binding({
+      item: { value: "http://www.wikidata.org/entity/Q163584" },
+      itemLabel: { value: "Derry" },
+      itemDescription: { value: "city in Northern Ireland" },
+      typeLabel: { value: "city" },
+      population: { value: "85016" },
+      sitelinks: { value: "94" },
+    }),
+  ])));
+  assert.deepEqual(ranked.map((row) => row.name), ["Derry", "University of London"]);
+});
+
 test("an entity with no English label is dropped rather than offered as a Q-id", () => {
   const ranked = rankCitySuggestions(cityCandidatesFromBindings(payload([
     binding({ itemLabel: { value: "Q1490" }, typeLabel: undefined }),

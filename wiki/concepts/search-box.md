@@ -52,8 +52,9 @@ the gazetteer returns nothing or does not answer at all. One request, clicked fo
 ```
 mwapi EntitySearch (≤50 candidates)
   → require wdt:P625            a thing with no coordinate is not somewhere to go
+  → drop P580 / P585            a thing with a date happened; it is not a place
   → direct P31 label only       NO P279* closure
-  → rank by wikibase:sitelinks  then population, then the shorter name
+  → rank inhabited first        a stated population or area, then sitelinks, then size
 ```
 
 Both filters are inherited rather than invented, and both were measured elsewhere in this
@@ -68,9 +69,22 @@ project:
   many Wikipedias wrote about a thing is what separates the London somebody means from
   the eleven they do not: London Q84 has ~400 sitelinks, London, Ontario has ~94.
 
-A pub called Istanbul Grill is a place with a coordinate and is not refused — it sorts
-below Istanbul, and its own description says what it is. Refusing it would need the
-taxonomy this query deliberately does not walk.
+**A thing that happened is not a thing that is**, and production found that before any
+review did. The first live answer for "lond" put **the 2012 Summer Olympics second**,
+above Derry: an Olympiad has a venue coordinate and 200 Wikipedias behind it, and
+`isPlaceType` only knows about shipwrecks. One property separates the two classes with no
+taxonomy and no subclass walk — **a city has no start time**. Candidates carrying P580 or
+P585 are dropped.
+
+**And cities come before places, in that order.** The same answer offered the University
+of London above Derry on sitelinks alone. A settlement or an administrative area states
+how many people live there or how big it is; a university, a bridge and a pub state
+neither, so "somewhere inhabited" is the first sort key and fame only orders within each
+band.
+
+A pub called Istanbul Grill is still not refused — it sorts below every city, and its own
+description says what it is. Refusing it outright would need the taxonomy this query
+deliberately does not walk.
 
 **The radius comes from the stated area** (P2046, normalised to m² by WDQS), turned into
 the radius of a circle of the same size and clamped to 5–50 km. With no area stated it is
@@ -112,3 +126,9 @@ cursor, ArrowDown walks all three rows of the two groups as one list,
 `aria-activedescendant` follows, Escape closes. Wikidata is unreachable from the
 development machine (filtered egress), so what that run proved live is the **degraded**
 path; the ranking is covered by fixtures in `test/city-search.test.mjs`.
+
+The live shape was seen for the first time through the smoke step the production deploy
+now runs, and it paid for itself immediately: `/api/cities/suggest?q=lond` answered in
+1.10 s with London first, its radius 23 km derived from the stated area — and with the
+Olympics second. **On a project whose development machine cannot reach any of its own
+services, that step is the only measuring instrument there is.**
