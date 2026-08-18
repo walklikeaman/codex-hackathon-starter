@@ -66,8 +66,16 @@ DEGRADED path — Wikidata, Nominatim and Supabase are all unreachable from this
 production after the deploy. The two `cancelled` results in `artwork-api.test.mjs` are
 older than this change and reproduce on `main`.
 
+**One step added to the production deploy**, because the verification this project keeps
+having to do by hand is the one nothing automated: a deployment that succeeded is not a
+site that answers, and a green commit status can belong to a Preview. The workflow now
+asks the production domain by name after deploying and prints what `/api/search` and
+`/api/cities/suggest` return. It is also the only way this session could see the WDQS
+query answer at all — every external host is filtered from the development machine.
+
 **Updated**: `wiki/concepts/search-box.md` (new), `wiki/index.md`,
-`test/{city-search,work-search}.test.mjs`, `app/globals.css`
+`test/{city-search,work-search}.test.mjs`, `app/globals.css`,
+`.github/workflows/deploy-production.yml`
 
 ## [2026-08-08] update | The scrape goes on a timer, and dry-run stops lying
 
