@@ -7,6 +7,36 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-18] incident | The first live answer put the Olympics above Derry
+
+**Object**: `app/lib/city-search.mjs`, `test/city-search.test.mjs`
+**Scenario**: bugfix · **Outcome**: ✅ success
+**Code changes**: this commit
+
+**The smoke step added an hour earlier earned its keep on its first run.** Production
+answered `/api/cities/suggest?q=lond` in 1.10 s with London first and its radius correctly
+23 km from the stated area — and with **the 2012 Summer Olympics second, above Derry**.
+An Olympiad carries a venue coordinate and 200 Wikipedias, `isPlaceType` only knows about
+shipwrecks, and fame is the sort key, so it sailed through every filter the box has.
+
+**A thing that happened is not a thing that is, and one property says so.** A city has no
+start time. Candidates carrying P580 or P585 are dropped — no taxonomy, no subclass walk,
+nothing that could cost the 65 seconds the closure once did.
+
+The same answer also offered the University of London above Derry, which is a ranking
+problem rather than a filter one: a settlement or an administrative area states how many
+live there or how big it is, and a university, a bridge and a pub state neither. **Cities
+and places, in that order** — inhabited first, fame only ordering within each band.
+
+Worth naming plainly, because it is the third time this project has learned it: **this
+class of defect is invisible to review and obvious to one live request.** The inverted
+search has the same open note — "Eurovision Young Musicians 2018" for Harry Potter in
+Edinburgh — found the same way. The development machine can reach neither Wikidata nor
+Supabase nor the production domain, so a step that curls production after deploying is the
+only instrument there is.
+
+**Updated**: `wiki/concepts/search-box.md`
+
 ## [2026-08-18] update | One search box, and the city half could not be Nominatim
 
 **Object**: `app/lib/city-search.mjs`, `app/api/cities/suggest/route.js`,
