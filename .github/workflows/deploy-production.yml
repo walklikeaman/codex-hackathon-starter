@@ -54,3 +54,22 @@ jobs:
           echo "url=${deployment_url}" >> "$GITHUB_OUTPUT"
           echo "### Production deployment" >> "$GITHUB_STEP_SUMMARY"
           echo "${deployment_url}" >> "$GITHUB_STEP_SUMMARY"
+
+      # A deployment that succeeded is not the same as a site that answers, and this
+      # project has been caught by the difference more than once: a green commit status
+      # can belong to a Preview while the production domain still serves the build
+      # before it. So ask the production domain itself, by name, and print what it says.
+      - name: Smoke-test the production domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://codex-hackathon-starter.vercel.app"
+          status="$(curl -sS --max-time 30 -o /tmp/home.html -w '%{http_code}' "$base/")"
+          echo "GET / -> ${status}"
+          test "${status}" = "200"
+          for path in "/api/search?q=sky" "/api/cities/suggest?q=lond"; do
+            echo "--- GET ${path}"
+            curl -sS --max-time 30 -o /tmp/probe.json -w 'status %{http_code} in %{time_total}s\n' "${base}${path}"
+            head -c 700 /tmp/probe.json
+            echo
+          done

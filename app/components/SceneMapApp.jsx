@@ -73,7 +73,7 @@ import {
 import { ACCESS, accessNote, isRoutable, MAX_PLACES_PER_QUERY } from "../lib/place-access.mjs";
 import VoiceGuide from "./VoiceGuide";
 import GraphLayer from "./GraphLayer";
-import WorkSearchBox from "./WorkSearchBox";
+import SearchBox from "./SearchBox";
 import { ImageAttribution } from "./ImageAttribution";
 import { normalizeAttribution, requiredNotices } from "../lib/attribution.mjs";
 import { BADGE_STYLES } from "../lib/map-layer.mjs";
@@ -770,7 +770,6 @@ export default function SceneMapApp() {
   const [mapCenter, setMapCenter] = useState(londonCenter);
   const [browseCenter, setBrowseCenter] = useState(londonCenter);
   const [browseRadius, setBrowseRadius] = useState(10);
-  const [cityQuery, setCityQuery] = useState("London");
   const [cityName, setCityName] = useState("London");
   const [cityRadius, setCityRadius] = useState(15);
   const [cityWikidataId, setCityWikidataId] = useState("Q84");
@@ -1872,7 +1871,6 @@ export default function SceneMapApp() {
         setUserIsDemo(false);
         setNearbyStatus("ready");
         setNearbyMessage("");
-        setCityQuery("");
         selectTourArea([coords.latitude, coords.longitude], "Your location");
         setCitySearchStatus("");
       },
@@ -2002,9 +2000,12 @@ export default function SceneMapApp() {
     }
   }
 
-  async function searchCity(event) {
-    event.preventDefault();
-    const query = cityQuery.trim();
+  // The last resort behind the search box: one Nominatim lookup for a name Wikidata
+  // could not place, asked for by clicking the row that offers it. Not a type-ahead —
+  // that service's terms rule out an auto-complete, and #145 is built on Wikidata for
+  // exactly that reason.
+  async function lookUpPlace(name) {
+    const query = String(name ?? "").trim();
     if (!query) return;
 
     setCitySearchStatus("Searching city…");
@@ -2012,19 +2013,25 @@ export default function SceneMapApp() {
       const response = await fetch(`/api/cities?q=${encodeURIComponent(query)}`);
       const city = await response.json();
       if (!response.ok) throw new Error(city.error);
-
-      setUserPosition(null);
-      setUserIsDemo(false);
-      setNearbyStatus("idle");
-      setNearbyMessage("");
-      selectTourArea([city.lat, city.lng], city.name, {
-        radiusKm: city.radius_km ?? 15,
-        wikidataId: city.wikidata_id ?? null,
-      });
-      setCitySearchStatus("");
+      goToCity(city);
     } catch {
       setCitySearchStatus("City not found");
     }
+  }
+
+  // Both ways into a city end here: a suggestion picked from the box, and a name the
+  // gazetteer had to be asked about. Whichever brought us, the map stops being about
+  // where the visitor is standing and starts being about the place they asked for.
+  function goToCity(city) {
+    setUserPosition(null);
+    setUserIsDemo(false);
+    setNearbyStatus("idle");
+    setNearbyMessage("");
+    setCitySearchStatus("");
+    selectTourArea([city.lat, city.lng], city.name, {
+      radiusKm: city.radius_km ?? 15,
+      wikidataId: city.wikidata_id ?? null,
+    });
   }
 
   return (
@@ -2417,30 +2424,14 @@ export default function SceneMapApp() {
           )}
         </section>
 
-        <div className="place-controls">
-          <form className="city-search" onSubmit={searchCity}>
-            <Search size={17} aria-hidden="true" />
-            <input
-              aria-label="City"
-              onChange={(event) => setCityQuery(event.target.value)}
-              placeholder="City"
-              type="search"
-              value={cityQuery}
-            />
-            <button aria-label="Search city" className="ghost-button" type="submit">
-              <Search size={17} />
-            </button>
-          </form>
-          <button className="use-location-button" type="button" onClick={useCurrentLocation}>
-            <LocateFixed size={16} />
-            Use my location
-          </button>
-        </div>
-        {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
-
-        <WorkSearchBox
+        {/* One box for both kinds of answer (#145). It replaced a city field and a title
+            field that sat next to each other, each hitting a different service and
+            neither able to suggest the other's kind. */}
+        <SearchBox
           onChange={setWorkQuery}
-          onPick={(suggestion) => {
+          onLookupPlace={lookUpPlace}
+          onPickCity={goToCity}
+          onPickWork={(suggestion) => {
             // A grounded work is already in the graph: show it on the map instead of
             // re-searching Wikidata for something we have.
             setWorkQuery(suggestion.title);
@@ -2460,8 +2451,16 @@ export default function SceneMapApp() {
             <option value="series">Series</option>
             <option value="book">Book</option>
           </select>
-        </WorkSearchBox>
+        </SearchBox>
         {locationsStatus && <p className="location-search-status" role="status">{locationsStatus}</p>}
+
+        <div className="place-controls">
+          <button className="use-location-button" type="button" onClick={useCurrentLocation}>
+            <LocateFixed size={16} />
+            Use my location
+          </button>
+        </div>
+        {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
         <div className="nearby-card" aria-label="Nearby locations">
           <div className="nearby-actions">

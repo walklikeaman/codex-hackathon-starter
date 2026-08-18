@@ -221,10 +221,10 @@ and `work_creators` hold zero rows, and filling them is a source problem, not a 
 The product has **two surfaces** and everything else is reachable only by dragging a map.
 That is the critical path, and the three parts of it are one problem:
 
-1. **#145 — one search box.** Cities and films, grouped, fast. Both halves exist
-   (`/api/search` over our own database, `/api/cities` over Nominatim) and nothing joins
-   them. Do not await them together — that makes the fast half as slow as the network one.
-   It now has somewhere to lead.
+1. ~~**#145 — one search box.**~~ Shipped 18.08: one field, films and cities grouped,
+   never awaited together, and every film row links to its card. The city half is
+   Wikidata rather than Nominatim — a type-ahead is auto-complete, which that policy
+   refuses; `/api/cities` survives behind one clicked row. See [[search-box]].
 2. **#158 — a directory.** 6,392 works and ~31,000 places with no URL between them.
    `catalogue_index` is the right source; `/work/<slug>` already exists as the destination.
 3. **#160 — the place card as tabs**, a copyable coordinate, and a count of what is on
