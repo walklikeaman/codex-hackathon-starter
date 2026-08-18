@@ -51,6 +51,8 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [tours-and-voice](concepts/tours-and-voice.md) — route, timed tour, AI tour, TTS
 - [nearby-geolocation](concepts/nearby-geolocation.md) — "what's nearby", radii, demo fallback
 - [three-axes](concepts/three-axes.md) — evidence, precision, access: never one number
+- [place-card](concepts/place-card.md) — tabs, a takeable coordinate, and why the panel
+  needed two numbers; the `[hidden]` rule any class outranks
 - [place-precision](concepts/place-precision.md) — when a pin may move, when two pins are one place
 - [testing-conventions](concepts/testing-conventions.md) — node:test, zero network, DI pattern
 

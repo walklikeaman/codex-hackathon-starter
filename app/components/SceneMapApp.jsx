@@ -13,8 +13,10 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import {
+  Check,
   CheckCircle2,
   Clapperboard,
+  Copy,
   Cloud,
   Clock3,
   Crosshair,
@@ -50,6 +52,16 @@ import {
 } from "../lib/nearby.mjs";
 import StoryTrail from "./StoryTrail.jsx";
 import WalkControls from "./WalkControls.jsx";
+import {
+  DEFAULT_PLACE_TAB,
+  PLACE_TABS,
+  coordinateToCopy,
+  countInView,
+  filterInView,
+  routeTabState,
+  tabForLocation,
+  viewCountLabel,
+} from "../lib/place-card.mjs";
 import WorkProfile from "./WorkProfile.jsx";
 import { isWalkableStop, trailStops } from "../lib/story-trail.mjs";
 import { normalizePlaceName } from "../lib/place-dedup.mjs";
@@ -445,10 +457,27 @@ function FitRoute({ positions }) {
 // and each one would otherwise be a request.
 const VIEWPORT_DEBOUNCE_MS = 400;
 
-function RefreshLocationsOnViewport({ onViewportChange }) {
+function RefreshLocationsOnViewport({ onViewportChange, onBoundsChange }) {
   const timerRef = useRef(null);
 
+  // The count of what is on screen (#160) is NOT debounced, and the fetch still is. They
+  // are different costs: the fetch is a network request per gesture, and the count is a
+  // filter over a list already in memory. Debouncing the count would leave the panel
+  // stating the previous viewport for 400 ms after every drag, which is the one moment a
+  // reader is actually looking at it.
+  const publishBounds = useCallback((map) => {
+    if (!onBoundsChange) return;
+    const bounds = map.getBounds();
+    onBoundsChange({
+      north: bounds.getNorth(),
+      south: bounds.getSouth(),
+      east: bounds.getEast(),
+      west: bounds.getWest(),
+    });
+  }, [onBoundsChange]);
+
   const schedule = useCallback((map) => {
+    publishBounds(map);
     clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       const center = map.getCenter();
@@ -459,7 +488,7 @@ function RefreshLocationsOnViewport({ onViewportChange }) {
         radiusKm: mapSearchRadiusKm(distanceToCorner),
       });
     }, VIEWPORT_DEBOUNCE_MS);
-  }, [onViewportChange]);
+  }, [onViewportChange, publishBounds]);
 
   const map = useMapEvents({
     dragend: () => schedule(map),
@@ -467,6 +496,12 @@ function RefreshLocationsOnViewport({ onViewportChange }) {
     // A resize changes what is visible without firing either of the others.
     resize: () => schedule(map),
   });
+
+  // The first paint fires none of those events, so without this the panel would count
+  // every place we hold until the reader touched the map.
+  useEffect(() => {
+    if (map) publishBounds(map);
+  }, [map, publishBounds]);
 
   useEffect(() => () => clearTimeout(timerRef.current), []);
 
@@ -840,6 +875,11 @@ export default function SceneMapApp() {
     setBrokenImages((current) => (current.has(url) ? current : new Set(current).add(url)));
   };
   const [routeStops, setRouteStops] = useState([]);
+  // What the map is showing right now (#160), published by RefreshLocationsOnViewport
+  // without the fetch's debounce. Null until the map has drawn once.
+  const [mapBounds, setMapBounds] = useState(null);
+  const [placeTab, setPlaceTab] = useState(DEFAULT_PLACE_TAB);
+  const [copiedCoordinate, setCopiedCoordinate] = useState(false);
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
   const [routeMessage, setRouteMessage] = useState("");
@@ -1243,6 +1283,43 @@ export default function SceneMapApp() {
       setActiveLocation(visibleLocations[0] ?? null);
     }
   }, [activeLocation?.id, libraryMapOnly, visibleLocations]);
+
+  // Places and films counted apart (#160). The panel used to say only how many rows it was
+  // listing, so "we hold little here" and "you are zoomed too far out" looked identical.
+  // The list and its heading are ONE truth. Counting the viewport while listing the whole
+  // selection put "6 places from 4 films" above ten rows, which is a header contradicting
+  // the thing it heads.
+  const locationsInView = useMemo(
+    () => filterInView(visibleLocations, mapBounds),
+    [mapBounds, visibleLocations],
+  );
+  const inView = useMemo(() => countInView(visibleLocations, mapBounds), [mapBounds, visibleLocations]);
+
+  // The card reopens on Details whenever the place changes: leaving it on Route means
+  // clicking a new pin shows route controls where the sentence about the place should be.
+  useEffect(() => {
+    setPlaceTab(tabForLocation(DEFAULT_PLACE_TAB, true));
+    setCopiedCoordinate(false);
+  }, [activeLocation?.id]);
+
+  const activeCoordinate = coordinateToCopy(activeLocation);
+  const activeRoute = routeTabState({ location: activeLocation, stops: routeStops });
+
+  // `navigator.clipboard` is undefined outside a secure context and rejects when the
+  // document is not focused, so the failure is real and is reported rather than swallowed:
+  // a copy button that silently does nothing is worse than one that says it could not.
+  const [copyFailed, setCopyFailed] = useState(false);
+  async function copyCoordinate() {
+    if (!activeCoordinate) return;
+    try {
+      await navigator.clipboard.writeText(activeCoordinate);
+      setCopyFailed(false);
+      setCopiedCoordinate(true);
+    } catch {
+      setCopiedCoordinate(false);
+      setCopyFailed(true);
+    }
+  }
 
   const filteredLibrary = useMemo(() => {
     const query = libraryQuery.trim().toLowerCase();
@@ -2073,7 +2150,7 @@ export default function SceneMapApp() {
           <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
           <FlyToUser position={userPosition} radius={nearbyRadius} />
-          <RefreshLocationsOnViewport onViewportChange={refreshVisibleMap} />
+          <RefreshLocationsOnViewport onViewportChange={refreshVisibleMap} onBoundsChange={setMapBounds} />
           {userPosition && (
             <>
               <Circle
@@ -2762,9 +2839,20 @@ export default function SceneMapApp() {
         <div className="location-list" aria-label="Map locations">
           <div className="section-row">
             <p className="eyebrow">Locations</p>
-            <span>{visibleLocations.length} in {cityName}</span>
+            {/* Two numbers, because they answer two different questions (#160): how much
+                is drawn, and how many works that came from. One number could not tell a
+                thin catalogue from a viewport zoomed too far out. */}
+            <span aria-live="polite">{viewCountLabel(inView)} in {cityName}</span>
           </div>
-          {visibleLocations.map((location) => (
+          {/* The distinction the panel could not make before: nothing here because we hold
+              nothing, or nothing here because the map is somewhere else. */}
+          {locationsInView.length === 0 && visibleLocations.length > 0 && (
+            <p className="location-empty" role="status">
+              None of the {visibleLocations.length} places for the films you have selected are
+              on screen. Zoom out or drag the map to find them.
+            </p>
+          )}
+          {locationsInView.map((location) => (
             <div className="location-row" key={location.id}>
               <button type="button" onClick={() => setActiveLocation(location)}>
                 <strong>{location.place}</strong>
@@ -2903,11 +2991,65 @@ export default function SceneMapApp() {
           </div>
 
           <div className="sheet-body">
+            {/* Tabs (#160). The card was one scroll holding the sentence, the badge, the
+                evidence, the voice guide, two images, "Recreate this shot", three external
+                links and "Add to route" — a lot of unrelated things in one column. The
+                split keeps the sentence about the place at the top of its own tab, which
+                is what the route controls used to push off screen.
+
+                There is no Discussion tab: #157 is not built, and a tab that opens onto
+                nothing is padding. PLACE_TABS is where it goes the day it lands. */}
+            <div className="place-tabs" role="tablist" aria-label="Place details">
+              {PLACE_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  id={`place-tab-${tab.id}`}
+                  role="tab"
+                  type="button"
+                  aria-selected={placeTab === tab.id}
+                  aria-controls={`place-panel-${tab.id}`}
+                  className={placeTab === tab.id ? "is-active" : ""}
+                  onClick={() => setPlaceTab(tab.id)}
+                >
+                  {tab.label}
+                  {tab.id === "route" && activeRoute.added && <span className="place-tab-dot" aria-hidden="true" />}
+                </button>
+              ))}
+            </div>
+
+            <div
+              id="place-panel-details"
+              role="tabpanel"
+              aria-labelledby="place-tab-details"
+              hidden={placeTab !== "details"}
+            >
             <div className="place-row">
               <MapPin size={19} />
               <div>
                 <strong>{activeLocation.place}</strong>
-                <span>{activeLocation.position[0].toFixed(4)}, {activeLocation.position[1].toFixed(4)}</span>
+                {/* Somebody standing in the street with this page open wants the pair, and
+                    the card showed it without letting anyone take it. The copied text is
+                    exactly what is printed — bare, so it pastes into a maps app. */}
+                {activeCoordinate ? (
+                  <button
+                    className="coordinate-copy"
+                    type="button"
+                    onClick={copyCoordinate}
+                    aria-label={`Copy the coordinate ${activeCoordinate}`}
+                  >
+                    <span>{activeCoordinate}</span>
+                    {copiedCoordinate ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+                  </button>
+                ) : (
+                  <span>No coordinate recorded</span>
+                )}
+                {/* Said out loud rather than swallowed: clipboard access is refused
+                    outside a secure context and while the document is unfocused. */}
+                {copyFailed && (
+                  <span className="coordinate-copy-failed" role="status">
+                    Copying was blocked — select the number and copy it by hand.
+                  </span>
+                )}
               </div>
             </div>
             {activeLocation.precisionCaveat && (
@@ -3085,10 +3227,72 @@ export default function SceneMapApp() {
                 ))}
               </div>
             )}
-            <button className="wide-button" type="button" onClick={() => addRouteStop(activeLocation)}>
-              <Route size={18} />
-              Add to route
-            </button>
+            </div>
+
+            <div
+              id="place-panel-route"
+              role="tabpanel"
+              aria-labelledby="place-tab-route"
+              hidden={placeTab !== "route"}
+              className="place-route-panel"
+            >
+              {/* What this tab says before anything is on the route, so it is worth
+                  opening. The old button simply did nothing at five stops, which reads as
+                  a broken button rather than as a full route. */}
+              <p className="place-route-note">{activeRoute.note}</p>
+
+              {activeRoute.added ? (
+                <button
+                  className="wide-button"
+                  type="button"
+                  onClick={() => removeRouteStop(activeLocation.id)}
+                >
+                  <X size={18} />
+                  Remove from route
+                </button>
+              ) : (
+                <button
+                  className="wide-button"
+                  type="button"
+                  disabled={!activeRoute.canAdd}
+                  onClick={() => addRouteStop(activeLocation)}
+                >
+                  <Route size={18} />
+                  Add to route
+                </button>
+              )}
+
+              {routeStops.length > 0 && (
+                <ol className="route-list">
+                  {routeStops.map((stop, index) => (
+                    <li key={stop.id}>
+                      <button type="button" onClick={() => setActiveLocation(stop)}>
+                        <span>{index + 1}</span>
+                        {stop.place}
+                      </button>
+                      <button
+                        className="icon-button"
+                        type="button"
+                        onClick={() => removeRouteStop(stop.id)}
+                        aria-label={`Remove ${stop.place} from the route`}
+                      >
+                        <X size={15} />
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              )}
+
+              <button
+                className="wide-button"
+                type="button"
+                disabled={routeStops.length < 3 || routeStatus !== "idle"}
+                onClick={() => buildRoute()}
+              >
+                <Route size={18} />
+                {routeStatus === "loading" ? "Building..." : "Build route"}
+              </button>
+            </div>
           </div>
         </section>
       )}
