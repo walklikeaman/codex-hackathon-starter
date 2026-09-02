@@ -7,6 +7,42 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-08-19] update | The handoff, rewritten to the state the critical path left behind
+
+**Object**: `wiki/handoff.md`
+**Scenario**: docs · **Outcome**: ✅ success
+**Code changes**: this commit
+
+The three parts of the critical path — #145, #158, #160 — are all shipped and verified on
+production, so the page that opens every session had to stop describing them as next steps.
+`main` is `e8d783a`, the surfaces are three and they link to each other, and what was the
+numbered list is now one paragraph of what changed plus the three issues actually left.
+
+Four corrections that are worth more than the renumbering:
+
+**"Supabase IS reachable from this machine" and "nothing is reachable from this machine"
+are both true, of different containers.** Measured from the cloud container: the Supabase
+REST host, `www.wikidata.org`, `query.wikidata.org`, Nominatim and the production domain
+itself all answer `000`, because the egress proxy refuses CONNECT — while the Supabase,
+GitHub and Vercel MCP servers work fine, since those are not egress from that container.
+The rule is now to test the specific host from your own session rather than trust either
+note, and to verify through the smoke step and the MCP when the host is blocked.
+
+**Some sessions have no `gh` CLI**, so the deploy instructions now carry their MCP
+equivalents — `actions_run_trigger` / `list_workflow_jobs` / `get_job_logs`. The point that
+does not change: merging does not deploy, so fire the workflow and read its log.
+
+**The deploy step that prints what production answers is documented as an instrument, not
+as a nicety.** It found the Olympics ranked above Derry within a minute of shipping, and on
+a container that cannot reach Wikidata it is the only way to see a live answer at all.
+
+**Two tests report `cancelled` and always have.** `artwork-api.test.mjs`, "Promise
+resolution is still pending but the event loop has already resolved", reproducing on a clean
+`main`. Named in the state table so the next session does not spend an hour on 1,099/1,101.
+
+And one trap: `pkill -f "next start"` matches the shell running it, kills itself, reports
+success, and leaves the old server serving the previous build.
+
 ## [2026-08-19] update | The place card in two tabs, and three bugs that only looking could find
 
 **Object**: `app/lib/place-card.mjs`, `app/components/SceneMapApp.jsx`, `app/globals.css`

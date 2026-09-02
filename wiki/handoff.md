@@ -1,4 +1,4 @@
-# Handoff — 2026-08-19, end of the directory session
+# Handoff — 2026-08-19, after the search box, the directory and the place card
 
 Written because a session ended, not because the work did. `wiki/log.md` is the
 chronicle and `wiki/index.md` lists the concept pages. **This page is only the things
@@ -20,12 +20,12 @@ production: empty for **0 of 24** famous titles, median 1.3 s.
 
 | | |
 |---|---|
-| main | `de13ff0` — "An Olympiad is not a city (#165)", deployed and verified on Production |
-| tests | 1,101, `node --test test/*.test.mjs`, zero network |
+| main | `e8d783a` — "The card in two tabs (#160)", deployed and verified on Production |
+| tests | 1,101, `node --test test/*.test.mjs`, zero network — **1,099 pass and 2 report `cancelled`**. Those two are in `artwork-api.test.mjs` ("Promise resolution is still pending but the event loop has already resolved"), they predate all of this week's work and they reproduce on a clean `main`: if you see 1,099/2, nothing is broken. |
 | works | 7,063 · **6,392 with at least one located place** (`catalogue_index`) |
 | queue | ~43,900 submissions · **90 verified, 914 rejected**, the rest pending ([[queue-review]]) |
 | geocoded by us | **1,063** from the gazetteer pass; ~11,500 pending rows still have no point, most because the venue is not in Wikidata at all |
-| surfaces | the map (`/`), the film card (`/work/<slug>--<uuid>`) and — since 19.08 — **the directory** (`/directory`, `/directory/films/<letter>`, `/city/<slug>`). That is all of them. |
+| surfaces | the map (`/`), the film card (`/work/<slug>--<uuid>`) and — since 19.08 — **the directory** (`/directory`, `/directory/films/<letter>`, `/city/<slug>`). That is all of them, and each now reaches the others: "Browse everything" on the map, "Browse the directory" on the card. |
 | graph vs queue | **92 facts across 15 works** in the graph against **6,392 works** in the queue. What a reader sees on a card for the other 6,377 is a labelled candidate ([[directory]]). |
 
 **The map answers from three stores at once**, and this is the thing to understand before
@@ -86,6 +86,19 @@ gh api "repos/walklikeaman/codex-hackathon-starter/deployments?environment=Produ
 gh workflow run "Deploy production" -f ref=main -f confirm_production=true
 ```
 
+**Some sessions have no `gh` at all** — a cloud container may ship the GitHub MCP instead.
+The same two actions there: `actions_run_trigger` with method `run_workflow`, workflow
+`deploy-production.yml`, ref `main`, inputs `{ref: main, confirm_production: "true"}`, then
+`actions_list` → `list_workflow_jobs` and `get_job_logs` to read the result. Merging through
+the MCP does not deploy either; **always fire the workflow yourself and read its log.**
+
+**The deploy now says what production answers, not just that it deployed.** The last step
+of `deploy-production.yml` curls the production domain by name and prints the body of
+`/api/search`, `/api/cities/suggest` and `/api/directory/films`, and the status of
+`/directory` and `/directory/films/s`. It has already paid for itself twice: it is how the
+Olympics-above-Derry bug was found (#165), and on a session whose container cannot reach
+Wikidata or Supabase **it is the only measuring instrument there is** — see the next trap.
+
 **A measurement of the queue is a snapshot, not a fact.** Another branch works the same
 production table: between two measurements forty minutes apart the resolved-row count went
 0 → 34, the table lost 210 rows, and the movie-locations name statistics changed so much
@@ -115,6 +128,13 @@ a React state bug and is not one.
 **Never run `next build` while the dev server is up** — it clobbers `.next`. Check
 `lsof -ti:3000`.
 
+**`pkill -f "next start"` kills the shell that runs it** — the pattern matches that shell's
+own command line — and then reports success. The next `next start` fails to bind, the old
+process keeps serving, and you spend ten minutes reading screenshots of the PREVIOUS build
+and blaming your CSS. Find the process and kill that:
+`ps -eo pid,cmd | grep next-server`. A served page that contradicts the file on disk is
+almost always a stale server rather than a stale stylesheet.
+
 **A character range in SQL is resolved against the collation, and this database is not in
 the C locale.** `~ '^[a-z]'` and `between 'a' and 'b'` both put `Á` inside the `a` bucket
 under `en_US.UTF-8`. Use `strpos` over an explicit alphabet when the answer has to match
@@ -124,9 +144,24 @@ what JavaScript would say.
 read "6,392 films with 20,296 places" — a global work count beside a count of only what sat
 near a listed city. Each number was right; the sentence was not.
 
-**Supabase IS reachable from this machine**, contrary to the note left on 18.08 — the REST
-host answers, and every page of the directory was verified live from here against production
-data before the deploy. Wikidata and Nominatim were not retested.
+**What the machine can reach is a property of the SESSION, not of the project, and both
+previous notes here were right about their own container.** Measured from the cloud
+container on 18.08, every one of these returned `000` — the egress proxy answered 403 to
+CONNECT:
+
+| host | from the cloud container |
+|---|---|
+| `<ref>.supabase.co` | blocked |
+| `www.wikidata.org`, `query.wikidata.org` | blocked |
+| `nominatim.openstreetmap.org` | blocked |
+| `codex-hackathon-starter.vercel.app` | blocked |
+
+The MCP servers (Supabase, GitHub, Vercel) still work there, because they are not egress
+from this container. From the main clone on 19.08 the Supabase REST host answers and the
+directory was verified live. **So test the specific host from your own container before
+believing either note** — `curl -sS -m 8 -o /dev/null -w "%{http_code}" <url>` — and if it
+is blocked, verify through the production smoke step and through MCP rather than concluding
+the code is broken. Never disable TLS verification or unset `HTTPS_PROXY` to get around it.
 
 **`Number("")` is 0 and 0 is finite.** Four Null Island incidents. `finiteOrNull` exists
 for it — and it is not enough on its own: the Open Plaques dump ships a Leeds cinema with
@@ -245,35 +280,49 @@ and `work_creators` hold zero rows, and filling them is a source problem, not a 
 
 ## Next, in the order I would take it
 
-The product has **two surfaces** and everything else is reachable only by dragging a map.
-That is the critical path, and the three parts of it are one problem:
+**The critical path is closed.** The product had two surfaces and everything else was
+reachable only by dragging a map; it now has three, they link to each other, and the search
+box leads to all of them. #145, #158 and #160 all shipped on 18–19.08 and are verified on
+production. What that changed, in one line each:
 
-1. ~~**#145 — one search box.**~~ Shipped 18.08: one field, films and cities grouped,
-   never awaited together, and every film row links to its card. The city half is
-   Wikidata rather than Nominatim — a type-ahead is auto-complete, which that policy
-   refuses; `/api/cities` survives behind one clicked row. See [[search-box]].
-2. ~~**#158 — a directory.**~~ Shipped 19.08: an index, 27 letter pages addressing every
-   work, and 56 city pages, all server-rendered and in a sitemap. **A city is a point and a
-   radius, never a name** — see [[directory]] for the six derivation rules and what each one
-   cost. It also forced the fix that made it worth having: the card now shows the review
-   queue as labelled candidates, because only **14 of 6,392** directory rows led to a card
-   with anything on it at all.
-3. ~~**#160 — the place card as tabs**~~ Shipped 19.08: Details / Route, a copyable
-   coordinate, and a panel that counts places and films apart ([[place-card]]). **Step 4 of
-   #129 — the place card read from `place_facts` — is NOT done** and is the remaining half
-   of that issue.
+- **#145 — one search box** ([[search-box]]). Films and cities in one field, grouped, never
+  awaited together. The city half is Wikidata rather than Nominatim — a type-ahead IS an
+  auto-complete and that policy refuses it; `/api/cities` survives behind one clicked row.
+- **#158 — the directory** ([[directory]]). An index, 27 letter pages covering every work,
+  56 city pages, a sitemap. **A city is a point and a radius, never a name.** It also forced
+  the fix that made it worth having: the card shows the review queue as labelled candidates,
+  because only 14 of 6,392 rows led to a card with anything on it.
+- **#160 — the place card as tabs** ([[place-card]]). Details / Route, a copyable
+  coordinate, a panel that counts places and films apart.
+
+**One half-issue is left behind by that work and is the cheapest thing on this list:**
+**step 4 of #129 — the place card read from `place_facts`** — is not done. Everything else
+in #129 is.
 
 Then, in rough order of value:
 
-4. **#157 — comments and visitor photos.** The moderation spine already exists; what needs
+1. **#157 — comments and visitor photos.** The moderation spine already exists; what needs
    deciding is who may write, EXIF stripping, licence, and that `rejected` hides a row but
    does not delete a file.
-5. **#161 — the walk survives bad signal.** Becomes critical the day somebody first walks a
+2. **#161 — the walk survives bad signal.** Becomes critical the day somebody first walks a
    route; nobody does yet.
-6. **#159 — the dated satellite lens.** The most distinctive idea from either reference and
+3. **#159 — the dated satellite lens.** The most distinctive idea from either reference and
    the most on-brand: the place as it was when the camera was there. Esri Wayback is free,
    196 releases, **oldest 2014-02-20** — so it cannot answer for Vertigo, and the card must
    say so rather than showing 2014 under a 1958 film.
+
+**Before starting any of them**, see the trap above about two sessions taking the same next
+step: `git fetch origin && git log --oneline HEAD..origin/main`, and look at the open PRs.
+Nothing on this page marks an item as taken.
+
+**The data, not the pages, is now the ceiling.** Three of the four things worth doing next
+are blocked on rows rather than on rendering, and they are the same three named under "built
+and NOT wired up": `creators` is empty so no fact of distance 1 or 2 exists anywhere;
+`statement` has no writer; `geocode_cache` is empty for want of a service-role key. A fourth
+belongs beside them now — **`places.city` is null in all 70 rows** (18.08, 00:06 UTC), so
+anything that wants to group by administrative area reverse-geocodes the queue's 32,148
+located rows first (18.08, 20:23 UTC). The directory works
+around that with a gazetteer of discs; a city FILTER on the map would not.
 
 **Not to be built**, decided after studying both references: points/leaderboards (they
 reward volume, and 914 rejections this week were good work), selling user maps, ads styled
