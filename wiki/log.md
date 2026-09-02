@@ -7,7 +7,48 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
-## [2026-08-19] update | The handoff, rewritten to the state the critical path left behind
+## [2026-09-02] update | The place card has its query; the reader is handed to a local session
+
+**Object**: `supabase/migrations/20260902075615_place_card_facts.sql`,
+`wiki/handoff-local.md`
+**Scenario**: feature (#129, step 4) · **Outcome**: ⚠️ partial — the query ships, the
+reader does not
+**Code changes**: this commit
+
+**`place_facts` has existed since 08.08 with no reader at all**, which is the failure this
+project names in its own handoff: finished work that never reaches the live path. Step 4 of
+#129 is the reader, and it starts with the query the work card's twin needs.
+
+`place_facts_at(uuid)` enters `place_facts` from the place's end exactly as
+`work_facts(uuid)` enters it from the work's, and returns the same columns on purpose — so
+`placeSummary()` can shape a row from either without knowing which end it came from. One
+column is added: `subject_kind`, because a work card's subjects are all one work while a
+place card's are a film, a series and a person, and the reader has to know which before
+deciding whether a name is a link. `work_count` is deliberately absent: it would be a count
+over the rows the caller just received, and a number derived twice from one source is a
+number that can disagree with itself.
+
+**Verified live on the case #129 names in its acceptance.** Trafalgar Square returns three
+facts — 28 Days Later, Love Actually, V for Vendetta — each with its own evidence row,
+unmerged. Across the graph: 92 facts, 70 places, **11 places with more than one fact and 6
+with facts from more than one subject** (2026-09-02, 07:54 UTC). Six is a small number and
+it is the one that matters: those six are pages no work card can show.
+
+**Every one of those facts is distance 0**, because `creators` still holds zero rows. The
+lower blocks should be built and must not be called verified.
+
+**The reader is handed over rather than half-written**, and [[handoff-local]] carries it:
+the file-by-file plan with the decisions already made, the real place ids to open, the scope
+rule (only the 70 graph places have a page; a queue candidate has none), and the acceptance.
+
+**Why it is handed to a LOCAL session.** From the cloud container the Supabase REST host,
+Wikidata, Nominatim and the production domain all answer `000` — the egress proxy refuses
+CONNECT — so a page cannot be opened against real data at all; the only way to see a live
+answer was to deploy and read the production smoke step, one round trip per look. The MCP
+servers work there, which is how this migration was applied and checked, and that is enough
+for a query and not enough for a card.
+
+
 
 **Object**: `wiki/handoff.md`
 **Scenario**: docs · **Outcome**: ✅ success
