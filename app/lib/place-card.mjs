@@ -154,3 +154,110 @@ export function routeTabState({ location, stops = [], maxStops = 5 }) {
           : `${plural(list.length, "stop")} so far. A route needs three before it can be built.`,
   };
 }
+
+// ---------- the page: what stands here, and how to tell two facts apart ----------
+
+// Added for step 4 of #129, when the card stopped being a panel beside a map and became a
+// page of its own. Both surfaces call these, which is the point: the panel and the page
+// must not describe the same place differently.
+
+// A film card's subjects are all one film, so it never has to name a kind. A place card's
+// subjects are films, series, books and — when `creators` holds anything — people, and the
+// reader has to know which before deciding whether a name is worth clicking.
+const SUBJECT_NOUN = {
+  film: ["film", "films"],
+  series: ["series", "series"],
+  book: ["book", "books"],
+  person: ["person", "people"],
+  // The fallback, and it has to be a real entry rather than a default buried in a lookup:
+  // `works.kind` is a database enum that has grown once already, and an unmapped value must
+  // print "1 work", not crash the page it was supposed to describe.
+  work: ["work", "works"],
+};
+
+// A creator's kind is its subject_type, not its `subject_kind` — that column carries the
+// kind of a WORK and is null for a person.
+function subjectKind(fact) {
+  if (fact?.subject_type === "creator") return "person";
+  const kind = String(fact?.subject_kind ?? "");
+  return kind in SUBJECT_NOUN ? kind : "work";
+}
+
+export function subjectNoun(fact, count = 1) {
+  const pair = SUBJECT_NOUN[subjectKind(fact)];
+  return count === 1 ? pair[0] : pair[1];
+}
+
+// English, not a comma-joined array. "4 films, 2 series and 2 books" is a sentence; "4
+// films, 2 series, 2 books" is a debug print, and this line is the first thing read.
+function sentenceList(parts) {
+  if (parts.length <= 1) return parts[0] ?? "";
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+// One line under the place's name: how much is recorded here, and from how many different
+// subjects. The two numbers differ whenever a subject has more than one fact at one place
+// — London holds 11 facts from 8 subjects, four of them Skyfall — and a line that printed
+// only the first would make a place look better covered than it is.
+//
+// Counted from the rows the page already received, never re-queried: a number computed
+// twice from one source is a number that can disagree with itself, which is the reason
+// `place_facts_at` returns no count of its own.
+export function placeCoverage(facts) {
+  const rows = Array.isArray(facts) ? facts : [];
+  if (rows.length === 0) return null;
+
+  const subjects = new Map();
+  for (const fact of rows) {
+    // A fact with no subject id is still a subject; keyed by name so it is not merged
+    // into every other unidentified one.
+    const key = fact?.subject_id ?? `name:${fact?.subject_name ?? ""}`;
+    if (!subjects.has(key)) subjects.set(key, fact);
+  }
+
+  const byKind = new Map();
+  for (const fact of subjects.values()) {
+    const kind = subjectKind(fact);
+    byKind.set(kind, (byKind.get(kind) ?? 0) + 1);
+  }
+
+  const kinds = [...byKind.entries()]
+    .map(([kind, count]) => `${count} ${SUBJECT_NOUN[kind][count === 1 ? 0 : 1]}`);
+
+  // "work" collects films, series and books; it stops being true the moment a person is
+  // among them, and `creators` is empty only until the three unwired modules are wired.
+  const anyone = byKind.has("person");
+  const from = kinds.length === 1
+    ? kinds[0]
+    // More than one kind: state the total first, because otherwise the reader has to add
+    // three numbers to learn how many things are actually recorded here.
+    : `${plural(subjects.size, anyone ? "subject" : "work")} — ${sentenceList(kinds)}`;
+
+  return `${plural(rows.length, "fact")} recorded here, from ${from}.`;
+}
+
+// What tells two otherwise identical facts apart.
+//
+// London holds three Skyfall narrative facts: same subject, same relation, no stated
+// sentence, nothing in the row a reader can see. They are three different SCENES, and
+// without saying so the page prints one line three times and reads as broken.
+export function sceneLabel(fact) {
+  if (Number.isInteger(fact?.narrative_order)) return `Scene ${fact.narrative_order}`;
+  return fact?.scene_id ? "A scene" : null;
+}
+
+// What a studio's page has to say before anything else.
+//
+// Pinewood Studios is a real building at a real coordinate and three films were really shot
+// there — and none of them are ABOUT Pinewood. A film card can leave that to a row label,
+// because the reader arrived asking about the film. A place card cannot: the reader arrived
+// asking about this address, and "3 facts recorded here" invites exactly the reading the
+// grounding rule exists to prevent.
+export function depictsElsewhereNote(facts) {
+  const rows = Array.isArray(facts) ? facts : [];
+  const elsewhere = rows.filter((fact) => fact?.depicts_elsewhere).length;
+  if (elsewhere === 0) return null;
+  return elsewhere === rows.length
+    ? "The camera was here. What it filmed is set somewhere else."
+    : `${elsewhere} of these ${elsewhere === 1 ? "was" : "were"} shot on a soundstage here, not in the place ${elsewhere === 1 ? "it shows" : "they show"}.`;
+}

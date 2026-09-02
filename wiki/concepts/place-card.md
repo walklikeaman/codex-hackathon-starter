@@ -1,7 +1,7 @@
 # The place card — tabs, a takeable coordinate, and two different numbers
 
-What the card does now, and the three bugs found while making it do it (#160). Related:
-[[three-axes]], [[place-precision]], [[directory]].
+What the card does now, and the bugs found while making it do it (#160, then #129 step 4).
+Related: [[three-axes]], [[place-precision]], [[directory]], [[fact-architecture]].
 
 ## Tabs, and the one that is not there
 
@@ -77,6 +77,78 @@ hold nothing there" rather than as a broken test. There is a test.
   that would. It predates this work — "Recreate this shot" without a reference image has
   always looked clickable — and the Route tab put "Build route" in front of the reader every
   time, which is what made it visible.
+
+
+## The page: one table, read from the other end (#129, step 4)
+
+The card is a panel beside a map. `/place/<name>--<uuid>` is the same place as a page, and it
+exists because **a film card can never show it**: a film card shows every place in one film,
+and this shows every film at one place. Measured 02.09: 70 places, 92 facts, 11 places with
+more than one fact and **6 with facts from more than one subject**. Six is small and it is
+the number that matters — those six are the pages no work card can reach.
+
+`place_facts_at(uuid)` is `work_facts(uuid)` entered from the opposite side of one table, and
+that is the point: **if the two cards ever disagree about a place, the bug is a second query
+somewhere, not a rendering difference.**
+
+### What the page may promise
+
+Only places IN the graph have an address. A queue candidate has no canonical place row, so a
+stale or invented uuid is `notFound()`, exactly as `/work/[slug]` treats a dead one. There is
+no fallback to the queue here — the card's whole claim is *"these are facts we checked"*, and
+mixing labelled candidates in would undo the distinction the work card had to be corrected to
+make. The same rule is why a work card's fact rows link to a place page and its **candidate
+rows do not**: a queue row's id is not a place id.
+
+A place row with no facts is not a state this graph can be in — all 70 have at least one — so
+zero rows means the id was wrong, not that the place is empty.
+
+### Every fact opens its own source, and that needed a second table
+
+`place_facts_at` returns the evidence **count**, not the rows. A count cannot satisfy #129's
+second acceptance line, so the route reads `place_evidence` once per card, keyed by the fact
+ids that just arrived. It matters more here than on a film card: there every row pointed at
+the same film's entry; here the sources are three different pages and are **the thing that
+tells three facts apart**. A fact with nothing behind it says so rather than borrowing the
+place's own Wikidata entry — 8 of the graph's 92 links carry zero evidence, and substituting
+the place's page there would be inventing a source for a claim nobody backed.
+
+### A tie in an ORDER BY is a page that disagrees with itself
+
+London holds four Skyfall facts: one filming fact and three narrative facts, one per scene.
+`place_facts_at` ordered by distance and subject name — a tie on all four — so PostgreSQL
+returned them in scan order, and did: scene 9, the filming fact, scene 2, scene 7. Reloading
+could differ. `work_facts` ties the same way on place name, so **the two ends of one table
+could order the same four facts differently.**
+
+Both now tie-break on `narrative_order nulls first, stated_year, fact_id`
+(`20260902081645_facts_in_a_stable_order`). The last key is arbitrary and that is the point:
+an arbitrary key applied consistently is a stable order.
+
+The page also prints the **scene**, because those three rows are otherwise identical on
+screen — same subject, same relation, no stated sentence — and one line printed three times
+reads as a rendering bug rather than as three different scenes.
+
+### A studio says so before the rows
+
+Pinewood Studios is a real building and three films really were shot there, and none of them
+are about Pinewood. A film card can leave that to a row label because the reader arrived
+asking about the film. **A place card cannot**: the reader arrived asking about the address,
+and "3 facts recorded here" invites exactly the reading the grounding rule exists to prevent.
+
+### The address
+
+`placeIdFromSlug` **is** `workIdFromSlug`, and the separator is exported rather than copied.
+Two copies of a URL rule are two things that can drift apart while every link already sent
+assumes they agree. The readable half is decorative in both, so a place renamed tomorrow does
+not break links sent today.
+
+### Not built, and honestly empty
+
+Distance 1 and 2 render nothing, because `creators` holds zero rows — one of the three
+built-and-unwired things in [[handoff]]. The blocks are built anyway; `placeBlocks` prints no
+heading over an empty one, so they cost nothing and will fill themselves the day the table
+does.
 
 ## Not taken
 
