@@ -25,6 +25,8 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [team](entities/team.md) — who does what per git history, access rights
 
 - [handoff](handoff.md) — read first in a new session: unwired modules, traps, keys, next steps
+- [handoff-local](handoff-local.md) — step 4 of #129 mid-flight: the query is applied and
+  verified, the reader is not written, and why it wants a local session
 
 ## Concepts (how it works)
 
