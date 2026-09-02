@@ -20,6 +20,7 @@ import { notFound } from "next/navigation";
 
 import { GET as workRoute } from "../../api/work/route.js";
 import { candidatesNote, coverageLine, placeBlocks, stillsCaption, workLinks } from "../../lib/work-card.mjs";
+import { placePath } from "../../lib/place-url.mjs";
 import { workIdFromSlug, workPath } from "../../lib/work-url.mjs";
 
 export const dynamic = "force-dynamic";
@@ -60,11 +61,15 @@ export async function generateMetadata({ params }) {
   };
 }
 
-function PlaceRow({ place }) {
+// `href` is passed in rather than derived from the row, because this component renders two
+// different kinds of thing. A FACT has a canonical place behind it and a page of its own.
+// A CANDIDATE has neither — its id is a queue row's, and linking it would send the reader
+// to a 404 while implying we hold a place we have not agreed to hold.
+function PlaceRow({ place, href = null }) {
   return (
     <li className="work-place">
       <div className="work-place-head">
-        <h3>{place.name}</h3>
+        <h3>{href ? <Link href={href}>{place.name}</Link> : place.name}</h3>
         {place.precision && <span className="work-badge">{place.precision}</span>}
       </div>
       {/* The source's own words when we have them; the template only when we do not. */}
@@ -148,7 +153,12 @@ export default async function WorkPage({ params }) {
           <h2>{block.heading}</h2>
           <p className="work-block-note">{block.note}</p>
           <ul className="work-places">
-            {block.places.map((place) => <PlaceRow key={place.fact_id ?? place.id} place={place} />)}
+            {/* The other end of the same table (#129, step 4). A place where two films
+                meet has a page showing both, and this link is the only way into it from a
+                card that can only ever show one of them. */}
+            {block.places.map((place) => (
+              <PlaceRow key={place.fact_id ?? place.id} place={place} href={placePath(place)} />
+            ))}
           </ul>
         </section>
       ))}

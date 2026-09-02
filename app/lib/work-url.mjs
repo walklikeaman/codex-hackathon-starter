@@ -19,7 +19,11 @@ const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a
 
 // The separator is a DOUBLE hyphen: single hyphens are how the readable half is spelled,
 // so splitting on one would cut "the-third-man" in the wrong place.
-const SEPARATOR = "--";
+//
+// Exported because a place has an address of the same shape ([[place-card]]), and two
+// copies of a separator are two things that can drift apart while every link already sent
+// assumes they did not.
+export const SLUG_SEPARATOR = "--";
 
 export function slugifyTitle(title) {
   return String(title ?? "")
@@ -36,7 +40,7 @@ export function workSlug(work) {
   const id = String(work?.id ?? "");
   if (!UUID.test(id)) return null;
   const readable = [slugifyTitle(work?.title), work?.year].filter(Boolean).join("-");
-  return readable ? `${readable}${SEPARATOR}${id}` : id;
+  return readable ? `${readable}${SLUG_SEPARATOR}${id}` : id;
 }
 
 export function workPath(work) {
@@ -47,9 +51,17 @@ export function workPath(work) {
 // The id is the last thing after the separator, or the whole slug when there is no
 // readable half. Anything that is not a UUID is not a work, and the page says so rather
 // than querying for it.
-export function workIdFromSlug(slug) {
+//
+// The parser is shared with the place address rather than mirrored: a slug written by one
+// half of this pair and read by the other half is exactly the failure a second copy would
+// eventually produce, and the links are permanent.
+export function uuidFromSlug(slug) {
   const text = String(slug ?? "");
-  const index = text.lastIndexOf(SEPARATOR);
-  const candidate = index === -1 ? text : text.slice(index + SEPARATOR.length);
+  const index = text.lastIndexOf(SLUG_SEPARATOR);
+  const candidate = index === -1 ? text : text.slice(index + SLUG_SEPARATOR.length);
   return UUID.test(candidate) ? candidate.toLowerCase() : null;
+}
+
+export function workIdFromSlug(slug) {
+  return uuidFromSlug(slug);
 }

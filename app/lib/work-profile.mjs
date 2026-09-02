@@ -113,6 +113,13 @@ export function placeSummary(place) {
     // the people who made it, and a reader must be able to tell which is which.
     subject_type: place?.subject_type ?? "work",
     subject_name: place?.subject_name ?? null,
+    // The subject's own id and kind, so a card that is NOT the subject's can link to it.
+    // A film card never needs either — every subject on it is that film. A place card is
+    // the other end of the same table ([[place-card]]) and its subjects are three films, a
+    // series and a book, so it has to be able to say which and address each one.
+    // `work_facts` returns no `subject_kind`; null there is the honest answer, not a gap.
+    subject_id: place?.subject_id ?? null,
+    subject_kind: place?.subject_kind ?? null,
     about: place?.about ?? null,
     stated_year: finiteOrNull(place?.stated_year),
     // The source's own words when we have them; the template only when we do not.
@@ -138,6 +145,12 @@ export function placeSummary(place) {
     // zero: a place with nothing recorded behind it is a thing a reader is entitled to
     // notice, and 8 of the 92 links in the graph are exactly that.
     evidence_count: Number.isFinite(Number(place?.evidence_count)) ? Number(place.evidence_count) : null,
+    // Which scene, when a fact came from one. London holds four Skyfall facts and three of
+    // them are narrative facts with nothing else to tell them apart — same subject, same
+    // relation, no stated sentence. Without the scene they print as one line three times,
+    // which reads as a rendering bug and hides that they are three different scenes.
+    scene_id: place?.scene_id ?? null,
+    narrative_order: Number.isInteger(place?.narrative_order) ? place.narrative_order : null,
     source_url: place?.wikidata_id ? `https://www.wikidata.org/wiki/${place.wikidata_id}` : null,
   };
 }

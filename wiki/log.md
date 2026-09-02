@@ -7,6 +7,59 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-02] update | The place card has a reader, and both ends of one table now agree
+
+**Object**: `app/place/[slug]/page.jsx`, `app/api/place/route.js`, `app/lib/place-url.mjs`,
+`app/lib/place-card.mjs`, `supabase/migrations/20260902081645_facts_in_a_stable_order.sql`
+**Scenario**: feature (#129, step 4) · **Outcome**: ✅ done — `grep -rn "place_facts" app/`
+now answers
+**Code changes**: this commit
+
+The other half of [[handoff-local]], written locally as that page argued it should be: the
+page renders against the real database in a second, and the four cases it named were
+checked by opening them rather than by deploying and reading a smoke step.
+
+**The acceptance case renders.** Trafalgar Square: three films, three facts, not merged, and
+each opens a different Wikidata entry. Old Royal Naval College: a film and a series at one
+building. Pinewood: three films at a soundstage, and the page says *"The camera was here.
+What it filmed is set somewhere else."* before the rows — a film card can leave that to a row
+label because the reader arrived asking about the film; a place card cannot, because they
+arrived asking about the address.
+
+**Every fact opens its OWN source, which needed a second table.** `place_facts_at` returns
+the evidence COUNT and not the rows, and a count cannot satisfy #129's second acceptance
+line. `place_evidence` is read once per card, keyed by the fact ids that just arrived. It
+matters more here than on a film card: there every row pointed at the same film's entry,
+while here the three sources are three different pages and are the thing that tells three
+facts apart. A fact with nothing behind it prints *"No source recorded for this one"* rather
+than borrowing the place's own entry — 8 of the graph's 92 links are exactly that.
+
+**A defect the page found by existing.** London holds four Skyfall facts: one filming fact
+and three narrative facts, one per scene. `place_facts_at` ordered by distance and subject
+name, which ties on all four, so the rows arrived in whatever order the scan produced —
+scene 9, the filming fact, scene 2, scene 7 — and could differ on reload. `work_facts` ties
+the same way on place name. **Both ends of one table could therefore order the same four
+facts differently, which is precisely what #129's last acceptance line rules out.** Both are
+now tie-broken on `narrative_order nulls first, stated_year, fact_id`; the migration is
+applied to production and verified by reloading the page.
+
+The scene is also printed, because those three rows are otherwise identical on screen —
+same subject, same relation, no stated sentence — and one line printed three times reads as
+a rendering bug rather than as three different scenes.
+
+**The two addresses share one parser.** `placeIdFromSlug` is `workIdFromSlug`; the separator
+is exported rather than copied. Two copies of a URL rule are two things that can drift while
+every link already sent assumes they agree.
+
+**Both ends are wired.** A work card's place rows link to the place page; a place page's
+subjects link back to their cards. Candidates deliberately do not: a queue row's id is not a
+place id, and linking it would send a reader to a 404 while implying we hold a place we have
+not agreed to hold.
+
+**1,133 tests, all passing** (32 new). Distance 1 and 2 render nothing because `creators`
+still holds zero rows; the blocks are built anyway and `placeBlocks` prints no heading over
+an empty one.
+
 ## [2026-09-02] update | The place card has its query; the reader is handed to a local session
 
 **Object**: `supabase/migrations/20260902075615_place_card_facts.sql`,

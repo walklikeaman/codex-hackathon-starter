@@ -25,8 +25,8 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [team](entities/team.md) — who does what per git history, access rights
 
 - [handoff](handoff.md) — read first in a new session: unwired modules, traps, keys, next steps
-- [handoff-local](handoff-local.md) — step 4 of #129 mid-flight: the query is applied and
-  verified, the reader is not written, and why it wants a local session
+- [handoff-local](handoff-local.md) — which work cannot be verified from a cloud container
+  and why, the four pages step 4 of #129 is checked against, and the local traps
 
 ## Concepts (how it works)
 
@@ -53,8 +53,9 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [tours-and-voice](concepts/tours-and-voice.md) — route, timed tour, AI tour, TTS
 - [nearby-geolocation](concepts/nearby-geolocation.md) — "what's nearby", radii, demo fallback
 - [three-axes](concepts/three-axes.md) — evidence, precision, access: never one number
-- [place-card](concepts/place-card.md) — tabs, a takeable coordinate, and why the panel
-  needed two numbers; the `[hidden]` rule any class outranks
+- [place-card](concepts/place-card.md) — the panel and the page: one table read from both
+  ends, why every fact needs its own source, and the ORDER BY tie that let the two ends
+  disagree; tabs, a takeable coordinate, the `[hidden]` rule any class outranks
 - [place-precision](concepts/place-precision.md) — when a pin may move, when two pins are one place
 - [testing-conventions](concepts/testing-conventions.md) — node:test, zero network, DI pattern
 

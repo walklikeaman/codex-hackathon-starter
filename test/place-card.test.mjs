@@ -9,10 +9,14 @@ import {
   countInView,
   filterInView,
   formatCoordinate,
+  depictsElsewhereNote,
   isInView,
   isUsableBounds,
   isPlaceTab,
+  placeCoverage,
   routeTabState,
+  sceneLabel,
+  subjectNoun,
   tabForLocation,
   viewCountLabel,
 } from "../app/lib/place-card.mjs";
@@ -170,4 +174,104 @@ test("the route tab names the three-stop threshold before it is reached", () => 
   const state = routeTabState({ location: at(48, 2), stops: [at(51, 0), at(52, 0)] });
   assert.match(state.note, /2 stops so far/);
   assert.match(state.note, /needs three/);
+});
+
+// ---------- the page's own line (#129, step 4) ----------
+
+const subject = (over = {}) => ({
+  subject_id: "s1", subject_name: "Skyfall", subject_kind: "film", subject_type: "work", ...over,
+});
+
+test("the line counts facts and subjects separately, because they differ", () => {
+  // London holds 11 facts from 8 subjects — four of them Skyfall. A line that printed only
+  // the first number would make the place look better covered than it is.
+  const london = [
+    subject({ subject_id: "a", subject_name: "28 Days Later" }),
+    subject({ subject_id: "b", subject_name: "Love Actually" }),
+    subject({ subject_id: "c", subject_name: "Mrs Dalloway", subject_kind: "book" }),
+    subject({ subject_id: "d", subject_name: "Notting Hill" }),
+    subject({ subject_id: "e", subject_name: "Oliver Twist", subject_kind: "book" }),
+    subject({ subject_id: "f", subject_name: "Sherlock", subject_kind: "series" }),
+    subject({ subject_id: "g" }), subject({ subject_id: "g" }),
+    subject({ subject_id: "g" }), subject({ subject_id: "g" }),
+    subject({ subject_id: "h", subject_name: "The Crown", subject_kind: "series" }),
+  ];
+  assert.equal(
+    placeCoverage(london),
+    "11 facts recorded here, from 8 works — 4 films, 2 books and 2 series.",
+  );
+});
+
+test("one kind of subject needs no total to add up", () => {
+  // Trafalgar Square, the acceptance case: three films, three facts, nothing to reconcile.
+  const trafalgar = [
+    subject({ subject_id: "a", subject_name: "28 Days Later" }),
+    subject({ subject_id: "b", subject_name: "Love Actually" }),
+    subject({ subject_id: "c", subject_name: "V for Vendetta" }),
+  ];
+  assert.equal(placeCoverage(trafalgar), "3 facts recorded here, from 3 films.");
+  assert.equal(placeCoverage([subject()]), "1 fact recorded here, from 1 film.");
+});
+
+test("a person among the subjects stops the line calling them all works", () => {
+  // `creators` holds zero rows today. It is one of the three built-and-unwired things,
+  // and the day it is wired this line must not call a director a work.
+  const mixed = [subject(), subject({ subject_id: "p", subject_name: "Sam Mendes", subject_type: "creator", subject_kind: null })];
+  assert.equal(placeCoverage(mixed), "2 facts recorded here, from 2 subjects — 1 film and 1 person.");
+});
+
+test("an unmapped kind prints a work, and does not take the page down with it", () => {
+  // `works.kind` is a database enum and it has grown once already.
+  assert.equal(placeCoverage([subject({ subject_kind: "podcast" })]), "1 fact recorded here, from 1 work.");
+});
+
+test("two unidentified subjects are not silently merged into one", () => {
+  const anonymous = [
+    { subject_name: "One", subject_kind: "film" },
+    { subject_name: "Two", subject_kind: "film" },
+  ];
+  assert.equal(placeCoverage(anonymous), "2 facts recorded here, from 2 films.");
+});
+
+test("nothing recorded is no line at all, not a line saying zero", () => {
+  assert.equal(placeCoverage([]), null);
+  assert.equal(placeCoverage(null), null);
+});
+
+test("the scene is what tells two otherwise identical facts apart", () => {
+  // Three Skyfall narrative facts at London: same subject, same relation, no sentence.
+  assert.equal(sceneLabel({ narrative_order: 7, scene_id: "x" }), "Scene 7");
+  // A scene we hold without an order is still more than nothing.
+  assert.equal(sceneLabel({ scene_id: "x", narrative_order: null }), "A scene");
+  assert.equal(sceneLabel({ scene_id: null }), null);
+  assert.equal(sceneLabel(null), null);
+});
+
+test("a subject is named by its kind, and series is already plural", () => {
+  assert.equal(subjectNoun({ subject_kind: "series" }, 1), "series");
+  assert.equal(subjectNoun({ subject_kind: "series" }, 4), "series");
+  assert.equal(subjectNoun({ subject_kind: "book" }, 2), "books");
+  assert.equal(subjectNoun({ subject_type: "creator" }, 1), "person");
+});
+
+test("a studio's page says the camera was here and the film is not", () => {
+  // Pinewood Studios: three films, a real building, and none of them about Pinewood. On a
+  // film card a row label carries this; on a place card it has to be said before the rows,
+  // because the reader arrived asking about the address.
+  const shot = [{ depicts_elsewhere: true }, { depicts_elsewhere: true }];
+  assert.equal(depictsElsewhereNote(shot), "The camera was here. What it filmed is set somewhere else.");
+});
+
+test("a place that is only partly a soundstage counts the ones that are", () => {
+  const mixed = [{ depicts_elsewhere: true }, { depicts_elsewhere: false }, {}];
+  assert.equal(
+    depictsElsewhereNote(mixed),
+    "1 of these was shot on a soundstage here, not in the place it shows.",
+  );
+});
+
+test("a street says nothing about soundstages", () => {
+  assert.equal(depictsElsewhereNote([{ depicts_elsewhere: false }]), null);
+  assert.equal(depictsElsewhereNote([]), null);
+  assert.equal(depictsElsewhereNote(null), null);
 });
