@@ -3555,3 +3555,20 @@ figcaption a {
 /* The reader's own score on a chip. Warm, because it is the one number on the card that
    came from them rather than from a source. */
 .chip-rating { color: #f0a83c; }
+
+/* The dark basemap: OpenStreetMap's own tiles, inverted here rather than restyled by a
+   provider. CARTO's free dark tiles started arriving with "API KEY REQUIRED" painted
+   across them on 11.09.2026, and Esri's dark canvas stops at zoom 16 — which is the zoom
+   this product works at.
+
+   `saturate(0.35)` is not cosmetic: inverting OSM turns its green parks magenta and its
+   blue water orange, and `hue-rotate(180deg)` only half-corrects that. Draining most of
+   the colour is what keeps the backdrop from competing with the pins, which are the one
+   thing on this map that is allowed to be bright.
+
+   The filter is on the TILE PANE only. Putting it on the map container would invert the
+   pins, the route and the popups with it, which is how a "dark mode" turns amber pins
+   blue. */
+.map-dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85) saturate(0.35);
+}

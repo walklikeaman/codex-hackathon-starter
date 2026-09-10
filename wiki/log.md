@@ -7,6 +7,61 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-11] fix | The map said API KEY REQUIRED, stopped at zoom 17, and opened empty
+
+**Object**: `app/lib/map-layers.mjs`, `app/components/SceneMapApp.jsx`, `app/globals.css`
+**Scenario**: fix · **Outcome**: ✅ no watermark, zoom to 19, and the map shows what we hold
+**Code changes**: this commit
+
+Four separate faults, reported as "локально я не вижу ничего, очень мало точек, всё
+ограничено".
+
+**1. CARTO stopped being free.** Every tile it serves without a key now arrives with
+`API KEY REQUIRED / carto.com/basemaps/apikey` burned diagonally into the PNG. Not a 403 —
+**a 200 with the words painted into the image**, so every check said the tiles were fine
+while the map looked broken. The legacy `cartodb-basemaps-*.global.ssl.fastly.net`
+endpoint is watermarked identically.
+
+Esri's Dark Gray Canvas was the obvious swap and fails where it matters: clean at city
+zoom, and at z18 it returns a light grey tile reading *"Map data not yet available"* —
+z18-19 being exactly where somebody stands at a doorway comparing it with a frame. Every
+other provider (Stadia, Thunderforest, MapTiler, Jawg, CARTO's own free tier) needs an
+account.
+
+So the dark layer is now **OpenStreetMap's own tiles inverted in the browser** — same
+tiles as the street layer, same attribution, one CSS filter on the tile pane. `saturate`
+is down to 0.35 because inverting OSM turns parks magenta and water orange, and
+`hue-rotate(180deg)` only half-corrects it. **The real limit, stated rather than
+discovered later:** OSM's tile policy is for low-volume use; at scale this needs a key or
+self-hosting, and only the `url` changes.
+
+**2. `maxZoom` was 17**, one or two steps short of the product's own purpose. OSM and Esri
+both serve 19; the map goes to 19 and each layer caps at what its provider has.
+
+**3. Both layers defaulted OFF**, so the map opened showing nothing and the reader had to
+find two switches. The argument for off was that the queue changes what the map claims;
+measured, the opposite is true — the graph holds **70 places in the world** against
+**32,138 located queue rows**, so a map without it shows one pin for the whole Los Angeles
+basin, and *"we have nothing here"* is the more misleading impression. **The honesty is
+carried by the rendering, not the default**: hollow grey against filled amber, "In review"
+in every popup, and the note above the switch.
+
+**4. And a real bug underneath all of it.** `mapSearchRadiusKm` throws on a non-positive
+distance — correctly, a search radius of nothing is not a question — but a map that has
+not been laid out reports a zero-size viewport, and the throw happens **inside a
+`setTimeout`, so it is uncaught and kills the whole update**. Every layer kept whatever it
+had and never asked again. Three uncaught errors in the console and no other symptom. The
+caller now skips a degenerate viewport and waits for the resize that follows — the same
+shape as the zero-sized-container bug in [[place-card]].
+
+A `ResizeObserver` now calls `invalidateSize()` when the container changes size on its own
+— a panel opening, a phone rotating — because Leaflet only re-measures on a WINDOW resize.
+Deliberately **not** `debounceMoveend: true`: that option suppresses the `moveend` the
+layers refetch on, and a map that re-measures silently keeps drawing pins from the old
+viewport.
+
+**1,307 tests, all passing.**
+
 ## [2026-09-10] update | The map had no address, so it could only ever open on London
 
 **Object**: `app/lib/map-url.mjs`, `app/components/SceneMapApp.jsx`, `test/map-url.test.mjs`
