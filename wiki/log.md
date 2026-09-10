@@ -7,6 +7,44 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-10] fix | The empty sitemap that claimed a letter was empty
+
+**Object**: `app/sitemap.js`, `test/sitemap.test.mjs`, `.claude/launch.json`
+**Scenario**: fix (#158) · **Outcome**: ✅ done — `/sitemap/zzz.xml` 404s in both `next dev`
+and `next start`, all 27 real files still 200
+**Code changes**: this commit
+
+Left standing by the previous entry and asked for straight after it. `/sitemap/<anything>.xml`
+answered 200 with an empty `<urlset>`: Next hands the sitemap function whatever `<id>.xml`
+was asked for and validates nothing, unlike the image route beside it, which checks its own
+`generateImageMetadata`. An empty `<urlset>` is not "no such file" — it is the claim that
+nothing is filed under that letter.
+
+**Both fixes were measured against a real server rather than reasoned about**, and they are
+not equivalent:
+
+| | `next dev` | `next start` |
+|---|---|---|
+| `dynamicParams = false` | `zzz` → **200** | `zzz` → 404 |
+| `notFound()` | `zzz` → 404 | `zzz` → 404 |
+
+The loader emits `generateStaticParams` for this route only when `NODE_ENV` is production, so
+in dev there is no list for `dynamicParams` to check against. The idiomatic one-liner would
+have left the bug alive in the only mode anybody looks at it in. The guard is the same
+`notFound()` `/place/[slug]` gives a dead address.
+
+**`import { notFound } from "next/navigation.js"` — the extension is deliberate.** `next`
+ships no exports map, so the extensionless specifier resolves only under a bundler, and this
+module is imported directly by node in the tests. Writing it the usual way fails the whole
+suite file at import time, which is loud enough to be safe.
+
+`.claude/launch.json` gained `scenemap-start` (`next start` on 3100), because this is a
+difference `next dev` cannot show you. Two tests: an id nobody generated is refused, and
+every id `generateSitemaps()` names is served — the second matters more, since a guard that
+disagreed with the list would 404 all 27 files at once while still building cleanly.
+
+---
+
 ## [2026-09-10] update | The list sorts by the only rating we actually have
 
 **Object**: `app/lib/library-view.mjs`, `app/lib/media-library.mjs`,
