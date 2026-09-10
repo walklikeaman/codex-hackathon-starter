@@ -167,3 +167,53 @@ test("the control names its tie-breaker", () => {
   assert.equal(sortLabel(SORT.title), "A–Z");
   assert.equal(sortLabel(SORT.places), "How much we hold");
 });
+
+// ---------- the year, and the two ways it can be right ----------
+
+test("a premiere and its release are one film", async () => {
+  const { YEAR_TOLERANCE, libraryEntryFor } = await import("../app/lib/media-library.mjs");
+  assert.equal(YEAR_TOLERANCE, 1);
+  // Measured against a real export: 9 of 298 backfilled works land one year from the
+  // reader's own. Kingsman opened in the UK in 2014 and in the US in 2015; Reservoir Dogs
+  // premiered at Sundance in January 1992 and Letterboxd dates it 1991. Neither side is
+  // wrong, and a strict match would drop both from the reader's list.
+  const library = [
+    { title: "Kingsman: The Secret Service", year: 2014, rating: 4 },
+    { title: "Reservoir Dogs", year: 1991, rating: 4.5 },
+  ];
+  assert.ok(libraryEntryFor({ title: "Kingsman: The Secret Service", year: 2015 }, library));
+  assert.ok(libraryEntryFor({ title: "Reservoir Dogs", year: 1992 }, library));
+});
+
+test("a remake is not the film it remade", async () => {
+  const { libraryEntryFor } = await import("../app/lib/media-library.mjs");
+  // The collision the year exists to stop. 24 of 298 were this: same title, different
+  // work. Before the backfill every one of them matched.
+  const library = [
+    { title: "Ghostbusters", year: 1984, rating: 4 },
+    { title: "Star Trek", year: 2009, rating: 4 },
+    { title: "A Star Is Born", year: 2018, rating: 3.5 },
+  ];
+  assert.equal(libraryEntryFor({ title: "Ghostbusters", year: 2016 }, library), null);
+  assert.equal(libraryEntryFor({ title: "Star Trek", year: 1966 }, library), null);
+  assert.equal(libraryEntryFor({ title: "A Star Is Born", year: 1937 }, library), null);
+  // And the right one still matches.
+  assert.ok(libraryEntryFor({ title: "Ghostbusters", year: 1984 }, library));
+});
+
+test("a year missing on either side still matches, because a null cannot separate anything", async () => {
+  const { libraryEntryFor } = await import("../app/lib/media-library.mjs");
+  const library = [{ title: "Blade Runner", year: 1982, rating: 4 }];
+  assert.ok(libraryEntryFor({ title: "Blade Runner", year: null }, library));
+  assert.ok(libraryEntryFor({ title: "Blade Runner" }, [{ title: "Blade Runner", year: null }]));
+});
+
+test("the sort follows the year, so two same-titled films keep their own scores", async () => {
+  const { libraryRating } = await import("../app/lib/media-library.mjs");
+  const library = [
+    { title: "Ghostbusters", year: 1984, rating: 4.5 },
+    { title: "Ghostbusters", year: 2016, rating: 2 },
+  ];
+  assert.equal(libraryRating({ title: "Ghostbusters", year: 1984 }, library), 4.5);
+  assert.equal(libraryRating({ title: "Ghostbusters", year: 2016 }, library), 2);
+});
