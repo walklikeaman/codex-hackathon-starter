@@ -36,6 +36,10 @@ const SOURCE_LABELS = {
   permit_record: { evidence: "film_permit", title: "Filming permit record", who: "a city filming permit" },
   reelstreets: { evidence: "reelstreets", title: "Reelstreets entry", who: "Reelstreets" },
   movielocations: { evidence: "movielocations", title: "MovieLocations entry", who: "MovieLocations" },
+  // A named wiki page at a named revision. "a fan wiki" rather than the wiki's own name,
+  // because the reader needs to know the KIND of source before they need to know which
+  // one — and the link goes to the exact revision the claim was read from.
+  fandom: { evidence: "fandom", title: "The wiki page this came from", who: "a fan wiki" },
   // The only source whose sentence a person can check by standing in front of it.
   open_plaques: {
     evidence: "open_plaques",

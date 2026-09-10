@@ -61,32 +61,107 @@ wrong party.
 Everything IMDb was wanted for is already available: identifiers via Wikidata P345 and
 TMDB, bulk metadata via IMDb's own published datasets (no images in either).
 
-## Fandom — no, and the reason is not licensing
+## Fandom — refused in July, taken in September, and the refusal was the mistake
 
-Verified live via `action=query&meta=siteinfo&siprop=rightsinfo`:
+**Superseded 10.09.2026.** The section below is kept because the reasoning is instructive
+and half of it still holds. Implementation:
+[app/lib/fandom-source.mjs](../../app/lib/fandom-source.mjs),
+[scripts/ingest-fandom.mjs](../../scripts/ingest-fandom.mjs).
+
+### What the refusal got right, and still does
+
+Licences, verified live via `action=query&meta=siteinfo&siprop=rightsinfo` and re-verified
+in September:
 
 | wiki | licence |
 |---|---|
-| harrypotter, jamesbond, lotr | CC-BY-SA (farm default) |
+| harrypotter, jamesbond, lotr, marvelcinematicuniverse, breakingbad, twinpeaks | CC-BY-SA |
 | memory-alpha | **CC-BY-NC** |
 | minecraft | **CC BY-NC-SA** |
 
-**A correction to the obvious advice:** "read the licence from `url`, not `text`" fails
-on its own example — Minecraft declares `CC BY-NC-SA` in the *text* while pointing at the
-farm-default *URL*. Both must agree; disagreement means stop.
+**A correction to the obvious advice:** "read the licence from `url`, not `text`" fails on
+its own example — Minecraft declares `CC BY-NC-SA` in the *text* while pointing at the
+farm-default *URL*. Both must agree; disagreement means stop. `licenceAllows()` enforces
+this and there is a test named after it.
 
-**Images are an absolute block, separate from all of that.** The site licence covers text
-only. Fandom images are overwhelmingly studio material under an unstructured fair-use
-claim by an anonymous uploader. That is not a licence and does not transfer, and unlike
-Wikimedia there is no per-file metadata to check.
+**Images remain an absolute block.** The site licence covers text only. Fandom images are
+overwhelmingly studio material under an unstructured fair-use claim by an anonymous
+uploader — not a licence, and it does not transfer. Nothing in the ingest reads an image.
 
-But the decisive reason is evidential, not legal. Checked live: the "Filming locations"
-category is **empty on the Bond, LOTR and Harry Potter wikis**. And a Fandom row would
-satisfy the *letter* of our guarantee — named page, verbatim quote, stored permalink —
-while the underlying claim is anonymous and unsourced. To verify it a reviewer must find
-an independent source, at which point **that** source is the citation and Fandom
-contributed a name. Cost per pin rises, evidential value goes to zero, and the badge on
-the map looks identical to a properly cited one.
+### What it got wrong
+
+**It looked in the wrong place.** The check found the "Filming locations" CATEGORY empty on
+the Bond, LOTR and Harry Potter wikis and concluded there was nothing there. The category
+is empty; the content is in **tables inside film articles**. Re-measured over 14 sampled
+pages per wiki:
+
+| wiki | pages with a locations table | rows |
+|---|---|---|
+| jamesbond | 6 | ~70 |
+| lotr | 2 | 24 |
+| harrypotter, marvelcinematicuniverse, breakingbad, twinpeaks | 0 | 0 |
+
+**And it applied a standard the rest of the corpus is not held to.** The decisive argument
+was that a Fandom row is an anonymous, unsourced claim whose badge would look like a cited
+one. That is true — and it is equally true of the **30,147 MovieMaps rows, 8,062
+ReelStreets and 5,580 MovieLocations** already in the queue, every one a fan project. The
+owner's rule of 05.08 is to take the source and mark it unverified rather than throw the
+candidate away, and [[queue-review]] is the machinery for exactly that. Fandom was the only
+source made to clear a bar the others were waved past.
+
+The owner's argument, 10.09: film-location knowledge is fan-produced by nature. Measured
+against our own corpus that is simply true.
+
+### What was actually taken
+
+**155 rows across 13 works**, from the two wikis that have the tables. Not a second
+MovieMaps and it must not be planned for as one. Its value is in **what** it is: a pairing
+of the place in the STORY with the place the camera stood, which almost nothing else we
+hold carries.
+
+> Hotel Mary Tierra, Republic of Isthmus, in *Licence to Kill*, was filmed at the Gran
+> Hotel Ciudad de México.
+> El Gran Palacio Hotel, Havana, in *Die Another Day*, was filmed at Playa de La Caleta,
+> Cádiz.
+> Hamburg Airport, in *Tomorrow Never Dies*, was filmed at Stansted.
+
+147 of the 155 carry that pairing. Every row is a `pending` candidate with no coordinate,
+under the same rule movie-locations is ingested by.
+
+### The four refusals built into the reader
+
+- **A non-commercial wiki is skipped entirely**, licence read live per wiki, text and URL
+  required to agree.
+- **A table whose shooting-location column cannot be identified yields nothing.** Three
+  wikis produce three different tables and none agree on column order, so the reader
+  classifies HEADERS. Reading by position would put a fictional place in the real column on
+  two of the three.
+- **Two bullet lists side by side are not pairs.** Skyfall's table lists seven in-film
+  locations beside one shooting location; zipping them produced *"Istanbul was filmed at
+  Pinewood Studios"*, which nobody claimed. The real place is kept and the pairing dropped.
+  One story with several real places IS a pair — Oxford University was shot at Brasenose
+  College and on Holywell Street, and both are that scene.
+- **A region belongs to one side and only the header says which.** The Bond column "Country
+  and region" is where the SCENE is set: the row reading "Russia" has its shooting location
+  at an altiport in **France**. Feeding that to a geocoder as the area would search the
+  wrong country, so a region only becomes an `area_hint` when its header ties it to a real
+  place ("General Area in New Zealand").
+
+Cells naming nothing are refused too — `Same`, `TBA`, `N/A`, `—`, and remarks like *"some
+interior shots are studio"*. `Same` is the dangerous one: it means the row above, and
+taking it literally attaches the previous location to a different scene.
+
+### The revision is the citation
+
+Every row stores `source_revid` and links to `?oldid=<revid>`, and the table's evidence
+constraint **requires** it — Fandom is held to Wikipedia's rule because it is the same kind
+of source. A fan wiki changes under you; "somebody wrote this on this page at some point"
+is not checkable and a pinned revision is.
+
+Where the fan left a citation of their own it is carried on the row (`cites: …`). Measured:
+**3 refs across 70 Bond rows**, so it is the exception rather than the rule — but when it is
+there it is the difference between a name and a checkable claim, and it is the thing the
+July objection said would be missing.
 
 ## Frame corpora — real frames, no licence
 
@@ -127,6 +202,6 @@ the geocoder — not as "ask the model whether it's fictional".
 3. **More Wikipedia languages and sections** — already built, marginal cost near zero.
 4. **OpenStreetMap** — under ~100 filming-tagged objects worldwide. Keep it as the
    geocoding target it already is, never as a source of the work→place claim.
-5. **Fandom** — below the threshold.
+5. **Fandom** — below the threshold *(overturned 10.09.2026; see above)*.
 
 See also: [[film-permits]], [[film-frames]], [[wikipedia-enrichment]].

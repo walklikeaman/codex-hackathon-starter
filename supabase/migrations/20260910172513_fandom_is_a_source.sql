@@ -1,0 +1,23 @@
+-- Fan wikis, and the reversal of a refusal.
+--
+-- `wiki/sources/source-evaluation.md` refused Fandom in July because a row there is an
+-- anonymous, unsourced claim. That reasoning does not survive contact with what this
+-- project already ingests: 30,147 MovieMaps rows, 8,062 ReelStreets and 5,580
+-- MovieLocations, every one a fan project, every one anonymous and aggregated, taken under
+-- the owner's rule of 05.08 — take the source and mark it unverified rather than throw the
+-- candidate away. Fandom was held to a standard the rest of the corpus is not.
+--
+-- Re-measured 10.09.2026 over 14 sampled pages per wiki: jamesbond has 6 pages carrying a
+-- locations table (~70 rows), lotr has 2 (24 rows), and harrypotter, marvelcinematicuniverse,
+-- breakingbad and twinpeaks have none. The July check looked at the "Filming locations"
+-- CATEGORY, which is empty on all of them — the content is in tables inside film articles.
+--
+-- So this is hundreds of rows, not thousands. It is worth having for WHAT it is: a table
+-- mapping the place in the STORY to the place the camera stood — "SIS Building, MI6
+-- Headquarters" to "Somerset House in the Strand" — which is a pairing we hold almost none
+-- of. It is not a second MovieMaps and must not be planned for as one.
+--
+-- Rows arrive as candidates like every other source: `pending`, no coordinate, carrying the
+-- wiki page at a fixed revision so the claim can be re-read after the page changes.
+
+alter type submission_source_kind add value if not exists 'fandom';
