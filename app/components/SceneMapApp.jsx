@@ -75,6 +75,7 @@ import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { createCoalescingRunner } from "../lib/coalesce.mjs";
 import { WALKING_SPEED_KMH, haversineKm, isLatLng } from "../lib/geo.mjs";
 import { libraryRating, mergeLibraries, parseMediaCsv, workIsInLibrary } from "../lib/media-library.mjs";
+import { citySlugFromName, mapUrlQuery, readMapUrl } from "../lib/map-url.mjs";
 import {
   DEFAULT_SORT,
   NO_MINIMUM,
@@ -497,6 +498,9 @@ function RefreshLocationsOnViewport({ onViewportChange, onBoundsChange }) {
       onViewportChange({
         center: [Number(center.lat.toFixed(5)), Number(center.lng.toFixed(5))],
         radiusKm: mapSearchRadiusKm(distanceToCorner),
+        // Carried so the address bar can describe the view. Without it a shared link
+        // reopens at a default zoom and shows a different map from the one that was sent.
+        zoom: map.getZoom(),
       });
     }, VIEWPORT_DEBOUNCE_MS);
   }, [onViewportChange, publishBounds]);
@@ -830,12 +834,24 @@ export default function SceneMapApp() {
     return () => controller.abort();
   }, [graphLayerOn, graphKinds]);
 
-  const [mapCenter, setMapCenter] = useState(londonCenter);
-  const [browseCenter, setBrowseCenter] = useState(londonCenter);
+  // Where the map opens, read from the URL once. Until now the answer was always London,
+  // and there was no way to link anywhere else — see [[map-url]]. Read in the initialiser
+  // rather than in an effect, so the first fetch already asks about the right city instead
+  // of loading London and then moving.
+  const opened = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return readMapUrl(new URLSearchParams(window.location.search));
+  }, []);
+
+  const [mapCenter, setMapCenter] = useState(opened ? [opened.lat, opened.lng] : londonCenter);
+  const [browseCenter, setBrowseCenter] = useState(opened ? [opened.lat, opened.lng] : londonCenter);
   const [browseRadius, setBrowseRadius] = useState(10);
-  const [cityName, setCityName] = useState("London");
+  const [cityName, setCityName] = useState(opened?.name ?? "London");
   const [cityRadius, setCityRadius] = useState(15);
-  const [cityWikidataId, setCityWikidataId] = useState("Q84");
+  // The exclusion is London's Wikidata id; a map opened elsewhere must not carry it, or
+  // the city it opened on is filtered out of its own results.
+  const [cityWikidataId, setCityWikidataId] = useState(opened ? null : "Q84");
+  const [mapZoom, setMapZoom] = useState(opened?.zoom ?? null);
   const [citySearchStatus, setCitySearchStatus] = useState("");
   const [workQuery, setWorkQuery] = useState("");
   const [workKind, setWorkKind] = useState("film");
@@ -1323,6 +1339,24 @@ export default function SceneMapApp() {
       { library, mineOnly: candidatesMineOnly || wantsRating, minRating },
     );
   }, [candidatesMineOnly, library, minRating]);
+
+  // The address bar follows the map, so whatever is on screen can be sent to somebody.
+  // `replaceState`, never `pushState`: a map is dragged continuously and every nudge would
+  // otherwise become a history entry the back button has to walk through.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const query = mapUrlQuery({
+      lat: browseCenter?.[0],
+      lng: browseCenter?.[1],
+      zoom: mapZoom,
+      citySlug: citySlugFromName(cityName),
+    });
+    if (!query) return;
+    const next = `${window.location.pathname}?${query}`;
+    if (next !== `${window.location.pathname}${window.location.search}`) {
+      window.history.replaceState(null, "", next);
+    }
+  }, [browseCenter, mapZoom, cityName]);
 
   const visibleLocations = useMemo(
     () => sourceLocations.filter((location) =>
@@ -1975,10 +2009,11 @@ export default function SceneMapApp() {
     invalidateRoute();
   }
 
-  function refreshVisibleMap({ center, radiusKm }) {
+  function refreshVisibleMap({ center, radiusKm, zoom }) {
     preserveViewportContext.current = true;
     setBrowseCenter(center);
     setBrowseRadius(radiusKm);
+    if (Number.isFinite(zoom)) setMapZoom(zoom);
     // The title deliberately SURVIVES a viewport change. It used to be cleared here,
     // which broke the thing zooming is for: searching a work and then widening the view
     // dropped the work and fell back to a generic nearby search, instead of showing
