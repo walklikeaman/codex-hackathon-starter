@@ -9,10 +9,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import robots from "../app/robots.js";
 import sitemap, { generateSitemaps, placesInTheGraph } from "../app/sitemap.js";
+import { GET as sitemapIndex } from "../app/sitemap.xml/route.js";
 import { ALL_CITIES, cityPath } from "../app/lib/city-gazetteer.mjs";
 import { DIRECTORY_LETTERS } from "../app/lib/directory.mjs";
 import { placePath } from "../app/lib/place-url.mjs";
+import { SITE_URL } from "../app/lib/site-url.mjs";
 
 // Pinned rather than assumed. A shell with the team's .env exported would otherwise send
 // the film loop at the real database, and a test suite that reaches the network is a test
@@ -33,7 +36,7 @@ const routeReturning = (pages) => async (request) => {
   return Response.json({ places, page: { page, hasNext: page < pages.length } });
 };
 
-test("the index is one file per letter, and '#' travels as a slug", () => {
+test("the split is one file per letter, and '#' travels as a slug", () => {
   const ids = generateSitemaps().map((entry) => entry.id);
   assert.equal(ids.length, DIRECTORY_LETTERS.length);
   assert.ok(ids.includes("other"));
@@ -100,4 +103,62 @@ test("a listing that fails costs the places, never the deploy", async () => {
 
   const entries = await sitemap({ id: "a" }, { loadPlaces: async () => { throw new Error("down"); } });
   assert.equal(entries.length, 2 + DIRECTORY_LETTERS.length + ALL_CITIES.length);
+});
+
+// ---------- the way in ----------
+//
+// A sitemap nothing points at is a sitemap nothing reads. Measured on production 10.09,
+// before robots.txt and the index existed: /sitemap/a.xml answered 200 with 498 URLs while
+// /robots.txt and /sitemap.xml both answered 404, so all 27 files were unreachable from the
+// root. These tests are about the chain robots → index → files staying joined.
+
+const indexLocs = async () => {
+  const body = await (await sitemapIndex()).text();
+  return [...body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
+};
+
+test("robots points at the index, and the index is the file the app serves", async () => {
+  // The whole chain is one link long and this is the link. A robots.txt naming a path Next
+  // does not serve is the 404 version of naming nothing at all.
+  const { sitemap: pointer } = robots();
+  assert.equal(pointer, `${SITE_URL}/sitemap.xml`);
+  assert.equal(new URL(pointer).pathname, "/sitemap.xml");
+});
+
+test("robots disallows nothing, deliberately", async () => {
+  // `Disallow: /api/` is the obvious line and it would cost the home page: Google's
+  // renderer obeys robots.txt for a page's own requests, and the map fetches
+  // /api/catalogue after it mounts. Written down as a test so it is not "fixed" later.
+  const { rules } = robots();
+  assert.deepEqual(rules, [{ userAgent: "*", allow: "/" }]);
+});
+
+test("the index names every file generateSitemaps makes, and nothing else", async () => {
+  // Two lists of 27 that are written twice are two lists that disagree the day a letter is
+  // added: a file the index skips is crawled by nobody, a file it invents is a 404 handed
+  // to a crawler. Same list, one source.
+  const ids = generateSitemaps().map((entry) => entry.id);
+  const locs = await indexLocs();
+  assert.deepEqual(
+    locs.map((loc) => new URL(loc).pathname),
+    ids.map((id) => `/sitemap/${id}.xml`),
+  );
+  assert.equal(locs.length, DIRECTORY_LETTERS.length);
+});
+
+test("the index carries absolute URLs and says it is an index", async () => {
+  // A relative <loc> is ignored by every crawler that reads one, and a <urlset> where a
+  // <sitemapindex> belongs is read as a sitemap holding 27 pages that do not exist.
+  const response = await sitemapIndex();
+  const body = await response.text();
+  assert.equal(response.headers.get("Content-Type"), "application/xml");
+  assert.match(body, /^<\?xml version="1\.0" encoding="UTF-8"\?>\n<sitemapindex /);
+  assert.match(body, /<\/sitemapindex>\n$/);
+  for (const loc of await indexLocs()) assert.ok(new URL(loc).protocol.startsWith("http"));
+});
+
+test("the index names the other bucket as a slug, never as '#'", async () => {
+  const locs = await indexLocs();
+  assert.ok(locs.some((loc) => loc.endsWith("/sitemap/other.xml")));
+  assert.ok(!locs.some((loc) => loc.includes("#")));
 });

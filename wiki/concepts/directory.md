@@ -115,6 +115,44 @@ Person of Interest holds 961 rows, and a page that lists 60 without a word reads
   of the list and the database only says how much is in each; vanishing on an empty answer
   is how a directory quietly hides a broken query.
 
+## The way in: robots.txt, and an index over the 27 files
+
+The directory gives every work a URL and the sitemap says those URLs exist — but something
+has to say the **sitemap** exists. Measured on production 10.09, four weeks after the
+sitemap shipped:
+
+| | |
+|---|---|
+| `/sitemap/a.xml` | 200, 498 URLs |
+| `/sitemap.xml` | **404** |
+| `/robots.txt` | **404** |
+
+`generateSitemaps` splits the catalogue one file per letter and Next then serves them at
+`/sitemap/<id>.xml` **and serves nothing at `/sitemap.xml`**. So the split that keeps each
+file small is also what made the whole set unreachable from the root: 27 files and no
+document naming them. A crawler that is never told a file exists never asks for it, which
+is the same failure the sitemap was written to fix, one level up.
+
+Two files fix it, and the chain between them is one link long: `app/robots.js` names
+`/sitemap.xml`, and `app/sitemap.xml/route.js` names the 27. The list in the index comes
+from `generateSitemaps()` itself — a list written twice is two lists that disagree the day a
+letter is added, and both ways of disagreeing are bad: a file the index skips is crawled by
+nobody, a file it invents is a 404 handed to a crawler. There is a test that the two lists
+are the same list.
+
+**robots.txt disallows nothing, and that is a decision.** The obvious line is
+`Disallow: /api/` — 31 route handlers that answer JSON and are not pages. But Google's
+renderer obeys robots.txt for the requests a *page* makes, and the map at `/` is a client
+component that fetches `/api/catalogue` after it mounts: the rule would leave the crawler
+looking at an empty map on the one page that is the product. None of those endpoints is
+linked from any page, so it would have bought nothing.
+
+**Known and unchanged:** `/sitemap/<anything>.xml` answers **200 with an empty `<urlset>`**
+— `zzz`, `qqq`, `1`, all of them — because the metadata route matches any id and an unknown
+letter simply produces no rows. It is a soft 404, and it says "there is nothing filed under
+this letter", which is a claim rather than an error. Nothing links to those URLs and the
+index names only the real 27, so it was left alone rather than fixed blind.
+
 ## Known-wrong
 
 - **The same venue appears twice in a city row** when two sources spell it differently —
