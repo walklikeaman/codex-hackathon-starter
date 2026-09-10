@@ -106,7 +106,16 @@ function defaultCreateStore(env) {
         )
         .eq("work_id", workId)
         .neq("status", "rejected")
-        .not("lat", "is", null)
+        // A row without a coordinate used to be dropped here, and the card is a LIST, not
+        // a map: a name, a sentence and a link to whoever said it are all readable without
+        // a point. Measured 10.09: 10,981 unlocated rows across 1,506 works, and **562 of
+        // those works had nothing else** — so 562 cards said "No places recorded for this
+        // work yet" about works we hold rows for. The map path filters on a coordinate on
+        // its own, where it genuinely needs one.
+        //
+        // Located rows lead, so the 200 this fetches — and the 60 the card prints — are
+        // the mappable ones first rather than whatever sorted alphabetically.
+        .order("lat", { ascending: true, nullsFirst: false })
         .order("place_name", { ascending: true })
         .limit(200);
       if (error) throw new Error(`candidates load failed: ${error.message}`);

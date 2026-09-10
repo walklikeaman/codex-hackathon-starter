@@ -217,6 +217,13 @@ export function selectSubmissionPlaces(rows, {
 // is a stable order rather than whatever the database returned.
 const CANDIDATE_ORDER = { verified: 0, pending: 1 };
 
+// A row that can be put on a map leads one that cannot. Both are shown — the second is
+// still a name, a sentence and a source — but a reader scanning a card is best served by
+// the ones they could walk to first.
+function candidateRank(candidate) {
+  return (CANDIDATE_ORDER[candidate.status] ?? 2) * 2 + (candidate.mappable ? 0 : 1);
+}
+
 export function submissionToCandidate(row, { work, matchedBy = MATCHED_BY.id } = {}) {
   const name = String(row?.place_name ?? "").trim();
   if (!name) return null;
@@ -248,6 +255,11 @@ export function submissionToCandidate(row, { work, matchedBy = MATCHED_BY.id } =
     country: null,
     lat,
     lng,
+    // Whether this row could be drawn at all. 10,981 of the queue's rows have no
+    // coordinate — nobody ever ran a geocoder over them ([[queue-review]]) — and a card
+    // that lists one without saying so invites the reader to look for a pin that is not
+    // there.
+    mappable: lat !== null && lng !== null,
     // Deliberately null rather than 0. `evidence_count` on a fact means "how many sources
     // back this", and a queue row has not been through the process that counts them; a 0
     // would read as "nobody backs it", which is the opposite of what it means.
@@ -267,7 +279,7 @@ export function selectWorkCandidates(rows, { work, limit = 60, matchedBy = MATCH
     .map((row) => submissionToCandidate(row, { work, matchedBy }))
     .filter(Boolean)
     .sort((left, right) =>
-      (CANDIDATE_ORDER[left.status] ?? 2) - (CANDIDATE_ORDER[right.status] ?? 2)
+      candidateRank(left) - candidateRank(right)
       || left.name.localeCompare(right.name))
     // Person of Interest alone holds 961 rows. A card is a page somebody reads.
     .slice(0, Math.max(0, limit));

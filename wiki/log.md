@@ -7,6 +7,34 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-10] fix | 562 cards said "no places recorded" about works we hold rows for
+
+**Object**: `app/api/work/route.js`, `app/lib/submission-places.mjs`, `app/work/[slug]/page.jsx`
+**Scenario**: fix · **Outcome**: ✅ 10,981 unlocated rows reach a card for the first time
+**Code changes**: this commit
+
+Found by looking for the 155 Fandom rows that had just been written and not finding them.
+The card's candidate loader carried `.not("lat", "is", null)`, so a row without a
+coordinate was dropped before it reached anything.
+
+Measured against production: **10,981 unlocated rows across 1,506 works, and 562 of those
+works have nothing else.** Those 562 cards printed *"No places recorded for this work yet"*
+about works we hold rows for. It is not only Fandom — most of MovieLocations and nearly all
+of ReelStreets have no point, because **nobody has ever run a geocoder over this queue**
+([[queue-review]]). The rows are not wrong; they are unlocated.
+
+**The card is a LIST, not a map.** A name, a sentence and a link to whoever said it are all
+readable without a point. The map path filters on a coordinate on its own, where it
+genuinely needs one.
+
+Two things keep it honest. Located rows lead — the query orders `lat nulls last` so the 200
+it fetches and the 60 the card prints are the mappable ones first — and review state still
+outranks a coordinate, because it is the stronger signal. And a row without one says so:
+*"No coordinate yet — not on the map"*, rather than leaving a reader to hunt for a pin that
+was never there.
+
+**1,295 tests, all passing** (3 new).
+
 ## [2026-09-10] ingest | Fandom, refused in July and taken in September — the refusal was the mistake
 
 **Object**: `app/lib/fandom-source.mjs`, `scripts/ingest-fandom.mjs`,
