@@ -67,12 +67,35 @@ const normalizedTitle = normalizeWorkTitle;
 // Exported so a test can assert the two definitions are the same one.
 export { normalizeWorkTitle as normalizedTitleForTest };
 
+// The library row behind a work, or null. `workIsInLibrary` is this question with the
+// answer thrown away, and it is written once so the two can never disagree about which
+// film matched — a sort that ordered by one row while the filter tested another would be
+// invisible and wrong.
+//
+// The year matches when EITHER side lacks one. That is deliberate and it is a known cost:
+// 1,022 of the 7,063 works in the catalogue carry a year, so requiring one would match
+// almost nothing. Same-titled films can therefore collide — the gotcha [[personal-library]]
+// already names.
+export function libraryEntryFor(work, library) {
+  const title = normalizedTitle(work?.title);
+  if (!title) return null;
+  return (Array.isArray(library) ? library : []).find((movie) =>
+    normalizedTitle(movie?.title) === title
+      && (!work?.year || !movie?.year || work.year === movie.year),
+  ) ?? null;
+}
+
 export function workIsInLibrary(work, library) {
-  const title = normalizedTitle(work.title);
-  return library.some((movie) =>
-    normalizedTitle(movie.title) === title
-      && (!work.year || !movie.year || work.year === movie.year),
-  );
+  return libraryEntryFor(work, library) !== null;
+}
+
+// Letterboxd rates in half-stars, 0.5 to 5. A film in the library with no rating is
+// WATCHED AND UNRATED, which is not the same as bad — so it is null, never 0, and every
+// comparison below has to decide what to do with it rather than sorting it to the bottom
+// by accident. Measured on a real 2,422-film export: 2,407 rated, 15 not.
+export function libraryRating(work, library) {
+  const rating = libraryEntryFor(work, library)?.rating;
+  return Number.isFinite(rating) ? rating : null;
 }
 
 export function parseMediaCsv(text, source) {

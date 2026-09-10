@@ -74,7 +74,18 @@ import { externalPlaceLinks } from "../lib/place-links.mjs";
 import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { createCoalescingRunner } from "../lib/coalesce.mjs";
 import { WALKING_SPEED_KMH, haversineKm, isLatLng } from "../lib/geo.mjs";
-import { mergeLibraries, parseMediaCsv, workIsInLibrary } from "../lib/media-library.mjs";
+import { libraryRating, mergeLibraries, parseMediaCsv, workIsInLibrary } from "../lib/media-library.mjs";
+import {
+  DEFAULT_SORT,
+  NO_MINIMUM,
+  RATING_STEPS,
+  SORT,
+  impliesLibraryOnly,
+  passesLibraryFilter,
+  ratingLabel,
+  sortLabel,
+  sortWorks,
+} from "../lib/library-view.mjs";
 import { getSupabaseBrowserClient } from "../lib/supabase-browser.mjs";
 import { filmLocationImageKey } from "../lib/tmdb-images.mjs";
 import {
@@ -788,6 +799,14 @@ export default function SceneMapApp() {
   const [candidatesOn, setCandidatesOn] = useState(false);
   const [studioLotsOn, setStudioLotsOn] = useState(true);
   const [candidatesMineOnly, setCandidatesMineOnly] = useState(false);
+  // How the film list is ordered, and the bar a film must clear to appear at all.
+  //
+  // The rating is the READER'S. `work_ratings` holds 32 rows across 12 works out of
+  // 7,063, and one of the 1,642 works with a Los Angeles row — so ordering by a public
+  // score would sort 1,641 films by a field that is null. A real export holds 2,407
+  // ratings for 2,422 films.
+  const [sortBy, setSortBy] = useState(DEFAULT_SORT);
+  const [minRating, setMinRating] = useState(NO_MINIMUM);
   const [graphKinds, setGraphKinds] = useState([]);   // [] = every kind
   const [graphWorkId, setGraphWorkId] = useState(""); // "" = the whole library
   const [graphWorks, setGraphWorks] = useState([]);
@@ -1213,10 +1232,19 @@ export default function SceneMapApp() {
     () => new Set(films.filter((film) => workIsInLibrary(film, library)).map((film) => film.id)),
     [films, library],
   );
-  const mapFilms = useMemo(
-    () => libraryMapOnly ? films.filter((film) => libraryFilmIds.has(film.id)) : films,
-    [films, libraryFilmIds, libraryMapOnly],
-  );
+  // A minimum rating is a statement about films the reader has rated, so it can only
+  // describe a subset of their list. Turning it on turns the list filter on with it,
+  // rather than silently dropping every film that is not in the library.
+  const effectiveMineOnly = libraryMapOnly || impliesLibraryOnly(minRating);
+
+  const mapFilms = useMemo(() => {
+    const kept = films.filter((film) => (
+      effectiveMineOnly || impliesLibraryOnly(minRating)
+        ? passesLibraryFilter(film, { library, mineOnly: effectiveMineOnly, minRating })
+        : true
+    ));
+    return sortWorks(kept, { by: sortBy, library });
+  }, [films, library, effectiveMineOnly, minRating, sortBy]);
 
   useEffect(() => {
     if (!mapFilms.some((film) => film.id === tourFilmId)) {
@@ -1285,12 +1313,16 @@ export default function SceneMapApp() {
   // Null when the switch is off OR the library is empty, and null means "keep
   // everything": an empty library filtering the map to nothing would look like an outage.
   const candidateIsMine = useMemo(() => {
-    if (!candidatesMineOnly || library.length === 0) return null;
-    return (props) => workIsInLibrary(
+    const wantsRating = impliesLibraryOnly(minRating);
+    if ((!candidatesMineOnly && !wantsRating) || library.length === 0) return null;
+    // The SAME predicate the chips use. The panel counting one set while the map drew
+    // another is the "header contradicting the thing it heads" bug this project already
+    // fixed once for the viewport count.
+    return (props) => passesLibraryFilter(
       { title: props?.work_title ?? "", year: props?.work_year ?? null },
-      library,
+      { library, mineOnly: candidatesMineOnly || wantsRating, minRating },
     );
-  }, [candidatesMineOnly, library]);
+  }, [candidatesMineOnly, library, minRating]);
 
   const visibleLocations = useMemo(
     () => sourceLocations.filter((location) =>
@@ -2736,6 +2768,46 @@ export default function SceneMapApp() {
           </div>
         )}
 
+        {/* Order and bar, beside the list they act on. Sorting lives here rather than in
+            the queue panel because it orders THESE chips — a control far from the thing
+            it changes is a control nobody connects to the change. */}
+        <div className="list-controls">
+          <label className="list-control">
+            <span>Order</span>
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+              {/* Offered only with a library to read it from. Without one it would sort
+                  every film by null and look broken. */}
+              {library.length > 0 && <option value={SORT.rating}>Your rating</option>}
+              <option value={SORT.places}>How much we hold</option>
+              <option value={SORT.title}>A–Z</option>
+            </select>
+          </label>
+
+          {library.length > 0 && (
+            <label className="list-control">
+              <span>Rated</span>
+              <select
+                value={String(minRating)}
+                onChange={(event) => setMinRating(Number(event.target.value))}
+              >
+                <option value={String(NO_MINIMUM)}>Any</option>
+                {RATING_STEPS.map((step) => (
+                  <option key={step} value={String(step)}>{ratingLabel(step)} and up</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <small className="list-control-note">
+            {sortLabel(sortBy)}
+            {impliesLibraryOnly(minRating)
+              // Said out loud: a bar on YOUR rating can only describe your list, and a
+              // reader who did not expect the map to narrow deserves to know why it did.
+              ? ` · ${ratingLabel(minRating)} and up, from your list only`
+              : ""}
+          </small>
+        </div>
+
         <div className="film-grid" aria-label="Selected stories">
           {mapFilms.map((film) => {
             const selected = selectedFilms.includes(film.id);
@@ -2772,6 +2844,15 @@ export default function SceneMapApp() {
                     <small>
                       <span className={`work-kind kind-${film.kind}`}>{kindLabel(film.kind)}</span>
                       {film.year ? ` · ${film.year}` : ""}
+                      {/* The reader's own score, on the chip. An order nobody can see the
+                          key for is indistinguishable from no order at all — and with the
+                          list sorted by rating this is the column being sorted. */}
+                      {(() => {
+                        const mine = libraryRating(film, library);
+                        return mine === null
+                          ? null
+                          : <span className="chip-rating">{" · "}{ratingLabel(mine)}</span>;
+                      })()}
                     </small>
                   </span>
                 </button>

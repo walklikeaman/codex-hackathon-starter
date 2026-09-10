@@ -46,6 +46,43 @@ because it never reached the live path** — after posters, ratings and three au
 features. "Done" and "reachable" diverge here systematically, and planning should treat
 them as separate states.
 
+## Sorting and filtering by rating — and whose rating it can be
+
+Measured 10.09.2026 against production, this is not a design choice:
+
+| | |
+|---|---|
+| `work_ratings` | **32 rows across 12 works**, out of 7,063 |
+| works with a Los Angeles row | 1,642 — of which **one** carries a rating |
+| a real Letterboxd export | **2,407 ratings for 2,422 films** |
+
+**So "sort by rating" can only mean the reader's own.** Ordering by a public score would
+sort 1,641 of the 1,642 Los Angeles films by a field that is null. The rating was already
+parsed and merged (`ratings.csv` + `watched.csv`) and already shown in the My-movies panel;
+nothing on the map had ever read it.
+
+That has a consequence: **all of it is decided in the browser.** The library never reaches
+the server, so no endpoint can order by it. The server hands over what is in the viewport
+and [app/lib/library-view.mjs](../../app/lib/library-view.mjs) decides what is shown and in
+what order. The candidate pins use **the same predicate** as the chips — a panel counting
+one set while the map drew another is the "header contradicting the thing it heads" bug
+[[place-card]] already fixed once for the viewport count.
+
+Four rules worth keeping:
+
+- **Unrated is null, never zero.** Watched-and-never-scored is not the same as bad. Sorted
+  as a 0 it would sit below a film the reader actively disliked, which says something they
+  did not; it sinks below every rated film instead.
+- **A minimum rating implies "my list only"**, because it cannot mean anything else — and
+  without saying so it would silently drop every film not in the library, which is most of
+  the map, and read as an outage. The control says it out loud.
+- **Every sort falls through to the title.** Ties are the normal case, not the edge: 3.5★
+  is the most common score in a real export and 39.8% of works hold exactly one place.
+  Without a final key the list reshuffles between renders.
+- **The default order is "how much we hold"**, not anybody's opinion. A stranger with no
+  library gets what there is to go and see; the rating option is not offered until there is
+  a library to read it from.
+
 ## Gotchas
 
 - A record from Letterboxd (no imdbId) and one from IMDb (with imdbId) will NOT merge into one.

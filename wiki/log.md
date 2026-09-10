@@ -7,6 +7,49 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-10] update | The list sorts by the only rating we actually have
+
+**Object**: `app/lib/library-view.mjs`, `app/lib/media-library.mjs`,
+`app/components/SceneMapApp.jsx`, `test/library-view.test.mjs`
+**Scenario**: feature (Los Angeles) · **Outcome**: ✅ order and a bar, both from the
+reader's own scores
+**Code changes**: this commit
+
+The owner asked to sort the films by rating, high first. Measuring first decided what that
+could mean: **`work_ratings` holds 32 rows across 12 works out of 7,063**, and of the 1,642
+works with a Los Angeles row **exactly one** carries a rating. A real Letterboxd export
+holds **2,407 ratings for 2,422 films**, and all 326 of the owner's Los Angeles films are
+rated. So sorting by a public score would order 1,641 films by null, and the rating this
+product has is the reader's own.
+
+It was already parsed, merged and stored — `ratings.csv` has been read since the ZIP
+importer shipped, and the My-movies panel prints it. **Nothing on the map had ever read
+it.** The fifth time in this project that finished, correct work was invisible because it
+never reached the live path.
+
+All of it is decided in the browser, and can only be: the library never reaches the server
+([[personal-library]]), so no endpoint can order by it. The candidate pins share **the same
+predicate** as the chips rather than a parallel one — a panel counting one set while the map
+drew another is the bug [[place-card]] already fixed once for the viewport count.
+
+Four rules, each with a reason:
+
+- **Unrated is null, never zero.** Sorted as 0 it would sit below a film the reader actively
+  disliked, which says something they did not. It sinks below every rated film instead.
+- **A minimum rating implies "my list only"** — it cannot mean anything else, and silently
+  dropping every film not in the library would read as an outage. The control says so.
+- **Every comparison falls through to the title.** 3.5★ is the most common score in a real
+  export and 39.8% of works hold one place, so ties are the normal case; without a final
+  key the list reshuffles between renders.
+- **The default stays "how much we hold".** A stranger with no library gets what there is
+  to go and see, and the rating option is not offered until there is a library behind it.
+
+`libraryEntryFor` was extracted so the sort and the filter cannot disagree about which row
+matched; `workIsInLibrary` is now that question with the answer thrown away.
+
+**1,201 tests, all passing** (18 new). Verified in the browser against a library with a
+spread of scores: by places the five London chips are alphabetical, by rating they are
+5★ → 4.5★ → 3★ → 2.5★ → unrated, and a 4.5★ bar leaves two.
 ## [2026-09-10] update | The sitemap had 27 files and no door: robots.txt and an index
 
 **Object**: `app/robots.js`, `app/sitemap.xml/route.js`, `app/lib/site-url.mjs`,

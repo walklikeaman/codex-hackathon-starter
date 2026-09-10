@@ -3521,3 +3521,37 @@ figcaption a {
   padding: 0.1rem 0.45rem;
   font-size: 0.72rem;
 }
+
+/* Order and bar, above the chips they act on. Laid out as a row that wraps rather than a
+   panel: these are two small choices, and giving them a box of their own would make them
+   look heavier than the list underneath. */
+.list-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  margin: 0.3rem 0 0.55rem;
+}
+.list-control {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: rgba(236, 232, 225, 0.6);
+}
+.list-control select {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ece8e1;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  padding: 0.16rem 0.4rem;
+  font-size: 0.78rem;
+}
+.list-control-note {
+  flex-basis: 100%;
+  font-size: 0.72rem;
+  color: rgba(236, 232, 225, 0.42);
+}
+/* The reader's own score on a chip. Warm, because it is the one number on the card that
+   came from them rather than from a source. */
+.chip-rating { color: #f0a83c; }
