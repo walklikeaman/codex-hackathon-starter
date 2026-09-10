@@ -495,6 +495,18 @@ function RefreshLocationsOnViewport({ onViewportChange, onBoundsChange }) {
       const center = map.getCenter();
       const distanceToCorner = map.distance(center, map.getBounds().getNorthEast());
 
+      // A map that has not been laid out reports a zero-size viewport, and
+      // `mapSearchRadiusKm` refuses a non-positive distance — correctly, since a search
+      // radius of nothing is not a question. The refusal is a THROW inside a setTimeout,
+      // so it is uncaught, and it killed the whole update: every layer kept whatever it
+      // had loaded and never asked again. Observed as an empty Los Angeles that stayed
+      // empty, with three uncaught errors in the console and no other symptom.
+      //
+      // This is the same shape as the zero-sized-container bug in [[place-card]]: the map
+      // has not said what is in view yet, and the honest answer is to wait for the resize
+      // that follows rather than to ask about nothing.
+      if (!Number.isFinite(distanceToCorner) || distanceToCorner <= 0) return;
+
       onViewportChange({
         center: [Number(center.lat.toFixed(5)), Number(center.lng.toFixed(5))],
         radiusKm: mapSearchRadiusKm(distanceToCorner),
@@ -553,6 +565,42 @@ const userIcon = L.divIcon({
   iconSize: [22, 22],
   iconAnchor: [11, 11],
 });
+
+// Leaflet caches the container's size and only re-measures on a WINDOW resize. A container
+// that changes size on its own — a panel opening beside it, a phone rotating, a hidden pane
+// becoming visible — leaves the map laid out for the old size: tiles cover a patch and the
+// rest is background, and `getBounds()` describes a viewport nobody is looking at.
+//
+// Observed while showing Los Angeles: 24 tiles all loaded successfully and the map was a
+// small square in the middle of a black screen. Every check said the tiles were fine,
+// because they were.
+//
+// This is the same family as the zero-sized-container bug in [[place-card]], where Leaflet
+// answered `getBounds()` on an unlaid-out map and the panel printed "No places in view"
+// over five pins.
+function InvalidateOnResize() {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      // Coalesced into a frame: a drag-resized panel fires this continuously, and
+      // invalidateSize does real layout work each time.
+      cancelAnimationFrame(frame);
+      // NOT `debounceMoveend: true`. That option suppresses the `moveend` this emits, and
+      // `moveend` is what makes the graph and queue layers refetch. A map that re-measures
+      // silently keeps drawing the pins it loaded for the OLD viewport — which looks like
+      // an empty map rather than a stale one, and is worse for being invisible.
+      frame = requestAnimationFrame(() => map.invalidateSize());
+    });
+    observer.observe(container);
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [map]);
+
+  return null;
+}
 
 function FlyToUser({ position, radius }) {
   const map = useMap();
@@ -793,14 +841,26 @@ export default function SceneMapApp() {
   // photo may be shown at all (app/lib/attribution.mjs refuses it otherwise).
   const [imageAttribution, setImageAttribution] = useState({});
 
-  const [graphLayerOn, setGraphLayerOn] = useState(false);
+  // On by default since 11.09.2026. It was off, and the result was a map that opened
+  // showing nothing: the live Wikidata path answers for a handful of works, so anybody
+  // opening Los Angeles saw an empty screen and had to find two switches before the
+  // product did anything. "We have nothing here" was the impression, and we hold 5,266
+  // rows there.
+  const [graphLayerOn, setGraphLayerOn] = useState(true);
   const [graphSummary, setGraphSummary] = useState(null);
-  // The queue on the browsable map. Measured 10.09: /api/map/points over the whole Los
-  // Angeles basin returned ONE feature — the city itself — while the queue held 5,266
-  // located rows there across 1,642 works. The layer is off until asked for, because it
-  // is 32,148 rows against a graph of 70 and because turning it on changes what the map
-  // is claiming: hollow pins nobody has checked, beside filled ones we stand behind.
-  const [candidatesOn, setCandidatesOn] = useState(false);
+  // The queue on the browsable map, and ON by default.
+  //
+  // The argument for keeping it off was that it changes what the map claims. Measured, the
+  // opposite is true: the graph holds **70 places in the world** and the queue holds
+  // **32,138 located rows**, so a map without it shows nothing almost everywhere — one pin
+  // for the whole Los Angeles basin — and "we have nothing here" is the more misleading of
+  // the two impressions.
+  //
+  // The honesty is carried by the RENDERING, not by the default. A candidate is drawn
+  // hollow and grey where a fact is filled and amber, its popup says "In review", and the
+  // panel above says the rows are named by our sources and not checked by us. A reader can
+  // tell the two apart at a glance; an empty map tells them nothing at all.
+  const [candidatesOn, setCandidatesOn] = useState(true);
   const [studioLotsOn, setStudioLotsOn] = useState(true);
   const [candidatesMineOnly, setCandidatesMineOnly] = useState(false);
   // How the film list is ordered, and the bar a film must clear to appear at all.
@@ -2226,7 +2286,22 @@ export default function SceneMapApp() {
             behaviour this whole viewport change exists for was unreachable by
             hand. 5 shows a country; below that the answer stops being a set of
             stops somebody could walk. */}
-        <MapContainer center={mapCenter} zoom={12} minZoom={5} maxZoom={17} zoomControl={false}>
+        {/* `maxZoom` was 17, which stopped the map one or two steps short of the thing it
+            is for: standing at a doorway and comparing it with a frame. OSM serves 19 and
+            Esri's imagery serves 19, so the map goes to 19 and each layer caps itself at
+            what its provider actually has.
+
+            The dark class rides on the container so the CSS can filter the TILE PANE only.
+            Passing `className` to <TileLayer> does not survive react-leaflet, and filtering
+            the whole container would invert the pins and the route with the tiles. */}
+        <MapContainer
+          center={mapCenter}
+          zoom={opened?.zoom ?? 12}
+          minZoom={3}
+          maxZoom={19}
+          zoomControl={false}
+          className={basemap.filter ? "map-dark" : undefined}
+        >
           {/* Keyed by id so Leaflet replaces the layer instead of mutating the one it
               has: without the key the attribution of the previous provider stays on
               screen under the new provider's tiles, which is an attribution bug rather
@@ -2237,6 +2312,7 @@ export default function SceneMapApp() {
             url={basemap.url}
             maxZoom={basemap.maxZoom}
           />
+          <InvalidateOnResize />
           <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
           <FlyToUser position={userPosition} radius={nearbyRadius} />
