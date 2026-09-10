@@ -330,6 +330,10 @@ as results, live-GPS buddy tracking, AI-generated "lore", and a 1–5 safety sco
 
 ## Open decisions for the owner
 
+- **What the trip agent IS** — an agent session speaking MCP, a third-party product with an
+  API, a custom GPT, or something still being built. `POST /api/trip/plan` is the answer all
+  four need and is shipped ([[trip-agent-bridge]]); the transport that wraps it is not, and
+  cannot be chosen without this. It is one question and it unblocks the whole feature.
 - **`isRoutable`**: an unconfirmed stop is currently routed with a warning rather than
   refused. Whether it should harden into a refusal is a product call, not a technical one.
 - **Rotating `SUPABASE_SERVICE_ROLE_KEY`** (see above) — recommended, never confirmed.
