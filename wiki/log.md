@@ -7,6 +7,84 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-10] update | Los Angeles: the map had one pin for a city with 5,266
+
+**Object**: `app/lib/studio-lots.mjs`, `app/lib/map-points.mjs`, `app/lib/map-layer.mjs`,
+`app/components/GraphLayer.jsx`, `app/components/SceneMapApp.jsx`,
+`supabase/migrations/20260910061500_the_queue_reaches_the_map.sql`
+**Scenario**: feature (Los Angeles) · **Outcome**: ✅ the queue reaches the map, and a
+backlot no longer looks like an address
+**Code changes**: this commit
+
+The owner is going to Los Angeles and wanted the product to work there. Two things were
+wrong and only one of them was the one being asked about.
+
+**`/api/map/points` over the whole Los Angeles basin returned ONE feature** — the city of
+Los Angeles itself, precision `city`. The queue holds **5,266 located rows there across
+1,642 works**, and `map_points_in_view` reads `places`, which holds 70 rows worldwide. The
+map is the product's main surface and it had been drawing 70 places while 32,148 located
+rows sat one table away. The film card got its door to that queue in #158 and the per-film
+map path got one on 05.08; the browsable map was the last surface without one.
+
+`map_candidate_points_in_view` / `map_candidate_clusters_in_view` mirror the existing pair
+deliberately — same viewport arithmetic, same antimeridian case, same zoom threshold — so
+the two layers cannot disagree about what "in view" means. Candidates ride in their own
+collection, never mixed into `features`: appending them would have made every existing
+reader of that response start counting unchecked rows as places, silently, on the day this
+shipped. They carry no `confidence` and no `confidence_band` — those are answers the review
+produces, and a null one puts an unexamined row in the same vocabulary as something we
+checked.
+
+**A silent truncation found by looking.** The RPC returned 2,000 rows and the API answered
+with exactly 1,000: PostgREST caps a response at `db-max-rows` and says nothing — no header,
+no error — so a ceiling of `MAX_MAP_POINTS = 2000` could never be reached and
+`truncated: length >= 2000` could never be true. **The map would have drawn 1,000 of 4,729
+and looked complete.** That is the failure #158 already paid for once. The ceiling is now
+the number that can actually arrive.
+
+**The thing actually asked for: which films were shot on the lots, and which in the city.**
+Deciding that by name is the `/studio/i` mistake [[work-profile]] already paid for, and
+measured on these 5,266 rows it fails both ways — it matches Disney **Hall** (a Gehry
+concert hall), the **Hilton Universal** City (a hotel across the road) and **Culver** City
+High School, and misses New York City Backlot, Courthouse Square and Hennesy Street, which
+are inside Paramount, Universal and Warner Bros. respectively.
+
+So a lot is a **polygon**, from OpenStreetMap, 25 of them, 668 points. A radius fails on the
+first case tried and so does the bounding box: the Hilton is inside Universal's box and
+outside Universal, and there is a test that says so. Two details the data forced — a
+relation with an `outer` ring means it (Universal's other 103 members are buildings, and
+using them would put the backlot streets outside the lot), and Paramount's has no outer at
+all, its six members being the parcels the lot is assembled from. Simplification to 2.2 m
+and rounding to five decimals were both checked against all 5,266 rows first: **no row
+changes which lot it is in.**
+
+**212 of 5,266 — 4.0% — are inside a lot**, and the low number is the honest finding.
+MovieMaps and MovieLocations are filming-location databases; nobody lists "Stage 16" as a
+location. What we hold answers *"where in Los Angeles can I go stand"* and barely answers
+*"which films were made on the lots"*. The 212 are mostly backlots standing in for real
+places, which is exactly the set that would otherwise mislead.
+
+**Filters, because the owner asked to choose.** Three switches over the new layer: the
+queue itself, studio lots, and *only films from my list*. The last is decided **in the
+browser** and can only be: the library lives in localStorage and never reaches the server
+([[personal-library]]), so the server hands over every row in the viewport and a predicate
+drops the rest. `work_year` was added to the RPC for it.
+
+**And one overclaim corrected on the way past.** Every city page said "1,322 films with
+3,907 places **recorded**". `city_catalogue` reads `location_submissions` — every number on
+a city page is a count of unchecked queue rows, and "recorded" is the word this project
+uses for the 70 places it stands behind. The count stays; the verb changed.
+
+**Not done, deliberately: nothing was promoted to a fact.** Cross-source agreement looked
+like a way to verify — 265 Los Angeles pairs where two different sources name the same
+place for the same film — until the distances were measured: **166 of them are 0 m apart**,
+which is one coordinate copied, not two observations. [[queue-review]] measured and
+discarded that same check in August. Only 99 pairs are independent geocodes, and even those
+are two sites agreeing on a name, not evidence a shoot happened.
+
+**1,169 tests, all passing** (33 new). Verified locally against production: 464 candidate
+pins over Los Angeles in the running app, *The Big Lebowski* with no studio badge at all,
+and *Back to the Future*'s Courthouse Square reading "Appears as Downtown Hill Valley".
 ## [2026-09-10] update | The 70 place pages are in the sitemap, and only the ones that exist
 
 **Object**: `app/api/directory/places/route.js`, `app/sitemap.js`, `test/sitemap.test.mjs`,

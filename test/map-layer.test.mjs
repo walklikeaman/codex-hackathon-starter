@@ -120,3 +120,56 @@ test("pointSummary reads as a plain sentence about the claim", () => {
   assert.equal(pointSummary({ badge: "exact", work_count: 3 }), "Filmed here · 3 works");
   assert.equal(pointSummary(null), "");
 });
+
+// ---------- the queue's own visual vocabulary ----------
+
+test("a candidate is hollow and a place is filled", async () => {
+  const { CANDIDATE_STYLE, badgeStyle, candidateStyle } = await import("../app/lib/map-layer.mjs");
+  // The one difference that survives being glanced at on a phone in the street. A
+  // candidate drawn as a dimmer verified pin would read as a WEAKER version of something
+  // we checked, and it is not weaker — it is unexamined, which is a different axis.
+  assert.equal(CANDIDATE_STYLE.fillOpacity, 0);
+  for (const badge of ["exact", "approximate", "studio", "narrative"]) {
+    assert.ok(badgeStyle(badge).fillOpacity > 0, `${badge} is filled`);
+  }
+  assert.equal(candidateStyle({ properties: {} }).fillOpacity, 0);
+});
+
+test("a candidate borrows no verified badge colour", async () => {
+  const { BADGE_STYLES, CANDIDATE_STYLE } = await import("../app/lib/map-layer.mjs");
+  const taken = new Set(Object.values(BADGE_STYLES).map((style) => style.color));
+  assert.equal(taken.has(CANDIDATE_STYLE.color), false);
+});
+
+test("a candidate inside a lot stays hollow and takes the studio colour", async () => {
+  const { BADGE_STYLES, candidateStyle } = await import("../app/lib/map-layer.mjs");
+  const onLot = candidateStyle({ properties: { depicts_elsewhere: true } });
+  // Two facts, both kept: unexamined AND a backlot.
+  assert.equal(onLot.fillOpacity, 0);
+  assert.equal(onLot.color, BADGE_STYLES.studio.color);
+});
+
+test("selecting a candidate is the one moment it may look solid", async () => {
+  const { candidateStyle } = await import("../app/lib/map-layer.mjs");
+  assert.ok(candidateStyle({ properties: {} }, { selected: true }).fillOpacity > 0);
+});
+
+test("a checked SOURCE is never called a verified place", async () => {
+  const { candidateSummary } = await import("../app/lib/map-layer.mjs");
+  const checked = candidateSummary({ status: "verified" });
+  // The review checked whoever said it, not whether it happened. "Verified" here would
+  // promote a queue row to a fact in the one place nobody would look.
+  assert.match(checked, /still a candidate/);
+  assert.equal(/^Verified/.test(checked), false);
+  assert.match(candidateSummary({ status: "pending" }), /Nobody has checked it/);
+});
+
+test("the queue is asked for only when wanted, and never alongside a work", async () => {
+  const { viewportQuery } = await import("../app/lib/map-layer.mjs");
+  const bounds = { west: -118.45, east: -118.15, south: 34.0, north: 34.2 };
+  assert.equal(new URLSearchParams(viewportQuery(bounds, 13)).get("candidates"), null);
+  assert.equal(new URLSearchParams(viewportQuery(bounds, 13, { candidates: true })).get("candidates"), "1");
+  // A work-scoped map already draws its own candidates through /api/locations.
+  const scoped = viewportQuery(bounds, 13, { candidates: true, workId: "44444444-4444-4444-4444-444444444444" });
+  assert.equal(new URLSearchParams(scoped).get("candidates"), null);
+});

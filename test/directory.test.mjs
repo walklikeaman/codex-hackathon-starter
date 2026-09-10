@@ -115,15 +115,27 @@ test("coverage states the radius, because the radius is what the page means", ()
   // hold is what is within a stated distance of a measured point.
   assert.equal(
     cityCoverage({ works: 656, points: 2300, radiusKm: 20 }),
-    "656 films with 2300 places recorded within 20 km of the centre.",
+    "656 films with 2300 places named by our sources within 20 km of the centre — candidates, not yet checked.",
   );
-  assert.match(cityCoverage({ works: 0, points: 0, radiusKm: 20 }), /^No places recorded/);
+  assert.match(cityCoverage({ works: 0, points: 0, radiusKm: 20 }), /^Nothing named/);
+});
+
+test("the city line says candidates, because that is what it counts", () => {
+  // `city_catalogue` reads `location_submissions`. Every number on a city page is a
+  // count of unchecked queue rows, and the page said "recorded" — which is the word this
+  // project uses for the 70 places it stands behind, one of them in Los Angeles.
+  const line = cityCoverage({ works: 1322, points: 3907, radiusKm: 20 });
+  assert.match(line, /candidates, not yet checked/);
+  assert.equal(/recorded/.test(line), false);
 });
 
 test("one is written as one", () => {
   // 2,667 of the 6,392 works hold exactly one place. Rounding that up anywhere is how a
   // directory starts promising tours it cannot walk.
-  assert.equal(cityCoverage({ works: 1, points: 1 }), "1 film with 1 place recorded within 20 km of the centre.");
+  assert.equal(
+    cityCoverage({ works: 1, points: 1 }),
+    "1 film with 1 place named by our sources within 20 km of the centre — candidates, not yet checked.",
+  );
   assert.equal(cityWorkLine({ place_count: 1, places: ["Blackfriars Bridge"] }), "Blackfriars Bridge");
 });
 

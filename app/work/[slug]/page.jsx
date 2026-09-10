@@ -70,6 +70,10 @@ function PlaceRow({ place, href = null }) {
     <li className="work-place">
       <div className="work-place-head">
         <h3>{href ? <Link href={href}>{place.name}</Link> : place.name}</h3>
+        {/* The lot badge leads, because it is the one that changes what the reader should
+            do with the row: a precision of "Exact point" over a backlot is exact about a
+            place they cannot go, for a scene set 3,000 km away. */}
+        {place.depicts_elsewhere && <span className="work-badge is-studio">Studio lot</span>}
         {place.precision && <span className="work-badge">{place.precision}</span>}
       </div>
       {/* The source's own words when we have them; the template only when we do not. */}

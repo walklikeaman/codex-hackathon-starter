@@ -69,6 +69,7 @@ function FactRow({ fact }) {
               rows). Print the name; do not invent a link to something unbuilt. */}
           {href ? <Link href={href}>{fact.subject_name}</Link> : fact.subject_name}
         </h3>
+        {fact.depicts_elsewhere && <span className="work-badge is-studio">Studio lot</span>}
         <span className="work-badge">{subjectNoun(fact)}</span>
       </div>
       {fact.sentence && <p className="work-place-sentence">{fact.sentence}</p>}

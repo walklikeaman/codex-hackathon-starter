@@ -17,6 +17,7 @@
 
 import { finiteOrNull } from "./numbers.mjs";
 import { metresApart, namesMatch } from "./place-dedup.mjs";
+import { studioLotAccessNote, studioLotAt, studioLotSentence } from "./studio-lots.mjs";
 
 export const SUBMISSION_RELATION_KIND = "candidate";
 
@@ -70,11 +71,22 @@ function checkedNote(row) {
     : " We have checked the source. It is still a candidate, not part of our graph.";
 }
 
+// A row whose coordinate falls inside a studio lot, said before anything else on the row.
+//
+// It leads because it changes what the address MEANS. "860 N Gower St, Los Angeles" reads
+// as somewhere to walk to, and it is Paramount's New York backlot — the Cloverfield row
+// that names it is about New York. Printing the street first and the lot later, or not at
+// all, is how a reader ends up outside a gate expecting a city block.
+function studioLotPrefix(row) {
+  return studioLotSentence(studioLotAt(row?.lat, row?.lng), row?.place_name);
+}
+
 function submissionDescription(row, workTitle, matchedBy) {
   const place = row.place_name;
   const who = SOURCE_LABELS[row.source_kind]?.who ?? "an external source";
   const stated = String(row.source_sentence ?? "").trim();
   const checked = checkedNote(row);
+  const lot = studioLotPrefix(row);
   // Said plainly rather than hedged: the title matched, the identifier did not, and a
   // work can share a title with a different work — Doctor Who is two series under one
   // name, and Gladiator is two films.
@@ -83,10 +95,14 @@ function submissionDescription(row, workTitle, matchedBy) {
     : "";
 
   const unchecked = checked ? "" : " Not yet verified by us.";
+  // The lot goes in front of the source's own sentence rather than replacing it: the
+  // source said something and we do not get to overwrite it, but a reader must not reach
+  // the end of the row before learning they cannot go there.
+  const head = lot ? `${lot} ` : "";
   if (stated) {
-    return `${stated} — recorded for ${workTitle} by ${who}.${unchecked}${checked}${caveat}`;
+    return `${head}${stated} — recorded for ${workTitle} by ${who}.${unchecked}${checked}${caveat}`;
   }
-  return `${place} is listed as a location for ${workTitle} by ${who}.${unchecked}${checked}${caveat}`;
+  return `${head}${place} is listed as a location for ${workTitle} by ${who}.${unchecked}${checked}${caveat}`;
 }
 
 export function submissionToLocation(row, { work, kind, matchedBy = MATCHED_BY.id }) {
@@ -119,6 +135,9 @@ export function submissionToLocation(row, { work, kind, matchedBy = MATCHED_BY.i
     review_status: row.status ?? "pending",
     relation_description: submissionDescription(row, work.title, matchedBy),
     matched_by: matchedBy,
+    // Same flag as the card's, so a pin on a backlot cannot be drawn as a street address
+    // on one surface and a soundstage on the other.
+    depicts_elsewhere: Boolean(studioLotAt(lat, lng)),
     // The area the source named, when it gave one — "Top of Bevington Road" is more use
     // than a dot, and it is what a reviewer checks against.
     place_types: row.area_hint ? [row.area_hint] : [],
@@ -201,6 +220,7 @@ export function submissionToCandidate(row, { work, matchedBy = MATCHED_BY.id } =
   const labels = SOURCE_LABELS[row?.source_kind] ?? { title: "Source record", who: "an external source" };
   const lat = finiteOrNull(row?.lat);
   const lng = finiteOrNull(row?.lng);
+  const lot = studioLotAt(lat, lng);
 
   return {
     id: row?.id ?? null,
@@ -210,7 +230,14 @@ export function submissionToCandidate(row, { work, matchedBy = MATCHED_BY.id } =
     precision: row?.status === "verified" ? "Source checked" : "In review",
     sentence: submissionDescription(row, work?.title ?? "this work", matchedBy),
     // Whoever said it, in the meta line. Never "filmed on location": nobody has checked.
-    role_label: labels.who,
+    // Inside a lot the meta line says whether a reader can get in instead, because that
+    // is the more useful of the two things it could say and the source is already named
+    // in the sentence above it.
+    role_label: lot ? studioLotAccessNote(lot) : labels.who,
+    // The pin is real; what it filmed is set somewhere else. Carried on a candidate for
+    // the same reason it is carried on a fact — the map must not draw the two alike.
+    depicts_elsewhere: Boolean(lot),
+    studio_lot: lot ? { slug: lot.slug, name: lot.name, access: lot.access } : null,
     // The area the source named. It is not a city we resolved — `location_submissions`
     // has no city column — so it is printed as the hint it is.
     city: String(row?.area_hint ?? "").trim() || null,

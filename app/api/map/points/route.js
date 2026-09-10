@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   buildMapResponse,
   CLUSTER_BELOW_ZOOM,
-  MAX_MAP_POINTS,
+  MAX_ROWS_PER_RESPONSE,
   parseMapQuery,
   viewportCenter,
 } from "../../../lib/map-points.mjs";
@@ -47,6 +47,10 @@ function defaultCreateReader(env) {
   return {
     points: (params) => call("map_points_in_view", params),
     clusters: (params) => call("map_clusters_in_view", params),
+    // The queue in the same viewport. Separate calls rather than a union, because the two
+    // are different things and the response keeps them apart all the way to the client.
+    candidatePoints: (params) => call("map_candidate_points_in_view", params),
+    candidateClusters: (params) => call("map_candidate_clusters_in_view", params),
     fictional: ({ workId, kinds }) =>
       call("fictional_places", { p_work_id: workId ?? null, p_kinds: kinds ?? null }),
     nearest: ({ lat, lng, workId, kinds, limit = 3 }) =>
@@ -86,27 +90,50 @@ export function createMapPointsHandler({
       p_kinds: query.kinds,
     };
 
+    // The queue rows the map may draw. They are asked for only when the caller wants
+    // them, because they are the expensive half — 32,148 located rows against a graph of
+    // 70 — and because every existing caller of this endpoint was written before they
+    // existed and must keep getting exactly what it got yesterday.
+    //
+    // `workId` deliberately does NOT filter them: a work-scoped map already has its own
+    // candidate path through `/api/locations`, and running both would draw every row
+    // twice.
+    const wantCandidates = query.candidates && !query.workId;
+
     try {
-      const [rows, fictional] = await Promise.all([
+      const [rows, fictional, candidateRows] = await Promise.all([
         query.clustered
-          ? reader.clusters({ ...params, p_max_clusters: MAX_MAP_POINTS })
-          : reader.points({ ...params, p_max_points: MAX_MAP_POINTS, p_cluster_below_zoom: CLUSTER_BELOW_ZOOM }),
+          ? reader.clusters({ ...params, p_max_clusters: MAX_ROWS_PER_RESPONSE })
+          : reader.points({ ...params, p_max_points: MAX_ROWS_PER_RESPONSE, p_cluster_below_zoom: CLUSTER_BELOW_ZOOM }),
         // Same work/kind filters as the map, so the strip always describes the same query.
         reader.fictional({ workId: query.workId, kinds: query.kinds }),
+        wantCandidates && reader.candidatePoints
+          ? (query.clustered
+            ? reader.candidateClusters({
+              p_west: params.p_west, p_south: params.p_south, p_east: params.p_east,
+              p_north: params.p_north, p_zoom: params.p_zoom, p_kinds: params.p_kinds,
+              p_max_clusters: MAX_ROWS_PER_RESPONSE,
+            })
+            : reader.candidatePoints({
+              p_west: params.p_west, p_south: params.p_south, p_east: params.p_east,
+              p_north: params.p_north, p_zoom: params.p_zoom, p_kinds: params.p_kinds,
+              p_max_points: MAX_ROWS_PER_RESPONSE, p_cluster_below_zoom: CLUSTER_BELOW_ZOOM,
+            }))
+          : [],
       ]);
 
       // Only when the viewport is genuinely empty: one extra KNN query so the answer is
       // "nothing HERE, the nearest is X km away" rather than a blank map that reads as
       // "there is nothing". Never paid for on a populated viewport.
       let nearest = [];
-      if ((rows?.length ?? 0) === 0 && reader.nearest) {
+      if ((rows?.length ?? 0) === 0 && (candidateRows?.length ?? 0) === 0 && reader.nearest) {
         const center = viewportCenter(query);
         nearest = await reader.nearest({
           lat: center.lat, lng: center.lng, workId: query.workId, kinds: query.kinds,
         });
       }
 
-      return Response.json(buildMapResponse(query, rows, fictional, nearest), {
+      return Response.json(buildMapResponse(query, rows, fictional, nearest, candidateRows), {
         headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
       });
     } catch (error) {
