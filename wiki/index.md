@@ -59,6 +59,9 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [studio-lots](concepts/studio-lots.md) — a fence is a polygon, never a name; why the
   Hilton is inside Universal's bounding box and outside Universal
 - [place-precision](concepts/place-precision.md) — when a pin may move, when two pins are one place
+- [trip-agent-bridge](concepts/trip-agent-bridge.md) — `POST /api/trip/plan`: one day plan an
+  outside agent can act on, the four refusals it prints, and the four defects live Los
+  Angeles found; the transport that wraps it is still the owner's open question
 - [testing-conventions](concepts/testing-conventions.md) — node:test, zero network, DI pattern
 
 ## Sources (external knowledge)
