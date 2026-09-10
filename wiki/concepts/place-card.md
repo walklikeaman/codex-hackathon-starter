@@ -143,6 +143,19 @@ Two copies of a URL rule are two things that can drift apart while every link al
 assumes they agree. The readable half is decorative in both, so a place renamed tomorrow does
 not break links sent today.
 
+**And the address is enumerable, which is a second thing entirely.** A page nothing links to
+is a page nothing finds. `/api/directory/places` lists the graph's places for the sitemap of
+[[directory]], and it lists **only the places a page can be built from**: the page is
+`place_facts_at()` and that 404s a place with no facts, while `/api/resolve` writes `places`
+and the links that make facts in two statements and has been seen to fail between them. On
+10.09 all 70 rows carry a fact, so the filter drops nothing — it is there so that the day it
+does, the sitemap loses a URL rather than gaining a 404.
+
+The listing does the filter in two bounded reads instead of one `exists`, because PostgREST
+cannot embed `place_facts`: it is a `union all` view and carries no foreign key to infer, so
+the join would be new DDL, and a migration that lands after the code turns the route into a
+502 and the sitemap into a silently empty one.
+
 ### Not built, and honestly empty
 
 Distance 1 and 2 render nothing, because `creators` holds zero rows — one of the three
