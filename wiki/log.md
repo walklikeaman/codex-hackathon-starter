@@ -7,6 +7,47 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-10] ingest | The catalogue has years, and 36 of the owner's matches were wrong
+
+**Object**: `scripts/backfill-work-years.mjs`, `app/lib/media-library.mjs`,
+`test/backfill-work-years.test.mjs` · **works.year**: 1,022 → **6,705 of 7,063 (94.9%)**
+**Scenario**: ingest + fix · **Outcome**: ✅ 5,683 years written, 36 false library matches
+removed
+**Code changes**: this commit
+
+`workIsInLibrary` pairs a catalogue work with a Letterboxd row on a normalised title AND a
+year, where a year missing on either side counts as agreement. **1,022 of 7,063 works
+carried a year**, so for 6,041 the match was title-only — and the collisions were not
+hypothetical. Measured against the owner's own export afterwards: of 327 works with a Los
+Angeles row that matched his library, **36 were the wrong film.** Batman 1966 against his
+1989, Fargo the 2014 series against his 1996 film, Star Trek 1966 against 2009, Mission:
+Impossible, The A-Team, King Kong, The Fugitive, 3:10 to Yuma.
+
+**The source is TMDB `find` by IMDb id.** 6,038 of the 6,041 year-less works carry an IMDb
+id and only 12 carry a TMDB id, so the IMDb id is the key we have; on the same 30 works
+TMDB answered 28 and Wikidata's P345 → P577 answered 19. IMDb itself is never read — the id
+is a lookup key, not a page ([[source-evaluation]]).
+
+**The measurement that changed the design, and nearly stopped the write.** A year we write
+can be WORSE than the null it replaces: a null makes the match loose, a wrong year makes it
+fail. 298 backfilled years compared against the same reader's export came back exact 266
+(89.3%), off by one 9 (3.0%), off by two or more 24 (8.1%).
+
+Those two groups are different things, and reading them as one number would have been the
+mistake. **Off by one is one film with two true dates** — Letterboxd dates a film by its
+first public showing, TMDB by its primary release, so Kingsman is 2014/2015 and Reservoir
+Dogs 1991/1992 with neither side wrong. **Off by two or more is a different film.** So
+`YEAR_TOLERANCE = 1`: wide enough to hold a premiere and its release together, narrow
+enough to keep 1984's Ghostbusters away from 2016's. It costs about one case in three
+hundred — The Evil Dead premiered 1981 and released 1983 — and widening to two would
+recover that one while re-merging four genuinely different films.
+
+358 works still have no year: TMDB does not know them by their id. They keep the loose
+match, which is the only thing a null can do.
+
+**1,217 tests, all passing** (11 new). Note for anyone reading the earlier Los Angeles
+figures: the owner's LA film count drops **326 → 291**, because 35 of them were never his
+films.
 ## [2026-09-10] fix | The empty sitemap that claimed a letter was empty
 
 **Object**: `app/sitemap.js`, `test/sitemap.test.mjs`, `.claude/launch.json`

@@ -83,6 +83,47 @@ Four rules worth keeping:
   library gets what there is to go and see; the rating option is not offered until there is
   a library to read it from.
 
+## The year, and why two of them can both be right
+
+The matcher pairs a catalogue work with a library row on a normalised title **and** a year,
+where a year missing on either side counts as agreement. Measured 10.09.2026 that made the
+match title-only for **6,041 of 7,063 works**, and the collisions were real: the reader's
+1984 *Ghostbusters* was matching the catalogue's 2016 one, and their 2009 *Star Trek* was
+matching the 1966 series.
+
+**6,038 of those 6,041 carry an IMDb id**, and only 12 carry a TMDB id — so the IMDb id is
+the key we actually have. On the same 30 works, TMDB's `find` answered **28** and
+Wikidata's P345 → P577 answered **19**, which settled the source.
+[scripts/backfill-work-years.mjs](../../scripts/backfill-work-years.mjs). IMDb itself is
+never read — their terms forbid extracting it ([[source-evaluation]]) and the id is used
+only as a lookup key.
+
+**The measurement that changed the design.** 298 backfilled years compared against the same
+reader's own export:
+
+| | | |
+|---|---|---|
+| exact | 266 | 89.3% |
+| **off by one** | 9 | 3.0% — Kingsman 2014/2015, Reservoir Dogs 1991/1992, V for Vendetta 2005/2006, Split 2016/2017 |
+| **off by two or more** | 24 | 8.1% — Star Trek 2009/1966, A Star Is Born 2018/1937, Ghostbusters 1984/2016 |
+
+Those two rows are different things. **Off by one is one film with two true dates** —
+Letterboxd dates a film by its first public showing and TMDB by its primary release, and a
+festival film differs by a year with neither side wrong. **Off by two or more is a
+different film**: a remake, a reboot, or the series of the same name — precisely the
+collision the year was added to stop.
+
+So `YEAR_TOLERANCE` is **one year**: wide enough to hold a premiere and its release
+together, narrow enough to keep 1984's *Ghostbusters* away from 2016's. It costs about one
+case in three hundred — *The Evil Dead* premiered in 1981 and was released in 1983, and two
+years apart it reads as two films. Widening to two would fix that one and re-merge four
+genuinely different films with it, which is the worse trade.
+
+**A year we write must not be worse than the null it replaces**, and it can be: a null makes
+the match loose, a wrong year makes it fail. That is why the backfill writes TMDB's primary
+release date and nothing else — no guessing from a title, no averaging across regions — and
+the tolerance lives in the client rather than the data pretending to a precision it lacks.
+
 ## Gotchas
 
 - A record from Letterboxd (no imdbId) and one from IMDb (with imdbId) will NOT merge into one.

@@ -67,21 +67,45 @@ const normalizedTitle = normalizeWorkTitle;
 // Exported so a test can assert the two definitions are the same one.
 export { normalizeWorkTitle as normalizedTitleForTest };
 
+// Two release years for one film, and both are right.
+//
+// Letterboxd dates a film by its first public showing; TMDB's `find` answers with the
+// primary release date. For a festival film those are different years and neither is
+// wrong — measured on 298 works whose year was backfilled from TMDB and compared against
+// the same reader's own export:
+//
+//   exact                 266  (89.3%)
+//   off by one              9  ( 3.0%)   Kingsman 2014/2015, Reservoir Dogs 1991/1992,
+//                                        V for Vendetta 2005/2006, Split 2016/2017
+//   off by two or more     24  ( 8.1%)   Star Trek 2009/1966, A Star Is Born 2018/1937,
+//                                        Ghostbusters 1984/2016 — DIFFERENT FILMS
+//
+// The two groups are different things. The off-by-one rows are one film with two true
+// dates; the off-by-two rows are a remake, a reboot or the series of the same name, which
+// is exactly the collision the year was added to stop. So the tolerance is **one year** —
+// wide enough to hold a premiere and its release together, narrow enough to keep 1984's
+// Ghostbusters away from 2016's.
+//
+// It costs about one case in three hundred: The Evil Dead premiered in 1981 and was
+// released in 1983, and two years apart it is read as two films. Widening to two would
+// merge The Evil Dead correctly and re-merge four genuinely different films with it, which
+// is the worse trade.
+export const YEAR_TOLERANCE = 1;
+
 // The library row behind a work, or null. `workIsInLibrary` is this question with the
 // answer thrown away, and it is written once so the two can never disagree about which
 // film matched — a sort that ordered by one row while the filter tested another would be
 // invisible and wrong.
 //
-// The year matches when EITHER side lacks one. That is deliberate and it is a known cost:
-// 1,022 of the 7,063 works in the catalogue carry a year, so requiring one would match
-// almost nothing. Same-titled films can therefore collide — the gotcha [[personal-library]]
-// already names.
+// A year missing on EITHER side still counts as agreement. That is not laxity, it is the
+// only thing that can be done with a null: before the backfill 6,041 of 7,063 works had
+// no year at all, and the ones still lacking one are works TMDB does not know.
 export function libraryEntryFor(work, library) {
   const title = normalizedTitle(work?.title);
   if (!title) return null;
   return (Array.isArray(library) ? library : []).find((movie) =>
     normalizedTitle(movie?.title) === title
-      && (!work?.year || !movie?.year || work.year === movie.year),
+      && (!work?.year || !movie?.year || Math.abs(work.year - movie.year) <= YEAR_TOLERANCE),
   ) ?? null;
 }
 
