@@ -7,6 +7,39 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-10] update | The map had no address, so it could only ever open on London
+
+**Object**: `app/lib/map-url.mjs`, `app/components/SceneMapApp.jsx`, `test/map-url.test.mjs`
+**Scenario**: feature · **Outcome**: ✅ `/?city=los-angeles` opens the map there
+**Code changes**: this commit
+
+Found while trying to show the owner his own Los Angeles data: **the map always opens on
+London and there is no way to link anywhere else.** `londonCenter` and `Q84` are hard-coded
+initial state and nothing read the URL. Every other surface got an address — a work in
+#146, a city and the directory in #158, a place in #129 — and the main one never did.
+
+It costs most for the person actually travelling. "Open my map on Los Angeles" is now a
+link; before it was four clicks through a dropdown where the city sits **below four films
+of the same name**, at y=939 in a 720-pixel viewport, so it has to be scrolled to.
+
+A **city slug is preferred to a coordinate** for the reason [[directory]] gives: it
+survives the anchor being re-measured, and `?city=los-angeles` says what it means where
+`?lat=34.0597` does not. A raw coordinate is still accepted — the map can be dragged
+anywhere and Wikidata knows far more cities than the gazetteer does.
+
+Two details worth keeping:
+
+- **The exclusion had to move with it.** `cityWikidataId` starts as Q84 to keep London out
+  of London's own results; a map opened elsewhere must not carry it, or the city it opened
+  on is filtered out of its own answer.
+- **`replaceState`, never `pushState`.** A map is dragged continuously and every nudge would
+  otherwise become a history entry the back button walks through.
+
+Read in the state initialiser rather than an effect, so the first fetch already asks about
+the right city instead of loading London and then moving.
+
+**1,307 tests, all passing** (12 new).
+
 ## [2026-09-10] fix | 562 cards said "no places recorded" about works we hold rows for
 
 **Object**: `app/api/work/route.js`, `app/lib/submission-places.mjs`, `app/work/[slug]/page.jsx`
