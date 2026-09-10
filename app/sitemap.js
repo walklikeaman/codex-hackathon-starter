@@ -10,6 +10,12 @@
 // parse, so a sitemap entry cannot point somewhere the app would 404 — the failure mode of
 // a hand-written sitemap.
 
+// The extension is not a slip: `next` ships no exports map, so `next/navigation` resolves
+// only under a bundler, and this module is imported directly by node in the tests. The
+// extensionless form fails the whole suite file at import time — loudly, which is the only
+// reason it is safe to write something this easy to "correct".
+import { notFound } from "next/navigation.js";
+
 import { GET as filmsRoute } from "./api/directory/films/route.js";
 import { GET as placesRoute } from "./api/directory/places/route.js";
 import { ALL_CITIES, cityPath } from "./lib/city-gazetteer.mjs";
@@ -63,6 +69,20 @@ export async function placesInTheGraph(route = placesRoute) {
 // and rides on the first file — cannot be seen without handing it places to build from.
 export default async function sitemap({ id }, { loadPlaces = placesInTheGraph } = {}) {
   const slug = String(id ?? "a");
+
+  // An id nobody generated is a 404, not an empty file. Next hands this function whatever
+  // `<id>.xml` was asked for and validates nothing — the image route beside it checks its
+  // own `generateImageMetadata` and this one does not — so /sitemap/zzz.xml answered 200
+  // with an empty <urlset>. That is not "no such file": a <urlset> with no <url> in it is
+  // the claim that nothing is filed under that letter. Measured on production 10.09: zzz,
+  // qqq and 1 all answered 200. The same `notFound()` that /place/[slug] gives a dead
+  // address, for the same reason.
+  //
+  // `export const dynamicParams = false` also works and was measured — but only in a
+  // production build, because the loader emits `generateStaticParams` for this route only
+  // when NODE_ENV is production. `next dev` kept answering 200, and a bug that is invisible
+  // in the mode people develop in is a bug that comes back.
+  if (!generateSitemaps().some((entry) => entry.id === slug)) notFound();
 
   // Asked for once, on the file that carries them. A place has no letter to be filed under
   // — its URL is a name and a uuid, not a title — so there is no per-letter split to make.

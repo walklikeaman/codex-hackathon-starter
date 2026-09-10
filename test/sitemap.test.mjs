@@ -43,6 +43,29 @@ test("the split is one file per letter, and '#' travels as a slug", () => {
   assert.ok(!ids.includes("#"));
 });
 
+test("an id nobody generated is refused, not answered with an empty file", async () => {
+  // Next validates nothing before calling the sitemap — /sitemap/zzz.xml answered 200 with
+  // an empty <urlset> on production 10.09, and so did qqq and 1. An empty <urlset> is not
+  // "no such file", it is the claim that nothing is filed under that letter.
+  for (const id of ["zzz", "index", "1", "", "#"]) {
+    await assert.rejects(
+      () => sitemap({ id }, { loadPlaces: noPlaces }),
+      (error) => error.digest === "NEXT_HTTP_ERROR_FALLBACK;404",
+      `/sitemap/${id}.xml was answered instead of refused`,
+    );
+  }
+});
+
+test("every id generateSitemaps names is served", async () => {
+  // The other direction of the same pin, and the one that matters more: a guard that
+  // disagreed with the list would 404 all 27 files at once, which is a sitemap that has
+  // stopped existing while still building cleanly.
+  for (const { id } of generateSitemaps()) {
+    const entries = await sitemap({ id }, { loadPlaces: noPlaces });
+    assert.ok(Array.isArray(entries), `/sitemap/${id}.xml was refused`);
+  }
+});
+
 test("the fixed pages ride on the first file and nowhere else", async () => {
   const first = urls(await sitemap({ id: "a" }, { loadPlaces: noPlaces }));
   const second = urls(await sitemap({ id: "b" }, { loadPlaces: noPlaces }));

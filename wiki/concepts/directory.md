@@ -147,11 +147,26 @@ component that fetches `/api/catalogue` after it mounts: the rule would leave th
 looking at an empty map on the one page that is the product. None of those endpoints is
 linked from any page, so it would have bought nothing.
 
-**Known and unchanged:** `/sitemap/<anything>.xml` answers **200 with an empty `<urlset>`**
-— `zzz`, `qqq`, `1`, all of them — because the metadata route matches any id and an unknown
-letter simply produces no rows. It is a soft 404, and it says "there is nothing filed under
-this letter", which is a claim rather than an error. Nothing links to those URLs and the
-index names only the real 27, so it was left alone rather than fixed blind.
+**An id nobody generated is a 404, and it took measuring to get right.** Next hands the
+sitemap function whatever `<id>.xml` was asked for and validates nothing — the image route
+beside it checks its own `generateImageMetadata`, this one does not — so `/sitemap/zzz.xml`
+answered **200 with an empty `<urlset>`**, and so did `qqq` and `1`. That is not "no such
+file": a `<urlset>` with no `<url>` in it is the claim that nothing is filed under that
+letter. The guard is the same `notFound()` a dead address gets on `/place/[slug]`.
+
+`export const dynamicParams = false` fixes it too, and is the more idiomatic line — but only
+half the time. Measured both ways against a real server:
+
+| | `next dev` | `next start` |
+|---|---|---|
+| `dynamicParams = false` | `zzz` → **200** | `zzz` → 404 |
+| `notFound()` | `zzz` → 404 | `zzz` → 404 |
+
+The loader emits `generateStaticParams` for this route **only when `NODE_ENV` is
+production**, so in dev there is no list for `dynamicParams` to check against and the config
+does nothing. A bug that is invisible in the mode people develop in is a bug that comes back,
+so the explicit guard won. `.claude/launch.json` gained a `scenemap-start` entry in the same
+change, because this is a difference `next dev` cannot show you.
 
 ## Known-wrong
 
