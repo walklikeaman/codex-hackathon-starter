@@ -58,8 +58,19 @@ export const CANDIDATE_STUDIO_STYLE = Object.freeze({
   hint: "Named by a source, and inside a studio lot. The camera was here; the story is set elsewhere.",
 });
 
+// A point with ninety-six films on it is not the same size as one with a single film.
+// Growing it logarithmically for the same reason the clusters do: a linear scale saturates
+// against the clamp almost at once, and 5 films and 96 draw identically.
+export function candidateRadius(workCount) {
+  const n = Number.isFinite(workCount) && workCount > 0 ? workCount : 1;
+  if (n <= 1) return CANDIDATE_STYLE.radius;
+  return Math.min(16, CANDIDATE_STYLE.radius + Math.log10(n) * 6);
+}
+
 export function candidateStyle(feature, { selected = false } = {}) {
-  const base = feature?.properties?.depicts_elsewhere ? CANDIDATE_STUDIO_STYLE : CANDIDATE_STYLE;
+  const props = feature?.properties ?? {};
+  const shape = props.depicts_elsewhere ? CANDIDATE_STUDIO_STYLE : CANDIDATE_STYLE;
+  const base = { ...shape, radius: candidateRadius(props.work_count) };
   if (!selected) return base;
   // Selection FILLS it, which is the one moment a candidate may look solid: the reader
   // is pointing at it, so it is no longer competing with the verified pins for meaning.
@@ -128,6 +139,14 @@ export function viewportQuery(bounds, zoom, { workId = null, kinds = null, candi
   const south = bounds.getSouth?.() ?? bounds.south;
   const north = bounds.getNorth?.() ?? bounds.north;
   if (![west, east, south, north].every((value) => Number.isFinite(value))) return null;
+  // A box with no area is not a viewport. Leaflet answers `getBounds()` on a map it has
+  // not measured with `west === east`, and the query built from it asks the server about a
+  // single point — which returns nothing, honestly, and looks exactly like "there is
+  // nothing here". Observed as an empty Los Angeles with 1,000 points one fetch away.
+  //
+  // Refusing it here means the layer keeps what it had and asks again on the next event,
+  // instead of replacing real pins with an empty answer.
+  if (west === east || south === north) return null;
 
   const params = new URLSearchParams({
     // Leaflet can report longitudes outside [-180,180] after wrapping; clamp so the
@@ -151,13 +170,24 @@ export function viewportQuery(bounds, zoom, { workId = null, kinds = null, candi
 // is the question, where on a film card it is already answered.
 export function candidateSummary(properties) {
   if (!properties) return "";
-  const style = properties.depicts_elsewhere ? CANDIDATE_STUDIO_STYLE : CANDIDATE_STYLE;
+  const style = properties?.depicts_elsewhere ? CANDIDATE_STUDIO_STYLE : CANDIDATE_STYLE;
   const checked = properties.status === "verified"
     // The review checked the SOURCE, not the claim. Saying "verified" here would promote
     // a queue row to a fact in the one place nobody would notice.
     ? "Source checked — still a candidate, not part of our graph."
     : style.hint;
   return checked;
+}
+
+// How many films sit on one point, said in words. The count leads because it is the reason
+// the pin is worth opening — "96 films" is the whole story of the Millennium Biltmore.
+export function pointFilmLine(properties) {
+  const works = Number(properties?.work_count) || 0;
+  const rows = Number(properties?.row_count) || works;
+  if (works === 0) return "";
+  const films = `${works} film${works === 1 ? "" : "s"}`;
+  // Two different numbers: one film listing a place twice is not two films.
+  return rows > works ? `${films} · ${rows} listings` : films;
 }
 
 // A short, honest one-liner for a point's popup.

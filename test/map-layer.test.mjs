@@ -173,3 +173,14 @@ test("the queue is asked for only when wanted, and never alongside a work", asyn
   const scoped = viewportQuery(bounds, 13, { candidates: true, workId: "44444444-4444-4444-4444-444444444444" });
   assert.equal(new URLSearchParams(scoped).get("candidates"), null);
 });
+
+test("a viewport with no area is refused, not queried", async () => {
+  const { viewportQuery } = await import("../app/lib/map-layer.mjs");
+  // Leaflet answers `getBounds()` on a map it has not measured with west === east. The
+  // query built from that asks the server about a single point, gets an honestly empty
+  // answer, and the map looks empty with 1,000 points one fetch away.
+  assert.equal(viewportQuery({ west: -118.32, east: -118.32, south: 34.08, north: 34.08 }, 14), null);
+  assert.equal(viewportQuery({ west: -118.45, east: -118.15, south: 34.0, north: 34.0 }, 14), null);
+  // A real viewport still works.
+  assert.ok(viewportQuery({ west: -118.45, east: -118.15, south: 34.0, north: 34.2 }, 14));
+});

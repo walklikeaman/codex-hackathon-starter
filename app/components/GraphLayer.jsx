@@ -4,10 +4,13 @@ import L from "leaflet";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CircleMarker, Popup, Tooltip, useMap, useMapEvents } from "react-leaflet";
 
+import { workPath } from "../lib/work-url.mjs";
+
 import {
   candidateClusterStyle,
   candidateStyle,
   candidateSummary,
+  pointFilmLine,
   clusterStyle,
   pointStyle,
   pointSummary,
@@ -26,6 +29,7 @@ export default function GraphLayer({
   selectedPlaceId = null,
   onSelect,
   onSummary,
+  onCandidatesInView,
   // The queue layer (#the-queue-reaches-the-map). Off by default: every caller written
   // before it existed keeps drawing the graph and nothing else.
   showCandidates = false,
@@ -107,14 +111,38 @@ export default function GraphLayer({
   // leave a bubble whose number describes rows that are no longer on the map.
   const visibleCandidates = useMemo(() => {
     if (!showCandidates) return [];
-    return data.candidates.filter((feature) => {
+    return data.candidates.flatMap((feature) => {
       const props = feature.properties ?? {};
-      if (props.cluster) return true;
-      if (!showStudioLots && props.depicts_elsewhere) return false;
-      if (isMine && !isMine(props)) return false;
-      return true;
+      if (props.cluster) return [feature];
+      if (!showStudioLots && props.depicts_elsewhere) return [];
+      if (!isMine) return [feature];
+
+      // A point carries many films, so "mine" is a question about the LIST, not the pin.
+      // A place keeps its pin if any film there is the reader's — and the popup is
+      // narrowed to those, because a filtered map that still lists 96 films in the popup
+      // is answering a question nobody asked.
+      const mine = props.films.filter((film) => isMine(film));
+      if (!mine.length) return [];
+      return [{
+        ...feature,
+        properties: {
+          ...props,
+          films: mine,
+          work_count: mine.length,
+          row_count: mine.length,
+          // The cap belonged to the unfiltered list; this one is complete by construction.
+          films_truncated: false,
+        },
+      }];
     });
   }, [data.candidates, showCandidates, showStudioLots, isMine]);
+
+  // The panel lists exactly what the map DREW, not what the server sent. Listing the
+  // response instead would put films in the list that the studio-lot switch or the library
+  // filter had just removed from the map — a header contradicting the thing it heads.
+  useEffect(() => {
+    onCandidatesInView?.(visibleCandidates);
+  }, [visibleCandidates, onCandidatesInView]);
 
   return (
     <>
@@ -188,32 +216,54 @@ export default function GraphLayer({
 
         return (
           <CircleMarker
-            key={props.submission_id ?? `candidate-${lat}-${lng}-${index}`}
+            key={`candidate-${lat}-${lng}-${index}`}
             center={[lat, lng]}
             renderer={renderer}
             pathOptions={candidateStyle(feature, { selected: false })}
             eventHandlers={{ click: () => onSelect?.(feature) }}
           >
-            <Popup>
-              {/* The film first: on a browsable map the reader arrived at a pin without
-                  having asked about any work, so "which film is this" is the question. */}
-              <strong>{props.work_title ?? "Unknown work"}</strong>
+            {/* The count on the pin, not only inside it. A point holding 96 films looks
+                like a point holding one until you click it, and the whole reason this
+                layer groups by coordinate is that 71% of the rows were hidden. */}
+            {props.work_count > 1 && (
+              <Tooltip direction="top" opacity={0.9}>{props.work_count}</Tooltip>
+            )}
+            <Popup maxHeight={280}>
+              <strong>{props.name}</strong>
               <br />
-              <span>{props.name}</span>
-              <br />
-              <span className="graph-badge badge-candidate">{candidateSummary(props)}</span>
+              <span className="graph-badge badge-candidate">{pointFilmLine(props)}</span>
               {props.studio_lot && (
                 <>
                   <br />
-                  <small>Inside {props.studio_lot.name}</small>
+                  <small>Inside {props.studio_lot.name} — the camera was here, the scene is set elsewhere</small>
                 </>
               )}
-              {props.source_url && (
+              {props.area_hint && (
                 <>
                   <br />
-                  <a href={props.source_url} target="_blank" rel="noopener noreferrer">Where this came from</a>
+                  <small>{props.area_hint}</small>
                 </>
               )}
+              {/* The films themselves. This is the answer to "what was shot here", and
+                  before the grouping it was unreachable — every film after the first was
+                  drawn underneath the pin you could see. */}
+              <ul className="point-films">
+                {props.films.map((film) => (
+                  <li key={`${film.work_id}-${film.place_name}`}>
+                    <a href={workPath({ id: film.work_id, title: film.title })}>
+                      {film.title}
+                    </a>
+                    {film.year ? <span className="point-film-year"> {film.year}</span> : null}
+                  </li>
+                ))}
+              </ul>
+              {/* Says so rather than printing its own cap as the number we hold — the
+                  silent truncation this project has already shipped once. */}
+              {props.films_truncated && (
+                <small>Showing {props.films.length} of {props.work_count} — open the place to see them all.</small>
+              )}
+              <br />
+              <small>{candidateSummary(props)}</small>
             </Popup>
           </CircleMarker>
         );

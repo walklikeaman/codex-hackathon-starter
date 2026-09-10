@@ -76,6 +76,13 @@ import { createCoalescingRunner } from "../lib/coalesce.mjs";
 import { WALKING_SPEED_KMH, haversineKm, isLatLng } from "../lib/geo.mjs";
 import { libraryRating, mergeLibraries, parseMediaCsv, workIsInLibrary } from "../lib/media-library.mjs";
 import { citySlugFromName, mapUrlQuery, readMapUrl } from "../lib/map-url.mjs";
+import { workPath } from "../lib/work-url.mjs";
+import {
+  DEFAULT_VIEW_MODE,
+  VIEW_MODES,
+  filmsInView,
+  filmsInViewLabel,
+} from "../lib/films-in-view.mjs";
 import {
   DEFAULT_SORT,
   NO_MINIMUM,
@@ -583,20 +590,58 @@ function InvalidateOnResize() {
 
   useEffect(() => {
     const container = map.getContainer();
-    if (typeof ResizeObserver === "undefined") return undefined;
+
+    // ONCE ON MOUNT, before any observer. Leaflet measures its container when the map is
+    // constructed, and React can construct it before the browser has laid the container
+    // out — during hydration, or inside a panel that is still opening. The map then holds
+    // a size of 0 and NOTHING later corrects it: `getBounds()` returns a box where
+    // `west === east`, every layer asks the server about a viewport of zero area, and the
+    // answer is honestly empty.
+    //
+    // A ResizeObserver alone does not save this. It fires when the size CHANGES, and here
+    // it never does — the container was 1280x720 from the first paint and only Leaflet's
+    // copy was wrong.
+    // `setTimeout`, not `requestAnimationFrame`. rAF does not run while the tab is not
+    // painting — a background tab, a hidden panel — and that is exactly a case where the
+    // map is constructed unlaid-out. Waiting for a frame that never comes leaves the map
+    // stuck at size zero for as long as nobody looks at it, and then it is still stuck
+    // when they do. Two passes: one immediately after layout, one after a beat for a
+    // container that is still animating open.
+    // Retried, not fired once. A container can still be laying out — fonts loading, a
+    // panel animating open, a tab that has never painted — and a single pass then measures
+    // zero just as the constructor did. This gives up after ~2s because by then the size
+    // is either real or the map is not on screen at all.
+    const settle = [];
+    let attempts = 0;
+    const measure = () => {
+      map.invalidateSize();
+      const size = map.getSize();
+      attempts += 1;
+      if ((size.x === 0 || size.y === 0) && attempts < 10) {
+        settle.push(setTimeout(measure, 200));
+      }
+    };
+    settle.push(setTimeout(measure, 0));
+    const clearSettle = () => settle.forEach(clearTimeout);
+
+    if (typeof ResizeObserver === "undefined") return clearSettle;
     let frame = 0;
     const observer = new ResizeObserver(() => {
-      // Coalesced into a frame: a drag-resized panel fires this continuously, and
-      // invalidateSize does real layout work each time.
-      cancelAnimationFrame(frame);
+      // Coalesced: a drag-resized panel fires this continuously and invalidateSize does
+      // real layout work each time.
+      clearTimeout(frame);
       // NOT `debounceMoveend: true`. That option suppresses the `moveend` this emits, and
       // `moveend` is what makes the graph and queue layers refetch. A map that re-measures
       // silently keeps drawing the pins it loaded for the OLD viewport — which looks like
       // an empty map rather than a stale one, and is worse for being invisible.
-      frame = requestAnimationFrame(() => map.invalidateSize());
+      frame = setTimeout(() => map.invalidateSize(), 60);
     });
     observer.observe(container);
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
+    return () => {
+      clearSettle();
+      clearTimeout(frame);
+      observer.disconnect();
+    };
   }, [map]);
 
   return null;
@@ -863,6 +908,11 @@ export default function SceneMapApp() {
   const [candidatesOn, setCandidatesOn] = useState(true);
   const [studioLotsOn, setStudioLotsOn] = useState(true);
   const [candidatesMineOnly, setCandidatesMineOnly] = useState(false);
+  // What is on screen right now, and how the reader wants to read it. Separate from the
+  // film chips beside it: those are what somebody SEARCHED for, this is what the map is
+  // showing, and it changes as the map moves.
+  const [candidatesDrawn, setCandidatesDrawn] = useState([]);
+  const [filmsViewMode, setFilmsViewMode] = useState(DEFAULT_VIEW_MODE);
   // How the film list is ordered, and the bar a film must clear to appear at all.
   //
   // The rating is the READER'S. `work_ratings` holds 32 rows across 12 works out of
@@ -921,7 +971,11 @@ export default function SceneMapApp() {
   const routeRequestId = useRef(0);
   const filmImageCache = useRef(new Map());
   const [selectedFilms, setSelectedFilms] = useState(() => fallbackFilms.map((film) => film.id));
-  const [activeLocation, setActiveLocation] = useState(fallbackLocations[0]);
+  // Seeded from the London demo, EXCEPT when the URL named somewhere. `RecenterOnSelection`
+  // flies to the active location at zoom 14, so a demo pin left selected steals the map
+  // from the address that was opened: `/?city=los-angeles` landed the reader in Notting
+  // Hill, under a header reading "Los Angeles".
+  const [activeLocation, setActiveLocation] = useState(opened ? null : fallbackLocations[0]);
   const [filmImageState, setFilmImageState] = useState({
     locationId: fallbackLocations[0].id,
     url: null,
@@ -1394,8 +1448,10 @@ export default function SceneMapApp() {
     // The SAME predicate the chips use. The panel counting one set while the map drew
     // another is the "header contradicting the thing it heads" bug this project already
     // fixed once for the viewport count.
-    return (props) => passesLibraryFilter(
-      { title: props?.work_title ?? "", year: props?.work_year ?? null },
+    // Called per FILM now, not per pin: a point carries a list, and each entry is its own
+    // work with its own title and year.
+    return (film) => passesLibraryFilter(
+      { title: film?.title ?? "", year: film?.year ?? null },
       { library, mineOnly: candidatesMineOnly || wantsRating, minRating },
     );
   }, [candidatesMineOnly, library, minRating]);
@@ -1417,6 +1473,8 @@ export default function SceneMapApp() {
       window.history.replaceState(null, "", next);
     }
   }, [browseCenter, mapZoom, cityName]);
+
+  const filmsHere = useMemo(() => filmsInView(candidatesDrawn), [candidatesDrawn]);
 
   const visibleLocations = useMemo(
     () => sourceLocations.filter((location) =>
@@ -2389,7 +2447,8 @@ export default function SceneMapApp() {
             <GraphLayer
               kinds={graphKinds.length ? graphKinds : null}
               workId={graphWorkId || null}
-              showCandidates={candidatesOn}
+              onCandidatesInView={setCandidatesDrawn}
+            showCandidates={candidatesOn}
               showStudioLots={studioLotsOn}
               isMine={candidateIsMine}
               onSummary={setGraphSummary}
@@ -2650,6 +2709,76 @@ export default function SceneMapApp() {
                 <p className="graph-note">
                   Showing the first {graphSummary.count} — zoom in for the rest.
                 </p>
+              )}
+
+              {/* Everything on screen, as a list.
+                  The map answers "what happened at THIS point" when a pin is clicked; this
+                  answers the other half — what is in this view — which is the question
+                  somebody asks while panning across a city. It updates as the map moves,
+                  and it lists what was DRAWN, so the studio-lot and library switches above
+                  narrow it too. */}
+              {candidatesOn && filmsHere.length > 0 && (
+                <div className="films-here">
+                  <div className="films-here-head">
+                    <strong>{filmsInViewLabel(filmsHere)}</strong>
+                    {/* Posters for browsing, titles for finding one. Different tasks, not
+                        a matter of taste, so both are offered rather than one chosen. */}
+                    <div className="films-here-modes" role="group" aria-label="How to show the films in view">
+                      {[[VIEW_MODES.posters, "Posters"], [VIEW_MODES.list, "List"]].map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          className={filmsViewMode === mode ? "is-on" : ""}
+                          aria-pressed={filmsViewMode === mode}
+                          onClick={() => setFilmsViewMode(mode)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {filmsViewMode === VIEW_MODES.posters ? (
+                    <div className="films-here-grid">
+                      {filmsHere.slice(0, 60).map((film) => (
+                        <a
+                          key={film.work_id ?? film.title}
+                          className={`films-here-card${film.on_a_lot_only ? " is-lot" : ""}`}
+                          href={film.work_id ? workPath({ id: film.work_id, title: film.title }) : undefined}
+                          title={`${film.title} — ${film.place_count} place${film.place_count === 1 ? "" : "s"} in view`}
+                        >
+                          <span className="films-here-thumb" aria-hidden="true">
+                            {String(film.title ?? "?").slice(0, 2).toUpperCase()}
+                          </span>
+                          <span className="films-here-title">{film.title}</span>
+                          <span className="films-here-count">{film.place_count}</span>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <ul className="films-here-list">
+                      {filmsHere.slice(0, 120).map((film) => (
+                        <li key={film.work_id ?? film.title}>
+                          {film.work_id
+                            ? <a href={workPath({ id: film.work_id, title: film.title })}>{film.title}</a>
+                            : film.title}
+                          {film.year ? <span className="films-here-year"> {film.year}</span> : null}
+                          <span className="films-here-count">{film.place_count}</span>
+                          {/* A film seen only on a backlot is a different answer from one
+                              seen on the street, and it is said before anybody walks. */}
+                          {film.on_a_lot_only && <span className="films-here-lot">studio lot</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {filmsHere.length > (filmsViewMode === VIEW_MODES.posters ? 60 : 120) && (
+                    <p className="graph-note">
+                      Showing {filmsViewMode === VIEW_MODES.posters ? 60 : 120} of {filmsHere.length} —
+                      zoom in to narrow the view.
+                    </p>
+                  )}
+                </div>
               )}
 
               {/* What the map may draw beyond the graph.
