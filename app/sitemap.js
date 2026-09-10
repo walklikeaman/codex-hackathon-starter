@@ -15,14 +15,8 @@ import { GET as placesRoute } from "./api/directory/places/route.js";
 import { ALL_CITIES, cityPath } from "./lib/city-gazetteer.mjs";
 import { DIRECTORY_LETTERS, letterToSlug } from "./lib/directory.mjs";
 import { placePath } from "./lib/place-url.mjs";
+import { SITE_URL as SITE } from "./lib/site-url.mjs";
 import { workPath } from "./lib/work-url.mjs";
-
-// A sitemap must carry absolute URLs. Vercel exposes the deployment host but not the
-// canonical one, so the production domain is the default and an override exists for
-// anybody serving this somewhere else.
-const SITE =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ||
-  "https://codex-hackathon-starter.vercel.app";
 
 // 500 is the function's own ceiling; the largest letter held 640 works on 18.08, so a
 // letter needs two passes at most today and the loop is written to take as many as it needs.

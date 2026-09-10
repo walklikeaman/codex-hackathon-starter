@@ -7,6 +7,42 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-10] update | The sitemap had 27 files and no door: robots.txt and an index
+
+**Object**: `app/robots.js`, `app/sitemap.xml/route.js`, `app/lib/site-url.mjs`,
+`app/sitemap.js`, `test/sitemap.test.mjs`
+**Scenario**: fix (#158) · **Outcome**: ✅ done — `/robots.txt` and `/sitemap.xml` answer 200
+on production, the index names all 27 files
+**Code changes**: this commit
+
+Found while verifying the place URLs of the previous entry. Production, 10.09:
+`/sitemap/a.xml` answered 200 with 498 URLs, `/sitemap.xml` answered 404 and `/robots.txt`
+answered 404. `generateSitemaps` serves the split at `/sitemap/<id>.xml` and serves nothing
+at `/sitemap.xml`, so the split that keeps each file small is what made the whole set
+unreachable from the root. Four weeks of a sitemap nothing was told about.
+
+**The index takes its list from `generateSitemaps()` and not from a second walk over the
+alphabet.** A list written twice is two lists that disagree the day a letter is added, and
+both ways of disagreeing are bad: a file the index skips is crawled by nobody, a file it
+invents is a 404 handed to a crawler. Tested as one list, not as 27 strings.
+
+**robots.txt disallows nothing, on purpose.** `Disallow: /api/` is the obvious line — 31
+handlers that answer JSON and are not pages — and it would cost the home page: Google's
+renderer obeys robots.txt for a page's own requests, and the map at `/` fetches
+`/api/catalogue` after it mounts. Nothing links those endpoints anyway. The decision is a
+test so that it is not "fixed" later.
+
+The canonical origin moved to `app/lib/site-url.mjs`, because three files now need it and
+`VERCEL_URL` is the wrong answer in all three: it is the deployment's hostname, so a sitemap
+built from it publishes, on every preview, a list of URLs that die with the deployment.
+
+**Known and unchanged:** `/sitemap/<anything>.xml` answers 200 with an empty `<urlset>` —
+`zzz`, `qqq`, `1` — because the metadata route matches any id. A soft 404 that claims
+"nothing is filed under this letter". Nothing links to those URLs and the index names only
+the real 27, so it was left alone rather than changed blind. Suite: 1,188 after rebasing onto #175, five of them new here.
+
+---
+
 ## [2026-09-10] update | Los Angeles: the map had one pin for a city with 5,266
 
 **Object**: `app/lib/studio-lots.mjs`, `app/lib/map-points.mjs`, `app/lib/map-layer.mjs`,
