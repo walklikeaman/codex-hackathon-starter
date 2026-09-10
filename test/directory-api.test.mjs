@@ -4,6 +4,7 @@ import test from "node:test";
 import { createDirectoryCitiesHandler } from "../app/api/directory/cities/route.js";
 import { createDirectoryCityHandler } from "../app/api/directory/city/route.js";
 import { createDirectoryFilmsHandler } from "../app/api/directory/films/route.js";
+import { createDirectoryPlacesHandler } from "../app/api/directory/places/route.js";
 
 const ENV = { NEXT_PUBLIC_SUPABASE_URL: "https://db.test", NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon" };
 
@@ -247,4 +248,141 @@ test("the index is cached at the edge, and its failures are not", async () => {
   const failed = await bad(get("/api/directory/cities"));
   assert.equal(failed.status, 502);
   assert.equal(failed.headers.get("Cache-Control"), "private, no-store");
+});
+
+// ---------- every place with an address ----------
+
+const place = (id, name) => ({ id, name });
+
+const A = "40d442dd-257e-424b-8043-50677eb30ca6";
+const B = "75f7b94d-feb7-429f-bcd9-3f1d02a589e5";
+const C = "dba56b0b-f313-44a4-a8c1-cac4a4afeb88";
+
+test("a place row without a fact is not listed, because it has no page", async () => {
+  // `/api/place` 404s a place with no facts, so listing one would put a 404 in the sitemap
+  // — the single thing the sitemap is written to make impossible. Measured 10.09 the graph
+  // holds no such row; /api/resolve writes places and links in two statements, so it can.
+  const handler = createDirectoryPlacesHandler({
+    env: ENV,
+    createReader: () => ({
+      loadPlaces: async () => ({ places: [place(A, "London"), place(B, "Marseille")], total: 2 }),
+      loadFactPlaceIds: async () => [A],
+    }),
+  });
+
+  const payload = await (await handler(get("/api/directory/places"))).json();
+  assert.deepEqual(payload.places, [{ id: A, name: "London" }]);
+});
+
+test("membership is asked about the page in hand, not about the whole view", async () => {
+  // The cost of the second read is tied to the page size rather than to the size of the
+  // graph, which is what lets this stay two reads as the graph grows.
+  let asked = null;
+  const handler = createDirectoryPlacesHandler({
+    env: ENV,
+    perPage: 2,
+    createReader: () => ({
+      loadPlaces: async () => ({ places: [place(A, "London"), place(B, "Marseille")], total: 9 }),
+      loadFactPlaceIds: async (ids) => { asked = ids; return ids; },
+    }),
+  });
+
+  await handler(get("/api/directory/places?page=2"));
+  assert.deepEqual(asked, [A, B]);
+});
+
+test("the page walks the whole graph and says when it is done", async () => {
+  const offsets = [];
+  const handler = createDirectoryPlacesHandler({
+    env: ENV,
+    perPage: 2,
+    createReader: () => ({
+      loadPlaces: async ({ offset }) => {
+        offsets.push(offset);
+        return { places: offset === 0 ? [place(A, "London"), place(B, "Marseille")] : [place(C, "Aix")], total: 3 };
+      },
+      loadFactPlaceIds: async (ids) => ids,
+    }),
+  });
+
+  const first = await (await handler(get("/api/directory/places"))).json();
+  assert.equal(first.page.hasNext, true);
+  const second = await (await handler(get("/api/directory/places?page=2"))).json();
+  assert.equal(second.page.hasNext, false);
+  assert.deepEqual(offsets, [0, 2]);
+  assert.deepEqual(second.places, [{ id: C, name: "Aix" }]);
+});
+
+test("a page past the end is empty, and is not re-asked at the first page", async () => {
+  // The opposite of the rule /api/directory/city follows, and deliberately: that one
+  // protects a reader from a link of ours that looks like lost data. The reader here is a
+  // crawler walking pages 1..n, and repeating page 1 would enumerate the same URLs twice.
+  const offsets = [];
+  const handler = createDirectoryPlacesHandler({
+    env: ENV,
+    perPage: 2,
+    createReader: () => ({
+      loadPlaces: async ({ offset }) => { offsets.push(offset); return { places: [], total: 3 }; },
+      loadFactPlaceIds: async (ids) => ids,
+    }),
+  });
+
+  const payload = await (await handler(get("/api/directory/places?page=900"))).json();
+  assert.deepEqual(offsets, [(900 - 1) * 2]);
+  assert.deepEqual(payload.places, []);
+  assert.equal(payload.page.page, 2);
+});
+
+test("no rows at all is an empty list, not an error", async () => {
+  // A graph we hold nothing in is a real state — it is the state this project started in.
+  let asked = true;
+  const handler = createDirectoryPlacesHandler({
+    env: ENV,
+    createReader: () => ({
+      loadPlaces: async () => ({ places: [], total: 0 }),
+      // No ids means nothing to ask about; the reader must not send an empty `in ()`.
+      loadFactPlaceIds: async (ids) => { asked = ids.length > 0; return []; },
+    }),
+  });
+
+  const response = await handler(get("/api/directory/places"));
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.deepEqual(payload.places, []);
+  assert.equal(payload.page.total, 0);
+  assert.equal(asked, false);
+});
+
+test("a failing listing is a 502 that says nothing about the database", async () => {
+  const logged = [];
+  const handler = createDirectoryPlacesHandler({
+    env: ENV,
+    createReader: () => ({
+      loadPlaces: async () => { throw new Error("connection refused at 10.0.0.4"); },
+      loadFactPlaceIds: async () => [],
+    }),
+    logError: (...args) => logged.push(args),
+  });
+
+  const response = await handler(get("/api/directory/places"));
+  assert.equal(response.status, 502);
+  assert.equal((await response.json()).error, "The directory is unavailable");
+  assert.equal(response.headers.get("Cache-Control"), "private, no-store");
+  assert.equal(logged.length, 1);
+});
+
+test("no configuration is a 503, and the places are cached at the edge", async () => {
+  const unconfigured = createDirectoryPlacesHandler({ env: {} });
+  const refused = await unconfigured(get("/api/directory/places"));
+  assert.equal(refused.status, 503);
+  assert.equal(refused.headers.get("Cache-Control"), "private, no-store");
+
+  const handler = createDirectoryPlacesHandler({
+    env: ENV,
+    createReader: () => ({
+      loadPlaces: async () => ({ places: [], total: 0 }),
+      loadFactPlaceIds: async () => [],
+    }),
+  });
+  assert.match((await handler(get("/api/directory/places"))).headers.get("Cache-Control"), /max-age=3600/);
 });

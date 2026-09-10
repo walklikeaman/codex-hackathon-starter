@@ -7,6 +7,46 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-10] update | The 70 place pages are in the sitemap, and only the ones that exist
+
+**Object**: `app/api/directory/places/route.js`, `app/sitemap.js`, `test/sitemap.test.mjs`,
+`test/directory-api.test.mjs`
+**Scenario**: feature (#129 step 4, into #158) · **Outcome**: ✅ done — file `a` carries 498
+entries, 70 of them places, and all 70 were opened
+**Code changes**: this commit
+
+`/place/<slug>` shipped with a page and no enumeration. The sitemap builds its URLs by
+calling route handlers and the same path functions the pages parse — that is what makes a
+sitemap entry unable to 404 — and places had no listing route to call, so 70 pages were
+invisible to anything that finds pages by being told about them.
+
+**A place row is not a place page, and the listing has to know the difference.** The page is
+`place_facts_at()`, which 404s a place with no facts, while `/api/resolve` writes `places`
+and the links that make facts in two separate statements — and has been observed to fail
+between them (the 42P10 incident). Measured 10.09: 70 place rows, 92 facts, and all 70 rows
+carry one, so the filter drops nothing today. It is there for the day it does: without it the
+sitemap gains a 404 instead of losing a URL, which is the one thing this file exists to
+prevent.
+
+**Not a migration, and that was the fork.** One `exists (select 1 from place_facts ...)`
+would say it in a single query, the shape `catalogue_letter` already uses. PostgREST cannot
+reach it from here — `place_facts` is a `union all` view and carries no foreign key it can
+infer, so the embed answers PGRST200 — so the join would need new DDL, and a function that
+reaches production later than the code turns the route into a 502 and the sitemap into a
+silently empty one. Two bounded reads over 70 rows is the cheaper mistake: a page of places,
+then the fact ids for that page only, so the cost is tied to the page size and not to the
+graph.
+
+**Verified against the real database, not only against fakes.** All 70 URLs were resolved
+through `/api/place`: 70 of 70 answered 200. File `b` carries no places — they ride on the
+first file with the other fixed pages, because a place has no letter to be filed under.
+
+**The sitemap had no test at all until now.** It has seven, and they run with Supabase
+deliberately unconfigured so the film half stops at a 503 rather than at the network. Suite:
+1,150 (was 1,136).
+
+---
+
 ## [2026-09-02] update | The place card has a reader, and both ends of one table now agree
 
 **Object**: `app/place/[slug]/page.jsx`, `app/api/place/route.js`, `app/lib/place-url.mjs`,
