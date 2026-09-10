@@ -6,11 +6,30 @@
 // able to show WHAT a pin is (street vs studio vs coarse city centroid) and how well
 // it is evidenced, instead of drawing every point as an equally confident dot.
 
+import { studioLotAt } from "./studio-lots.mjs";
 import { hasValidCoordinate, MAP_THRESHOLD } from "./grounding.mjs";
 
 // Below this zoom the database returns grid clusters instead of individual places.
 export const CLUSTER_BELOW_ZOOM = 12;
 export const MAX_MAP_POINTS = 2000;
+
+// What PostgREST will actually hand back, which is NOT what the function was asked for.
+//
+// Found by looking: `map_candidate_points_in_view` returned 2,000 rows for a viewport
+// over central Los Angeles and `/api/map/points` answered with exactly 1,000. PostgREST
+// caps a response at `db-max-rows` (1,000 on this project) and says nothing about it —
+// no header, no error — so a ceiling of 2,000 could never be reached and
+// `truncated: length >= 2000` could never be true. The map would have drawn half the
+// queue and told the reader it had drawn all of it.
+//
+// That is the silent-truncation failure #158 already paid for once, when a film card
+// printed its own display cap as though it were the number we hold. The ceiling is now
+// the number that can actually arrive, so "truncated" means truncated.
+//
+// The graph path has the same latent cap and has never reached it — 70 places worldwide —
+// but it is the same number for the same reason, and the day it grows it should already
+// be honest.
+export const MAX_ROWS_PER_RESPONSE = 1000;
 export const MIN_ZOOM = 0;
 export const MAX_ZOOM = 22;
 
@@ -73,6 +92,9 @@ export function parseMapQuery(searchParams) {
     workId: workIdRaw,
     kinds: kinds?.value ?? null,
     clustered: roundedZoom < CLUSTER_BELOW_ZOOM,
+    // Opt-in. Every caller written before the queue reached the map keeps getting the
+    // graph and nothing else, and a client that wants the other 32,148 rows asks.
+    candidates: searchParams.get("candidates") === "1",
   };
 }
 
@@ -131,6 +153,63 @@ function clusterFeature(row) {
   };
 }
 
+// A queue row on the map. It is NOT a place feature and must never be shaped like one:
+// no confidence, no confidence_band, no evidence_count, no place_class. Those are answers
+// the review process produces, and giving a candidate a null one puts it in the same
+// vocabulary as something we checked. What it carries instead is who said it, whether
+// anybody has looked, and — from `studio-lots.mjs` — whether it is inside a fence.
+//
+// `candidate: true` is the flag the client draws on. It rides in properties rather than
+// being inferred from a missing field, because "no confidence" and "confidence we have
+// not computed" would otherwise be the same shape.
+function candidateFeature(row) {
+  const lot = studioLotAt(row.lat, row.lng);
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [row.lng, row.lat] },
+    properties: {
+      candidate: true,
+      submission_id: row.submission_id,
+      work_id: row.work_id,
+      work_title: row.work_title ?? null,
+      work_kind: row.work_kind ?? null,
+      name: row.name,
+      area_hint: row.area_hint ?? null,
+      source_kind: row.source_kind ?? null,
+      source_url: row.source_url ?? null,
+      // "In review" / "Source checked" — the same two words the film card uses.
+      status: row.status ?? "pending",
+      // The pin is real; what it filmed is set somewhere else. Decided by the polygon,
+      // never by the name — see [[studio-lots]].
+      studio_lot: lot ? { slug: lot.slug, name: lot.name, access: lot.access } : null,
+      depicts_elsewhere: Boolean(lot),
+    },
+  };
+}
+
+function candidateClusterFeature(row) {
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [row.lng, row.lat] },
+    properties: {
+      cluster: true,
+      candidate: true,
+      point_count: row.cluster_count ?? 0,
+      // Places and films are two different numbers. A cluster stating only the first
+      // cannot tell "one series with 87 pins" from "87 films", and in Los Angeles the
+      // busiest cell is 163 films.
+      work_count: row.work_count ?? 0,
+      sample_name: row.sample_name ?? null,
+    },
+  };
+}
+
+export function candidateFeatures(query, rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => hasValidCoordinate(numeric(row?.lat), numeric(row?.lng)))
+    .map((row) => (query.clustered ? candidateClusterFeature(row) : candidateFeature(row)));
+}
+
 // The centre of the requested viewport, for "nothing here — the nearest is…".
 // Handles a window that crosses the antimeridian, where the midpoint is not the mean.
 export function viewportCenter(query) {
@@ -162,18 +241,26 @@ function nearestEntry(row) {
 // Shape the RPC rows into GeoJSON. Rows without a usable coordinate are dropped here
 // too — the database already filters them, but the map must never receive a pin it
 // cannot honestly place.
-export function buildMapResponse(query, rows, fictionalRows = [], nearestRows = []) {
+export function buildMapResponse(query, rows, fictionalRows = [], nearestRows = [], candidateRows = []) {
   const source = Array.isArray(rows) ? rows : [];
   const features = source
     .filter((row) => hasValidCoordinate(numeric(row?.lat), numeric(row?.lng)))
     .map((row) => (query.clustered ? clusterFeature(row) : placeFeature(row)));
+  // A SEPARATE collection, not appended to `features`. Mixing them would make every
+  // existing reader of this response — the map layer, the count in the panel, the route
+  // builder — start counting unchecked rows as places, silently, on the day this shipped.
+  const candidates = candidateFeatures(query, candidateRows);
 
   return {
     type: "FeatureCollection",
     features,
+    candidates,
     clustered: query.clustered,
     zoom: query.zoom,
-    truncated: !query.clustered && features.length >= MAX_MAP_POINTS,
+    // Clusters truncate too, and in Los Angeles they do: 1,023 cells at zoom 11. A
+    // count is checked whether or not the viewport is clustered.
+    truncated: features.length >= MAX_ROWS_PER_RESPONSE,
+    candidates_truncated: candidates.length >= MAX_ROWS_PER_RESPONSE,
     map_threshold: MAP_THRESHOLD,
     // Fiction is never a pin, but it is real content: the client shows it as a strip
     // so "set in Mordor" is visible instead of silently missing.
@@ -185,7 +272,10 @@ export function buildMapResponse(query, rows, fictionalRows = [], nearestRows = 
     })),
     // An empty viewport should say "we have nothing HERE", not imply we have nothing.
     // Only populated when there is genuinely nothing in view.
-    nearest: features.length === 0
+    // "Nothing HERE" has to mean nothing at all. With the queue on the map a viewport can
+    // hold 4,729 candidates and no verified place, and telling that reader the nearest
+    // thing is 90 km away would be false about the screen they are looking at.
+    nearest: features.length === 0 && candidates.length === 0
       ? (Array.isArray(nearestRows) ? nearestRows : []).map(nearestEntry)
       : [],
   };

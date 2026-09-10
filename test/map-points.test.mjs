@@ -6,6 +6,7 @@ import {
   buildMapResponse,
   CLUSTER_BELOW_ZOOM,
   MAX_MAP_POINTS,
+  MAX_ROWS_PER_RESPONSE,
   parseMapQuery,
   pointBadge,
   viewportCenter,
@@ -313,4 +314,165 @@ test("map points route maps a graph failure to 502", async () => {
     },
   });
   assert.equal((await handler(mapRequest({ ...LONDON, z: "13" }))).status, 502);
+});
+
+// ---------- the queue on the browsable map ----------
+//
+// Measured 10.09.2026: /api/map/points over the whole Los Angeles basin returned ONE
+// feature — the city itself — while the queue held 5,266 located rows there across 1,642
+// works. These tests are about the layer that closes that, and about the two ways it
+// could quietly start lying: by looking like the graph, and by being cut off in silence.
+
+const LA = { west: "-118.45", south: "34.00", east: "-118.15", north: "34.20" };
+
+function candidateRow(overrides = {}) {
+  return {
+    submission_id: "22222222-2222-2222-2222-222222222222",
+    work_id: "33333333-3333-3333-3333-333333333333",
+    work_title: "Cloverfield",
+    work_year: 2008,
+    work_kind: "film",
+    name: "New York City Backlot",
+    area_hint: "860 N Gower St, Los Angeles, CA",
+    // Inside Paramount. The address reads like a street and the coordinate is a backlot.
+    lat: 34.0863,
+    lng: -118.3202,
+    source_kind: "moviemaps",
+    source_url: "https://moviemaps.org/locations/1",
+    status: "pending",
+    ...overrides,
+  };
+}
+
+function candidateHandler(rows, overrides = {}) {
+  return createMapPointsHandler({
+    env: {},
+    createReader: () => ({
+      points: async () => [],
+      clusters: async () => [],
+      fictional: async () => [],
+      nearest: async () => [{ place_id: "p", name: "Somewhere", lat: 1, lng: 1, distance_km: 90 }],
+      candidatePoints: async () => rows,
+      candidateClusters: async () => overrides.clusters ?? [],
+      ...overrides.reader,
+    }),
+    logError: () => {},
+  });
+}
+
+test("the queue is not served unless it is asked for", async () => {
+  // Every caller of this endpoint was written before the queue reached the map. They must
+  // keep getting the graph and nothing else on the day this shipped.
+  let asked = false;
+  const handler = candidateHandler([candidateRow()], {
+    reader: { candidatePoints: async () => { asked = true; return [candidateRow()]; } },
+  });
+  const body = await (await handler(mapRequest({ ...LA, z: "13" }))).json();
+  assert.equal(asked, false);
+  assert.deepEqual(body.candidates, []);
+});
+
+test("candidates ride in their own collection, never mixed into features", async () => {
+  // Appending them to `features` would make every existing reader of this response — the
+  // map layer, the panel's count, the route builder — start counting unchecked rows as
+  // places, silently.
+  const handler = candidateHandler([candidateRow()], {
+    reader: { points: async () => [placeRow()] },
+  });
+  const body = await (await handler(mapRequest({ ...LA, z: "13", candidates: "1" }))).json();
+  assert.equal(body.features.length, 1);
+  assert.equal(body.candidates.length, 1);
+  assert.equal(body.features[0].properties.candidate, undefined);
+  assert.equal(body.candidates[0].properties.candidate, true);
+});
+
+test("a candidate carries no confidence and no band", async () => {
+  // Those are answers the review produces. A null one would put an unexamined row in the
+  // same vocabulary as something we checked.
+  const handler = candidateHandler([candidateRow()]);
+  const body = await (await handler(mapRequest({ ...LA, z: "13", candidates: "1" }))).json();
+  const props = body.candidates[0].properties;
+  assert.equal("confidence" in props, false);
+  assert.equal("confidence_band" in props, false);
+  assert.equal("evidence_count" in props, false);
+  assert.equal("place_class" in props, false);
+  // What it does carry: who said it, whether anybody looked, and which film.
+  assert.equal(props.source_kind, "moviemaps");
+  assert.equal(props.status, "pending");
+  assert.equal(props.work_title, "Cloverfield");
+});
+
+test("a candidate inside a studio lot is flagged by its coordinate", async () => {
+  const handler = candidateHandler([candidateRow()]);
+  const body = await (await handler(mapRequest({ ...LA, z: "13", candidates: "1" }))).json();
+  const props = body.candidates[0].properties;
+  assert.equal(props.depicts_elsewhere, true);
+  assert.equal(props.studio_lot.name, "Paramount Pictures Studios");
+});
+
+test("a candidate on the street is not flagged", async () => {
+  const handler = candidateHandler([candidateRow({ name: "Union Station", lat: 34.0561, lng: -118.2365 })]);
+  const body = await (await handler(mapRequest({ ...LA, z: "13", candidates: "1" }))).json();
+  assert.equal(body.candidates[0].properties.depicts_elsewhere, false);
+  assert.equal(body.candidates[0].properties.studio_lot, null);
+});
+
+test("a work-scoped map does not also draw the queue", async () => {
+  // /api/locations already serves a film's candidates. Both would draw every row twice.
+  let asked = false;
+  const handler = candidateHandler([], {
+    reader: { candidatePoints: async () => { asked = true; return []; } },
+  });
+  await handler(mapRequest({
+    ...LA, z: "13", candidates: "1", workId: "44444444-4444-4444-4444-444444444444",
+  }));
+  assert.equal(asked, false);
+});
+
+test("truncation is measured against what a response can actually carry", async () => {
+  // PostgREST caps a response at 1,000 rows and says nothing about it. Against a ceiling
+  // of 2,000 the flag could never be true, and the map would draw half the queue while
+  // looking complete — the silent truncation #158 already paid for.
+  const many = Array.from({ length: MAX_ROWS_PER_RESPONSE }, (_, i) =>
+    candidateRow({ submission_id: `id-${i}`, lat: 34.05 + i / 1e6 }));
+  const handler = candidateHandler(many);
+  const body = await (await handler(mapRequest({ ...LA, z: "13", candidates: "1" }))).json();
+  assert.equal(body.candidates.length, MAX_ROWS_PER_RESPONSE);
+  assert.equal(body.candidates_truncated, true);
+  assert.ok(MAX_ROWS_PER_RESPONSE < MAX_MAP_POINTS, "the ceiling is below what the function is asked for");
+});
+
+test("\"nothing here\" means nothing at all, candidates included", async () => {
+  // A viewport can hold 4,729 candidates and no verified place. Telling that reader the
+  // nearest thing is 90 km away would be false about the screen in front of them.
+  const handler = candidateHandler([candidateRow()]);
+  const body = await (await handler(mapRequest({ ...LA, z: "13", candidates: "1" }))).json();
+  assert.deepEqual(body.nearest, []);
+
+  const empty = candidateHandler([]);
+  const emptyBody = await (await empty(mapRequest({ ...LA, z: "13", candidates: "1" }))).json();
+  assert.equal(emptyBody.nearest.length, 1);
+});
+
+test("a zoomed-out queue arrives as clusters counting places AND films", async () => {
+  // The busiest cell over Los Angeles holds 163 films. A bubble stating only the row
+  // count cannot tell "one series with 87 pins" from "87 films".
+  const handler = candidateHandler([], {
+    clusters: [{ lat: 34.05, lng: -118.25, cluster_count: 240, work_count: 163, sample_name: "Union Station" }],
+  });
+  const body = await (await handler(mapRequest({ ...LA, z: "9", candidates: "1" }))).json();
+  assert.equal(body.clustered, true);
+  const props = body.candidates[0].properties;
+  assert.equal(props.cluster, true);
+  assert.equal(props.candidate, true);
+  assert.equal(props.point_count, 240);
+  assert.equal(props.work_count, 163);
+});
+
+test("the candidates flag is opt-in and parsed strictly", () => {
+  assert.equal(parseMapQuery(params({ ...LA, z: "13" })).candidates, false);
+  assert.equal(parseMapQuery(params({ ...LA, z: "13", candidates: "1" })).candidates, true);
+  // Not "true", not "yes" — one spelling, so a typo fails loudly rather than turning the
+  // layer on by accident.
+  assert.equal(parseMapQuery(params({ ...LA, z: "13", candidates: "true" })).candidates, false);
 });

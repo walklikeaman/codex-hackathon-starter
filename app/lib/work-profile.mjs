@@ -17,6 +17,7 @@ import { parseTmdbMovieId } from "./tmdb-images.mjs";
 import { imdbUrl, metacriticUrl, rottenTomatoesUrl } from "./work-ratings.mjs";
 import { finiteOrNull } from "./numbers.mjs";
 import { distanceLabel, factDistance, factSentence, isRoutableFact } from "./facts.mjs";
+import { studioLotAt } from "./studio-lots.mjs";
 
 export const MAX_PROFILE_PLACES = 60;
 export const MAX_PROFILE_STILLS = 12;
@@ -83,6 +84,17 @@ export function placeRole(place) {
   if (ON_LOCATION.has(placeClass)) {
     return { role: "on_location", mappable: true, label: "Filmed on location" };
   }
+  // Nobody has classified this one, and the coordinate can still answer. A point inside a
+  // studio lot IS a soundstage or a backlot whatever its row says, and 212 of the 5,266
+  // Los Angeles rows in the queue are exactly that — Courthouse Square, New York Street,
+  // Paramount's backlots — with no `place_class` between them.
+  //
+  // This runs LAST, and only where the class is unknown: an explicit classification is
+  // somebody's decision and outranks a shape on a map. See [[studio-lots]].
+  const lot = studioLotAt(place?.lat, place?.lng);
+  if (lot) {
+    return { role: "studio", mappable: true, label: `Filmed at ${lot.name}`, lot };
+  }
   return { role: "unknown", mappable: true, label: "Location unconfirmed" };
 }
 
@@ -137,6 +149,9 @@ export function placeSummary(place) {
     role_label: role.label,
     // The studio flag the product needs: the pin is real, what it depicts is not here.
     depicts_elsewhere: role.role === "studio",
+    // Which lot, when we know — the card needs the name to say whether a reader can get
+    // in, and `access` is the same vocabulary the rest of the product uses.
+    studio_lot: role.lot ? { slug: role.lot.slug, name: role.lot.name, access: role.lot.access } : null,
     precision: precisionBadge(place),
     osm_building_id: place?.osm_building_id ?? null,
     confidence: finiteOrNull(place?.confidence),

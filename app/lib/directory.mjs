@@ -93,11 +93,20 @@ function plural(n, word) {
 // What a city page says under its title. It states the radius because the radius is what
 // the page MEANS: these are not the films made in the city's administrative boundary, they
 // are the films we hold a place for within 20 km of a measured centre.
+// "Recorded" was the wrong word and it was on every city page.
+//
+// `city_catalogue` reads `location_submissions` — the QUEUE. Every row it counts is a
+// candidate nobody has checked, which the map and the film card both say plainly and this
+// line did not: "1,322 films with 3,907 places recorded" reads as a graph we stand behind,
+// and the graph holds 70 places in the world, one of them in Los Angeles.
+//
+// The count is worth printing — it is what there is to look at — so the fix is the verb,
+// not the number.
 export function cityCoverage({ works = 0, points = 0, radiusKm = 20 } = {}) {
   if (works === 0) {
-    return `No places recorded within ${radiusKm} km of here yet.`;
+    return `Nothing named within ${radiusKm} km of here yet.`;
   }
-  return `${plural(works, "film")} with ${plural(points, "place")} recorded within ${radiusKm} km of the centre.`;
+  return `${plural(works, "film")} with ${plural(points, "place")} named by our sources within ${radiusKm} km of the centre — candidates, not yet checked.`;
 }
 
 // The line under a work in a city list. Printed even at one place, deliberately: a work we

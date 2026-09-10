@@ -35,6 +35,50 @@ export const BADGE_STYLES = Object.freeze({
   }),
 });
 
+// A queue row. HOLLOW — no fill at all — because that is the one thing on this map that
+// reads instantly as "an outline of something, not the thing". Every badge above is
+// filled, and the difference between "we checked this" and "somebody said this" has to
+// survive being glanced at on a phone in the street.
+//
+// It borrows no badge colour. A candidate that looked like a dimmer `exact` would read as
+// a weaker version of a verified place, and it is not weaker — it is unexamined, which is
+// a different axis ([[three-axes]]).
+export const CANDIDATE_STYLE = Object.freeze({
+  color: "#9aa0a6", fillColor: "#9aa0a6", fillOpacity: 0,
+  radius: 5, weight: 1.5, dashArray: "2 3",
+  label: "In review", hint: "Named by a source. Nobody has checked it.",
+});
+
+// A candidate inside a studio lot keeps the hollow ring — it is still unchecked — and
+// takes the studio colour, so the two facts stay separable: unexamined AND a backlot.
+export const CANDIDATE_STUDIO_STYLE = Object.freeze({
+  ...CANDIDATE_STYLE,
+  color: "#b98cff", fillColor: "#b98cff",
+  label: "In review · studio lot",
+  hint: "Named by a source, and inside a studio lot. The camera was here; the story is set elsewhere.",
+});
+
+export function candidateStyle(feature, { selected = false } = {}) {
+  const base = feature?.properties?.depicts_elsewhere ? CANDIDATE_STUDIO_STYLE : CANDIDATE_STYLE;
+  if (!selected) return base;
+  // Selection FILLS it, which is the one moment a candidate may look solid: the reader
+  // is pointing at it, so it is no longer competing with the verified pins for meaning.
+  return { ...base, radius: base.radius + 3, weight: 2.5, color: "#fff3a5", fillOpacity: 0.35 };
+}
+
+// The queue's clusters are hollow for the same reason, and grey, so a zoomed-out map
+// never suggests the graph covers a city it has barely looked at.
+export function candidateClusterStyle(count) {
+  return {
+    radius: clusterRadius(count),
+    color: "#9aa0a6",
+    fillColor: "#16130c",
+    fillOpacity: 0.45,
+    weight: 1.5,
+    dashArray: "3 4",
+  };
+}
+
 const FALLBACK_BADGE = "exact";
 
 export function badgeStyle(badge) {
@@ -77,7 +121,7 @@ export function clusterStyle(count, { hasStudio = false } = {}) {
 // Leaflet bounds → the query the endpoint expects. Longitude is passed through as
 // west/east without sorting: Leaflet reports a date-line-crossing viewport that way and
 // the API reads it as a crossing window, not as its complement.
-export function viewportQuery(bounds, zoom, { workId = null, kinds = null } = {}) {
+export function viewportQuery(bounds, zoom, { workId = null, kinds = null, candidates = false } = {}) {
   if (!bounds) return null;
   const west = bounds.getWest?.() ?? bounds.west;
   const east = bounds.getEast?.() ?? bounds.east;
@@ -96,7 +140,24 @@ export function viewportQuery(bounds, zoom, { workId = null, kinds = null } = {}
   });
   if (workId) params.set("workId", workId);
   if (kinds?.length) params.set("kinds", kinds.join(","));
+  // Opt-in, and never alongside workId: a work-scoped map already draws its own
+  // candidates through /api/locations, and asking for both draws every row twice.
+  if (candidates && !workId) params.set("candidates", "1");
   return params.toString();
+}
+
+// What a candidate's popup says. It names the film first — on a browsable map a reader
+// arrives at a pin without having asked about any particular work, so "which film is this"
+// is the question, where on a film card it is already answered.
+export function candidateSummary(properties) {
+  if (!properties) return "";
+  const style = properties.depicts_elsewhere ? CANDIDATE_STUDIO_STYLE : CANDIDATE_STYLE;
+  const checked = properties.status === "verified"
+    // The review checked the SOURCE, not the claim. Saying "verified" here would promote
+    // a queue row to a fact in the one place nobody would notice.
+    ? "Source checked — still a candidate, not part of our graph."
+    : style.hint;
+  return checked;
 }
 
 // A short, honest one-liner for a point's popup.

@@ -3243,6 +3243,14 @@ figcaption a {
   border-radius: 999px;
   padding: 0.1rem 0.5rem;
 }
+/* The studio badge is the one badge on a row that is a WARNING rather than a label — the
+   pin is real and what it filmed is set somewhere else — so it is the one that carries
+   colour. Every other badge stays quiet; if they all shouted, none of them would. */
+.work-badge.is-studio {
+  color: #f0a83c;
+  border-color: rgba(240, 168, 60, 0.45);
+  background: rgba(240, 168, 60, 0.1);
+}
 .work-place-sentence { margin: 0.5rem 0 0.35rem; line-height: 1.5; }
 .work-place-meta { margin: 0; font-size: 0.8rem; color: rgba(236, 232, 225, 0.55); }
 .work-place-source { font-size: 0.8rem; color: #f0a83c; text-decoration: none; }
@@ -3484,3 +3492,32 @@ figcaption a {
    without turning the row into a wall of orange. */
 .work-place-head h3 a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(240, 168, 60, 0.5); }
 .work-place-head h3 a:hover { color: #f0a83c; border-bottom-color: #f0a83c; }
+
+/* The queue's switches, under the grounded-places panel. Quiet by design: the layer they
+   control is the unchecked half of the map, and a loud control over unverified data
+   invites the reader to trust it. */
+.candidate-filters {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 0.4rem;
+}
+.candidate-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: rgba(236, 232, 225, 0.72);
+  cursor: pointer;
+}
+.candidate-switch input { accent-color: #f0a83c; }
+/* A candidate's popup badge. Grey and outlined, matching the hollow pin it belongs to —
+   the same "an outline of something, not the thing" the map layer uses. */
+.graph-badge.badge-candidate {
+  color: rgba(236, 232, 225, 0.7);
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.72rem;
+}

@@ -780,6 +780,14 @@ export default function SceneMapApp() {
 
   const [graphLayerOn, setGraphLayerOn] = useState(false);
   const [graphSummary, setGraphSummary] = useState(null);
+  // The queue on the browsable map. Measured 10.09: /api/map/points over the whole Los
+  // Angeles basin returned ONE feature — the city itself — while the queue held 5,266
+  // located rows there across 1,642 works. The layer is off until asked for, because it
+  // is 32,148 rows against a graph of 70 and because turning it on changes what the map
+  // is claiming: hollow pins nobody has checked, beside filled ones we stand behind.
+  const [candidatesOn, setCandidatesOn] = useState(false);
+  const [studioLotsOn, setStudioLotsOn] = useState(true);
+  const [candidatesMineOnly, setCandidatesMineOnly] = useState(false);
   const [graphKinds, setGraphKinds] = useState([]);   // [] = every kind
   const [graphWorkId, setGraphWorkId] = useState(""); // "" = the whole library
   const [graphWorks, setGraphWorks] = useState([]);
@@ -1268,6 +1276,21 @@ export default function SceneMapApp() {
   // reversible choice.
   const [trailSpoilers, setTrailSpoilers] = useState(false);
   const [nextStopId, setNextStopId] = useState(null);
+
+  // "My films only", decided here and nowhere else. The library is in localStorage and
+  // never reaches the server ([[personal-library]]), so the server cannot filter by it —
+  // it hands over every row in the viewport and this predicate drops the rest. A
+  // candidate carries its work's title and year for exactly this.
+  //
+  // Null when the switch is off OR the library is empty, and null means "keep
+  // everything": an empty library filtering the map to nothing would look like an outage.
+  const candidateIsMine = useMemo(() => {
+    if (!candidatesMineOnly || library.length === 0) return null;
+    return (props) => workIsInLibrary(
+      { title: props?.work_title ?? "", year: props?.work_year ?? null },
+      library,
+    );
+  }, [candidatesMineOnly, library]);
 
   const visibleLocations = useMemo(
     () => sourceLocations.filter((location) =>
@@ -2223,6 +2246,9 @@ export default function SceneMapApp() {
             <GraphLayer
               kinds={graphKinds.length ? graphKinds : null}
               workId={graphWorkId || null}
+              showCandidates={candidatesOn}
+              showStudioLots={studioLotsOn}
+              isMine={candidateIsMine}
               onSummary={setGraphSummary}
               onSelect={(feature) => {
                 const [lng, lat] = feature.geometry?.coordinates ?? [];
@@ -2482,6 +2508,70 @@ export default function SceneMapApp() {
                   Showing the first {graphSummary.count} — zoom in for the rest.
                 </p>
               )}
+
+              {/* What the map may draw beyond the graph.
+                  The graph holds 70 places in the world and the queue holds 32,148
+                  located rows, so for most of the planet — Los Angeles included — this
+                  switch is the difference between an empty map and the product. It stays
+                  a switch rather than a default because the two are not the same claim,
+                  and the wording under it says which is which. */}
+              <div className="candidate-filters">
+                <button
+                  type="button"
+                  className={`graph-toggle${candidatesOn ? " is-on" : ""}`}
+                  aria-pressed={candidatesOn}
+                  onClick={() => setCandidatesOn((on) => !on)}
+                >
+                  <Layers size={15} aria-hidden="true" />
+                  Unchecked candidates
+                  {candidatesOn && graphSummary ? (
+                    <span className="graph-count">
+                      {graphSummary.clustered
+                        ? `${graphSummary.candidateCount} clusters`
+                        : `${graphSummary.candidateCount} pins`}
+                    </span>
+                  ) : null}
+                </button>
+
+                {candidatesOn && (
+                  <>
+                    <p className="graph-note">
+                      Named by our sources and not checked by us. Drawn hollow — each pin
+                      links to whoever said it.
+                    </p>
+
+                    <label className="candidate-switch">
+                      <input
+                        type="checkbox"
+                        checked={studioLotsOn}
+                        onChange={(event) => setStudioLotsOn(event.target.checked)}
+                      />
+                      {/* The Los Angeles question, as a switch. 212 of the 5,266 rows
+                          there sit inside a studio lot: real pins for scenes set
+                          somewhere else, and not somewhere a visitor can walk. */}
+                      Studio lots and backlots
+                    </label>
+
+                    {library.length > 0 && (
+                      <label className="candidate-switch">
+                        <input
+                          type="checkbox"
+                          checked={candidatesMineOnly}
+                          onChange={(event) => setCandidatesMineOnly(event.target.checked)}
+                        />
+                        Only films from my list ({library.length})
+                      </label>
+                    )}
+
+                    {graphSummary?.candidatesTruncated && (
+                      <p className="graph-note">
+                        More here than one response can carry — showing{" "}
+                        {graphSummary.candidateCount}. Zoom in for the rest.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
 
               {graphSummary?.fictional?.length > 0 && (
                 <div className="fictional-strip">
