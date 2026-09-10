@@ -86,6 +86,10 @@ function PlaceRow({ place, href = null }) {
         {[
           [place.city, place.country].filter(Boolean).join(", "),
           place.role_label,
+          // Said plainly rather than left to be noticed: 10,981 queue rows have no
+          // coordinate, and a row listed without one would otherwise send the reader
+          // looking for a pin that was never there.
+          place.mappable === false ? "No coordinate yet — not on the map" : null,
           typeof place.evidence_count === "number"
             ? `${place.evidence_count} source${place.evidence_count === 1 ? "" : "s"}`
             : null,

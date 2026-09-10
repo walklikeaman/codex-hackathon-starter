@@ -217,3 +217,50 @@ test("a work with facts counts its candidates apart from them", () => {
   });
   assert.equal(line, "2 places · 2 filmed on location · 62 unverified candidates.");
 });
+
+// ---------- rows nobody geocoded ----------
+//
+// Measured 10.09.2026: 10,981 queue rows have no coordinate across 1,506 works, and 562 of
+// those works have nothing else — so 562 cards said "No places recorded for this work yet"
+// about works we hold rows for. Nobody ever ran a geocoder over the queue ([[queue-review]]);
+// the rows are not wrong, they are unlocated.
+
+test("a row with no coordinate is still a candidate the card can print", () => {
+  const candidate = submissionToCandidate(
+    {
+      id: "s1",
+      place_name: "Somerset House in the Strand, London WC2",
+      source_kind: "fandom",
+      source_sentence: "SIS Building, MI6 Headquarters in Tomorrow Never Dies was filmed at Somerset House.",
+      status: "pending",
+      lat: null,
+      lng: null,
+    },
+    { work: { title: "Tomorrow Never Dies" } },
+  );
+  assert.ok(candidate, "it is not dropped");
+  assert.equal(candidate.mappable, false);
+  assert.equal(candidate.lat, null);
+  // A name, a sentence and a source are all readable without a point. The card is a list.
+  assert.match(candidate.sentence, /Somerset House/);
+});
+
+test("a row that can be drawn says so, and leads one that cannot", () => {
+  const rows = [
+    { id: "a", place_name: "Zebra Crossing", source_kind: "moviemaps", status: "pending", lat: null, lng: null },
+    { id: "b", place_name: "Yew Tree Lane", source_kind: "moviemaps", status: "pending", lat: 51.5, lng: -0.1 },
+  ];
+  const chosen = selectWorkCandidates(rows, { work: { title: "X" } });
+  // Alphabetically "Yew" follows "Zebra"; it leads anyway because it has a point.
+  assert.deepEqual(chosen.map((c) => c.name), ["Yew Tree Lane", "Zebra Crossing"]);
+  assert.deepEqual(chosen.map((c) => c.mappable), [true, false]);
+});
+
+test("a checked row still outranks an unchecked one that happens to be located", () => {
+  // Review state is the stronger signal; the coordinate breaks ties inside it.
+  const rows = [
+    { id: "a", place_name: "A", source_kind: "moviemaps", status: "pending", lat: 51.5, lng: -0.1 },
+    { id: "b", place_name: "B", source_kind: "moviemaps", status: "verified", lat: null, lng: null },
+  ];
+  assert.deepEqual(selectWorkCandidates(rows, { work: { title: "X" } }).map((c) => c.name), ["B", "A"]);
+});
