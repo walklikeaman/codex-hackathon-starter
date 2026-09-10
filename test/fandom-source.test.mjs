@@ -195,7 +195,9 @@ test("a split on ';' must not cut an HTML entity in half", () => {
 
 test("a cell that names nothing is not a place", () => {
   for (const junk of ["Same", "Same (currently known as The O2 Arena)", "TBA", "N/A", "—", "?", "Unknown",
-    "some interior shots are studio", "currently known as Altiport 007"]) {
+    "some interior shots are studio", "currently known as Altiport 007",
+    // Shipped once, and caught on a live card: the wiki's aside promoted to an address.
+    "(sometimes misidentified as Banyan Tree Bangkok, Sathorn)"]) {
     assert.equal(namesAPlace(junk), false, `${junk} is not a place`);
   }
   for (const real of ["Somerset House in the Strand, London WC2", "Matamata", "Eilean Donan"]) {

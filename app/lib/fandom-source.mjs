@@ -161,6 +161,11 @@ export function namesAPlace(value) {
   // A fragment left behind by splitting a cell — "currently known as X" is a remark about
   // the place before it, not a second place.
   if (/^(currently|formerly|now|previously|also|later)\b/i.test(text)) return false;
+  // A cell that is only a parenthetical is a remark about the place beside it, not a place.
+  // Shipped once: "CMGN Building Saigon in Tomorrow Never Dies was filmed at (sometimes
+  // misidentified as Banyan Tree Bangkok, Sathorn)" — the wiki's aside, promoted to an
+  // address because the real name sat in a sibling cell.
+  if (/^\(/.test(text)) return false;
   // Needs a letter, and needs to be a name rather than a sentence about the shoot.
   if (!/[a-z]/i.test(text)) return false;
   // "some interior shots are studio" — a remark, not an address. A place name does not
