@@ -69,8 +69,9 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [personal-collections-matrix](sources/personal-collections-matrix.md) —
   where to read personal collections from (research 22.07, verified live) + ideas
   (film stills, "paste your Letterboxd handle")
-- [source-evaluation](sources/source-evaluation.md) — IMDb, Fandom and frame corpora:
-  what we looked at, refused, and why it will not change
+- [source-evaluation](sources/source-evaluation.md) — IMDb, Fandom and frame corpora: what
+  we looked at and refused; and the Fandom refusal overturned in September, because it held
+  one fan project to a standard the other three were waved past
 - [commemorative-plaques](sources/commemorative-plaques.md) — plaques on facades:
   47,064 public-domain points where the quote is already written on the wall (issue #125)
 - [feature-research](sources/feature-research.md) — competitors, APIs and legal

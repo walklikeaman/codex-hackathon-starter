@@ -7,6 +7,67 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-10] ingest | Fandom, refused in July and taken in September — the refusal was the mistake
+
+**Object**: `app/lib/fandom-source.mjs`, `scripts/ingest-fandom.mjs`,
+`supabase/migrations/20260910172513_fandom_is_a_source.sql`,
+`…173157_fandom_must_carry_a_revision.sql`
+**Scenario**: ingest + a reversed decision · **Outcome**: ✅ 155 candidate rows, 147 of them
+carrying a story↔real pairing
+**Code changes**: this commit
+
+The owner asked for fan wikis, I argued against it citing [[source-evaluation]], and he
+reaffirmed. He was right and the July refusal contained a real inconsistency.
+
+**The refusal applied a standard nothing else in the corpus is held to.** Its decisive
+argument was that a Fandom row is an anonymous, unsourced claim. That is equally true of
+the **30,147 MovieMaps rows, 8,062 ReelStreets and 5,580 MovieLocations** already in the
+queue — all fan projects — taken under the owner's rule of 05.08: take the source, mark it
+unverified, do not throw the candidate away. His argument on 10.09 was that film-location
+knowledge is fan-produced by nature; measured against our own corpus, that is just true.
+
+**And it looked in the wrong place.** July checked the "Filming locations" CATEGORY and
+found it empty on three wikis. The category is empty; the content is in tables inside film
+articles. Re-measured over 14 sampled pages per wiki: jamesbond 6 pages with a table (~70
+rows), lotr 2 (24), and harrypotter / marvelcinematicuniverse / breakingbad / twinpeaks
+zero. **So this is hundreds of rows, not thousands** — and its worth is in what it is, not
+how much: the place in the STORY beside the place the camera stood.
+
+> El Gran Palacio Hotel, Havana, in Die Another Day → Playa de La Caleta, Cádiz
+> Cuban roadside in GoldenEye → a road near Punta Garza, Puerto Rico
+> Hamburg Airport in Tomorrow Never Dies → Stansted
+
+**Four refusals are built into the reader, and three of them came from being wrong first.**
+Reading by header rather than position, because three wikis produce three tables that agree
+on no column order. Refusing to pair two bullet lists — Skyfall's row lists seven in-film
+locations beside one soundstage, and zipping them produced *"Istanbul was filmed at Pinewood
+Studios"*, which nobody claimed; one story with several real places IS a pair, so the rule
+turns on the story side alone. Keeping a region on the side its header assigns it to — the
+Bond column "Country and region" is where the SCENE is set, so the row reading "Russia" has
+its shooting location at an altiport in **France**, and using it as an area hint would
+search the wrong country. And refusing cells that name nothing: `Same`, `TBA`, `—`, *"some
+interior shots are studio"* — `Same` being the dangerous one, since taking it literally
+attaches the previous row's address to a different scene.
+
+**The schema caught a real gap and was right to.** `location_submissions_evidence_for_kind`
+ends in `ELSE false`, so a new source is refused until it declares its evidence. It rejected
+the first write because the revision id was living inside the permalink string where no
+query could reach it. Fandom is now held to Wikipedia's rule — `source_sentence` and
+`source_revid` — because it is the same kind of source, and on a fan wiki an anonymous edit
+can move a location overnight, which makes the pinned revision more important, not less.
+
+Unchanged from July and not negotiable: **no images** (the site licence covers text; the
+images are studio material under an anonymous fair-use claim), and **no non-commercial
+wiki** — memory-alpha is CC-BY-NC, minecraft CC BY-NC-SA, and the licence is read live per
+wiki with text and URL required to agree, because on Minecraft they do not.
+
+Measured honestly: only **1 of 155 rows** carries a citation of its own. Across the Bond
+sample it was 3 refs in 70 rows. So the "the fan already cited an independent source"
+answer to July's objection is the exception, not the rule — it is carried because when it
+is there it turns a name into a checkable claim.
+
+**1,292 tests, all passing** (29 new).
+
 ## [2026-09-10] ingest | The catalogue has years, and 36 of the owner's matches were wrong
 
 **Object**: `scripts/backfill-work-years.mjs`, `app/lib/media-library.mjs`,
