@@ -162,23 +162,37 @@ function clusterFeature(row) {
 // `candidate: true` is the flag the client draws on. It rides in properties rather than
 // being inferred from a missing field, because "no confidence" and "confidence we have
 // not computed" would otherwise be the same shape.
+// A pin is a PLACE, and a place can be in ninety-six films.
+//
+// Measured 11.09.2026 over Los Angeles: 5,266 queue rows sit on **2,024 distinct
+// coordinates**, and 3,750 of those rows — 71% — were drawn on top of each other. The
+// busiest single point is the Millennium Biltmore Hotel with 96 films stacked on it. One
+// feature per ROW meant the map showed the topmost and hid the rest.
+//
+// So a feature is now a point, and it carries the films listed there. It is NOT shaped
+// like a place feature: no confidence, no band, no evidence count. Those are answers the
+// review produces, and a null one puts an unexamined row in the same vocabulary as
+// something we checked.
 function candidateFeature(row) {
   const lot = studioLotAt(row.lat, row.lng);
+  const films = Array.isArray(row.films) ? row.films : [];
   return {
     type: "Feature",
     geometry: { type: "Point", coordinates: [row.lng, row.lat] },
     properties: {
       candidate: true,
-      submission_id: row.submission_id,
-      work_id: row.work_id,
-      work_title: row.work_title ?? null,
-      work_kind: row.work_kind ?? null,
-      name: row.name,
+      name: row.place_name,
       area_hint: row.area_hint ?? null,
-      source_kind: row.source_kind ?? null,
-      source_url: row.source_url ?? null,
+      // Two different numbers, and a point where one film was shot twice is not a point
+      // where two films were shot. The pin is sized by films, not by rows.
+      work_count: row.work_count ?? films.length,
+      row_count: row.row_count ?? films.length,
       // "In review" / "Source checked" — the same two words the film card uses.
       status: row.status ?? "pending",
+      // Capped at 40 by the query. `work_count` is the true total beside it, so a popup
+      // listing forty of ninety-six can say so instead of printing its cap as the count.
+      films,
+      films_truncated: (row.work_count ?? films.length) > films.length,
       // The pin is real; what it filmed is set somewhere else. Decided by the polygon,
       // never by the name — see [[studio-lots]].
       studio_lot: lot ? { slug: lot.slug, name: lot.name, access: lot.access } : null,

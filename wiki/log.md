@@ -7,6 +7,67 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-11] update | One pin per place, and the films that were hidden under it
+
+**Object**: `supabase/migrations/20260910231448_one_pin_per_point_carries_its_films.sql`,
+`app/lib/films-in-view.mjs`, `app/lib/map-points.mjs`, `app/lib/map-layer.mjs`,
+`app/components/GraphLayer.jsx`, `app/components/SceneMapApp.jsx`
+**Scenario**: feature · **Outcome**: ✅ 71% of the Los Angeles rows stop being invisible
+**Code changes**: this commit
+
+**Measured over Los Angeles: 5,266 queue rows sit on 2,024 distinct coordinates.** 566 of
+those points carry more than one film, and **3,750 rows — 71% of everything we hold there —
+were drawn on top of each other.** The busiest coordinate is the Millennium Biltmore Hotel
+with **96 films**; the RMS Queen Mary has 88, the former Ambassador Hotel 60, Griffith
+Observatory 40. The map drew the topmost and hid the rest.
+
+One feature per ROW was the wrong shape twice over: it hides the data, and it wastes the
+response cap — 5,266 rows against a 1,000-row ceiling truncates two thirds of the city,
+where 2,024 points fits. **Grouping before the limit** is the same lesson as
+`MAX_ROWS_PER_RESPONSE`: a cap applied to the wrong unit throws away what it should never
+have counted.
+
+**Grouped on the exact coordinate and no closer.** Two entrances of one studio fifty metres
+apart stay two pins — merging them would invent an agreement the sources never had. This
+collapses only rows that already carry the identical point.
+
+The pin is now **sized by how many films sit on it** (logarithmically, for the reason the
+clusters already are), carries the count as a label, and opens a **list of the films** —
+which before the grouping was unreachable, because every film after the first was drawn
+underneath the one you could see.
+
+**And the other half of the question.** The map answered "what happened at THIS point" and
+never "what is in this view", which is what somebody asks while panning across a city.
+`films-in-view.mjs` groups the drawn features by work — 1,304 rows across 291 films in the
+owner's Los Angeles set, and a list repeating "Blade Runner" eleven times is not a list of
+films — and the panel offers **posters or titles**, because browsing and looking for one are
+different tasks. It lists what was DRAWN, so the studio-lot and library switches narrow it
+too: a panel listing films the map had just removed would be the "header contradicting the
+thing it heads" bug all over again.
+
+**Two bugs found while verifying it**, both real and neither cosmetic:
+
+- **A map constructed before its container is laid out stays broken forever.** Leaflet
+  measures once; `getBounds()` then returns a box with `west === east`, every layer asks the
+  server about a viewport of zero area, and the answer is honestly empty. A `ResizeObserver`
+  alone does not save it — the size never CHANGES — so the measurement is retried on mount
+  until it is non-zero, with `setTimeout` rather than `requestAnimationFrame` because rAF
+  does not run in a tab that is not painting, which is exactly the case. `viewportQuery` now
+  refuses a zero-area box outright, so the layer keeps what it had instead of replacing real
+  pins with an empty answer.
+- **`/?city=los-angeles` landed the reader in Notting Hill.** `activeLocation` seeded from
+  the London demo and `RecenterOnSelection` flies to it at zoom 14, stealing the map from the
+  address that was opened — under a header still reading "Los Angeles".
+
+Verified against live data: **461 films · 804 places in view, 249 pins** over downtown Los
+Angeles, and the API returning the Millennium Biltmore with its 96 films.
+
+**1,319 tests, all passing** (11 new).
+
+**Paid the same toll twice:** `npm run build` while `next dev` was running, which corrupts
+the shared `.next` and breaks the dev server with `Cannot find module './5873.js'`. It is in
+[[handoff-local]] and I did it anyway, on both halves of this session.
+
 ## [2026-09-11] fix | The map said API KEY REQUIRED, stopped at zoom 17, and opened empty
 
 **Object**: `app/lib/map-layers.mjs`, `app/components/SceneMapApp.jsx`, `app/globals.css`

@@ -5,6 +5,7 @@ import { createMapPointsHandler } from "../app/api/map/points/route.js";
 import {
   buildMapResponse,
   CLUSTER_BELOW_ZOOM,
+  candidateFeatures,
   MAX_MAP_POINTS,
   MAX_ROWS_PER_RESPONSE,
   parseMapQuery,
@@ -325,21 +326,33 @@ test("map points route maps a graph failure to 502", async () => {
 
 const LA = { west: "-118.45", south: "34.00", east: "-118.15", north: "34.20" };
 
+// The module is already imported at the top of the file; this keeps the new test readable.
+function require_map() {
+  return { candidateFeatures };
+}
+
+// One POINT, carrying the films listed at it. 5,266 Los Angeles rows sit on 2,024 distinct
+// coordinates, and before the grouping 71% of them were drawn on top of each other.
 function candidateRow(overrides = {}) {
   return {
-    submission_id: "22222222-2222-2222-2222-222222222222",
-    work_id: "33333333-3333-3333-3333-333333333333",
-    work_title: "Cloverfield",
-    work_year: 2008,
-    work_kind: "film",
-    name: "New York City Backlot",
+    place_name: "New York City Backlot",
     area_hint: "860 N Gower St, Los Angeles, CA",
     // Inside Paramount. The address reads like a street and the coordinate is a backlot.
     lat: 34.0863,
     lng: -118.3202,
-    source_kind: "moviemaps",
-    source_url: "https://moviemaps.org/locations/1",
+    row_count: 1,
+    work_count: 1,
     status: "pending",
+    films: [{
+      work_id: "33333333-3333-3333-3333-333333333333",
+      title: "Cloverfield",
+      year: 2008,
+      kind: "film",
+      place_name: "New York City Backlot",
+      source_kind: "moviemaps",
+      source_url: "https://moviemaps.org/locations/1",
+      status: "pending",
+    }],
     ...overrides,
   };
 }
@@ -396,10 +409,31 @@ test("a candidate carries no confidence and no band", async () => {
   assert.equal("confidence_band" in props, false);
   assert.equal("evidence_count" in props, false);
   assert.equal("place_class" in props, false);
-  // What it does carry: who said it, whether anybody looked, and which film.
-  assert.equal(props.source_kind, "moviemaps");
+  // What it does carry: whether anybody looked, and the films listed at this point, each
+  // with the source that named it.
   assert.equal(props.status, "pending");
-  assert.equal(props.work_title, "Cloverfield");
+  assert.equal(props.films[0].title, "Cloverfield");
+  assert.equal(props.films[0].source_kind, "moviemaps");
+});
+
+test("a point carries its films, and its two counts are not the same number", () => {
+  // One film listing a place twice is not two films. The pin is sized by films; the panel
+  // states both.
+  const { candidateFeatures } = require_map();
+  const [feature] = candidateFeatures({ clustered: false }, [candidateRow({
+    place_name: "Millennium Biltmore Hotel", lat: 34.0505, lng: -118.2515,
+    row_count: 101, work_count: 96,
+    films: [
+      { work_id: "a", title: "Ghostbusters", year: 1984, kind: "film" },
+      { work_id: "b", title: "Chinatown", year: 1974, kind: "film" },
+    ],
+  })]);
+  assert.equal(feature.properties.work_count, 96);
+  assert.equal(feature.properties.row_count, 101);
+  assert.equal(feature.properties.films.length, 2);
+  // The query caps the list at 40; the count beside it is the truth. A popup listing forty
+  // of ninety-six must say so rather than print its own cap as the number we hold.
+  assert.equal(feature.properties.films_truncated, true);
 });
 
 test("a candidate inside a studio lot is flagged by its coordinate", async () => {
@@ -411,7 +445,7 @@ test("a candidate inside a studio lot is flagged by its coordinate", async () =>
 });
 
 test("a candidate on the street is not flagged", async () => {
-  const handler = candidateHandler([candidateRow({ name: "Union Station", lat: 34.0561, lng: -118.2365 })]);
+  const handler = candidateHandler([candidateRow({ place_name: "Union Station", lat: 34.0561, lng: -118.2365 })]);
   const body = await (await handler(mapRequest({ ...LA, z: "13", candidates: "1" }))).json();
   assert.equal(body.candidates[0].properties.depicts_elsewhere, false);
   assert.equal(body.candidates[0].properties.studio_lot, null);
@@ -434,7 +468,7 @@ test("truncation is measured against what a response can actually carry", async 
   // of 2,000 the flag could never be true, and the map would draw half the queue while
   // looking complete — the silent truncation #158 already paid for.
   const many = Array.from({ length: MAX_ROWS_PER_RESPONSE }, (_, i) =>
-    candidateRow({ submission_id: `id-${i}`, lat: 34.05 + i / 1e6 }));
+    candidateRow({ lat: 34.05 + i / 1e6 }));
   const handler = candidateHandler(many);
   const body = await (await handler(mapRequest({ ...LA, z: "13", candidates: "1" }))).json();
   assert.equal(body.candidates.length, MAX_ROWS_PER_RESPONSE);

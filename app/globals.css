@@ -3572,3 +3572,127 @@ figcaption a {
 .map-dark .leaflet-tile-pane {
   filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85) saturate(0.35);
 }
+
+/* Everything on screen, as a list. It sits under the queue switches because it lists what
+   they narrowed — a panel that ignored them would contradict the map beside it. */
+.films-here {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.films-here-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+}
+.films-here-modes { display: flex; gap: 0.25rem; }
+.films-here-modes button {
+  font-size: 0.72rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: rgba(236, 232, 225, 0.65);
+  cursor: pointer;
+}
+.films-here-modes button.is-on {
+  color: #f0a83c;
+  border-color: rgba(240, 168, 60, 0.45);
+  background: rgba(240, 168, 60, 0.1);
+}
+
+/* Posters for browsing. The tile is initials until a poster is fetched — a broken image
+   would be worse than the tile, which is the rule the film chips already follow. */
+.films-here-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+  gap: 0.4rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.films-here-card {
+  position: relative;
+  display: grid;
+  gap: 0.2rem;
+  text-decoration: none;
+  color: inherit;
+}
+.films-here-thumb {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 2 / 3;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+  color: rgba(236, 232, 225, 0.5);
+}
+/* A film seen only on a backlot is marked, because it is a different answer from one seen
+   on the street and the reader is owed it before they walk anywhere. */
+.films-here-card.is-lot .films-here-thumb {
+  border-color: rgba(185, 140, 255, 0.5);
+  color: #b98cff;
+}
+.films-here-title {
+  font-size: 0.7rem;
+  line-height: 1.25;
+  color: rgba(236, 232, 225, 0.8);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.films-here-count {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.2rem;
+  font-size: 0.62rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: rgba(12, 10, 7, 0.85);
+  color: #f0a83c;
+}
+
+/* Titles for finding one. */
+.films-here-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  font-size: 0.78rem;
+}
+.films-here-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.18rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.films-here-list a { color: rgba(236, 232, 225, 0.88); text-decoration: none; }
+.films-here-list a:hover { text-decoration: underline; }
+.films-here-year { color: rgba(236, 232, 225, 0.4); }
+.films-here-list .films-here-count { position: static; margin-left: auto; }
+.films-here-lot {
+  font-size: 0.62rem;
+  color: #b98cff;
+  border: 1px solid rgba(185, 140, 255, 0.35);
+  border-radius: 999px;
+  padding: 0 0.3rem;
+}
+
+/* The film list inside a pin's popup. Before the grouping this was unreachable: every film
+   after the first was drawn underneath the pin you could see. */
+.point-films {
+  list-style: none;
+  margin: 0.4rem 0 0.2rem;
+  padding: 0;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.point-films li { padding: 0.1rem 0; font-size: 0.78rem; }
+.point-film-year { color: rgba(0, 0, 0, 0.45); }
