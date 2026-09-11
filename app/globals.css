@@ -4021,3 +4021,28 @@ figcaption a {
   border: 2px solid #16130c;
   cursor: grab;
 }
+
+/* The MapLibre route while the migration runs (#202). Deliberately plain: it is a surface
+   for measuring a frame rate, not a page to design. */
+.vector-map-page { position: fixed; inset: 0; }
+.vector-map { position: absolute; inset: 0; }
+/* Two classes, not one, and that is load-bearing. MapLibre's own stylesheet declares
+   `.maplibregl-map { position: relative }` and it is imported by the component, so it lands
+   AFTER this file in the cascade. At equal specificity the later rule wins, the container
+   falls back to `position: relative` with auto height, and an absolutely-positioned child
+   leaves it 0 px tall — a map that reports "298 places drawn" and shows a black rectangle,
+   with not one vector tile ever requested. */
+.vector-map .vector-map-canvas { position: absolute; inset: 0; }
+.vector-map-status {
+  position: absolute;
+  left: 1rem;
+  bottom: 1.6rem;
+  z-index: 5;
+  margin: 0;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(12, 12, 16, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+}
