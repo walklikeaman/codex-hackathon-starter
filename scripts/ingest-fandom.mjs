@@ -37,6 +37,7 @@ import {
 } from "../app/lib/wikipedia-extract.mjs";
 import {
   licenceAllows,
+  headingPromisesStoryPlaces,
   locationSection,
   toProseSubmission,
   matchWork,
@@ -180,7 +181,11 @@ async function main() {
       // Prose only where the free path found nothing. A page with a table has already
       // given up its rows, and its table carries the story-to-shoot pairing that prose
       // does not — paying to re-read it would buy strictly less.
-      if (!made.length && runtime && proseCalls < PROSE_LIMIT) {
+      // A bare "Locations" heading on a fan wiki means the world of the story, not the
+      // world. Refused before the model is asked, because after is too late to save the
+      // call — see `headingPromisesStoryPlaces`.
+      if (!made.length && runtime && proseCalls < PROSE_LIMIT
+        && !headingPromisesStoryPlaces(section.title)) {
         const prose = cleanWikitext(section.text);
         if (prose.length >= 200) {
           proseCalls += 1;
@@ -209,8 +214,16 @@ async function main() {
               .map((location) => toProseSubmission(location, { work, wiki, page, revid: parsed.revid, licence: licence.text }))
               .filter(Boolean);
             proseRows += made.length;
+            // The reasons, not a count under one label. The first version printed
+            // "failed the quote gate" for every rejection, which sent the diagnosis of a
+            // real run looking at the wrong gate entirely.
+            const why = rejected.reduce((tally, row) => {
+              tally[row.reason] = (tally[row.reason] ?? 0) + 1;
+              return tally;
+            }, {});
+            const reasons = Object.entries(why).map(([reason, count]) => `${count} ${reason}`).join(", ");
             console.log(`  ${page.slice(0, 46).padEnd(48)} ${String(made.length).padStart(3)} rows (model`
-              + `${rejected.length ? `, ${rejected.length} failed the quote gate` : ""}) -> ${work.title}`);
+              + `${reasons ? `; dropped ${reasons}` : ""}) -> ${work.title}`);
           }
         }
       }

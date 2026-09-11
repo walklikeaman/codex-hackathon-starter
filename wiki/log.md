@@ -7,6 +7,56 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-12] incident | The prose pass ran, and three of its four failures were ours
+
+**Object**: `app/lib/model-client.mjs`, `app/lib/wikipedia-extract.mjs`,
+`app/lib/fandom-source.mjs`, `scripts/ingest-fandom.mjs`
+**Scenario**: incident · **Outcome**: ✅ 49 rows including the first from prose; three gates
+added or repaired, each from an observed failure
+**Code changes**: this commit
+
+The key arrived and the prose pass ran for the first time. It failed four times before it
+worked, and only one of those was the model's fault.
+
+**1. The default model 404s.** `google/gemma-4-26b-a4b-it:free` answers *"No endpoints found
+that can handle the requested parameters"* — it still advertises `response_format` but no
+longer `structured_outputs`, and a schema request needs the latter. Nothing here changed;
+OpenRouter's catalogue did. Re-measured against the REAL extraction schema,
+`liquid/lfm-2.5-2.6b:free` read 4 of 4 places and told filming from authorship, where
+`nvidia/nemotron-3-super-120b-a12b:free` and `dots-studio/dots-3-note-preview:free` each
+managed 2 and missed every author place. A 2.6B model beating a 120B one is the argument for
+testing the real schema rather than a toy one.
+
+**2. One apostrophe was losing true places.** The café Rowling wrote in was discarded as
+`quote_not_in_source` because the model typed `Nicolson's` where the page has `Nicolson’s`.
+The gate already folds whitespace on the reasoning that a newline becoming a space is not
+paraphrase; curly punctuation is the same. Every WORD must still match.
+
+**3. We paid to read an in-universe list.** On `dcextendeduniverse/Suicide Squad` the chosen
+section is `==Locations==` — the world of the film, *"Earth → Africa (map) → Asia
+(flashbacks)"*. The model honestly returned twenty places quoting *"Iceland (file,
+post-credit scene)"* and every one was refused downstream. **The refusal worked; the spend
+did not.** The list parser already refuses a bare "Locations"; the prose path now refuses it
+too, before the call rather than after.
+
+**4. The role gate is weaker than it looked, and this is the one to remember.**
+`harrypotter/Half-Blood Prince` has a Filming section largely about locations **never
+used** — *"filming may move from the UK"*, *"reported filming will take place in New
+Zealand"*, *"particularly keen on Ireland"*. The model returned New Zealand and Ireland as
+filming locations, and `sentenceSupportsRole` **passed them**, because each sentence does
+contain the word "filming".
+
+That is the limit of that gate, and naming it mattered more than patching it: the giveaway
+is not the vocabulary of production but the vocabulary of **intention** — a modal, a future
+tense, a report of somebody's plan. `sentenceClaimsIntentNotFact` drops those, and on the
+live page it removed four claims and kept one. It cannot be complete and is not meant to be;
+what remains is why every row still lands `pending` with `lat: null`.
+
+**Result: 49 rows across jamesbond and harrypotter**, including the first ever produced from
+prose. The queue is a review queue, not a publication.
+
+---
+
 ## [2026-09-12] decision | A work is not only a film, and a place is not only where a camera stood
 
 **Object**: `app/lib/wikipedia-extract.mjs`, `app/lib/fandom-source.mjs`,

@@ -378,6 +378,23 @@ export function parseLocationTable(sectionText) {
 // when it cannot identify a shooting column.
 const REAL_PLACES_HEADING = /film(ing|ed)|shoot(ing)?|on location/i;
 
+// A heading that promises the opposite: places inside the story.
+//
+// **Measured 12.09 on dcextendeduniverse/Suicide Squad**, whose `==Locations==` section is
+// a nested list of the world of the film — "Earth → Africa (map) → Asia (flashbacks) →
+// Iraq (newspaper, flashback)". The model read it honestly and returned twenty places with
+// quotes like "Iceland (file, post-credit scene)"; every one was refused downstream because
+// no such quote says anything was shot there.
+//
+// The refusal worked. What did not is that **we paid for the call.** The list parser already
+// refuses a bare "Locations" — this is the same rule, applied before a model is asked,
+// which is the only place it saves anything. A heading naming production or filming still
+// goes through: "Production" is prose about how the film was made and is exactly what a
+// model should read.
+export function headingPromisesStoryPlaces(title) {
+  return /^locations?$/i.test(String(title ?? "").trim());
+}
+
 // A bullet holding a PARAGRAPH is not a list item, and this is the common case rather than
 // the edge. Measured 11.09 on the sections that a leading "*" made look like lists:
 //
