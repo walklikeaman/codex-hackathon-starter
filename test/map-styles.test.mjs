@@ -7,7 +7,9 @@ import {
   SATELLITE,
   THEMES,
   THEME_STORAGE_KEY,
+  basemapChain,
   basemapFor,
+  fallbackBasemap,
   isUsableKey,
   readStoredTheme,
   styleProvider,
@@ -105,4 +107,36 @@ test("storage that throws gives the default rather than an exception", () => {
 test("no storage at all is the same as storage with nothing in it", () => {
   assert.equal(readStoredTheme(undefined), DEFAULT_THEME);
   assert.doesNotThrow(() => writeStoredTheme(undefined, THEMES.dark));
+});
+
+// A rejected key is worse than a missing one: `styleUrl` cannot see an origin rejection,
+// because it happens at the network. Vercel gives every preview deployment its own
+// subdomain, so a key locked to the production domain fails on every pull request.
+test("a key yields a chain that ends somewhere needing no key", () => {
+  const chain = basemapChain(THEMES.dark, "abc123");
+  assert.equal(chain.length, 2);
+  assert.equal(chain[0].provider, "maptiler");
+  assert.equal(chain[chain.length - 1].provider, "openfreemap");
+});
+
+test("no key yields a chain of one — there is nothing to fall back from", () => {
+  const chain = basemapChain(THEMES.dark, null);
+  assert.deepEqual(chain.map((step) => step.provider), ["openfreemap"]);
+});
+
+test("the chain keeps the theme that was asked for at every step", () => {
+  for (const step of basemapChain(THEMES.light, "abc123")) {
+    assert.equal(step.theme, THEMES.light);
+  }
+});
+
+test("every step of the chain carries the credit for whoever serves it", () => {
+  const [preferred, floor] = basemapChain(THEMES.dark, "abc123");
+  assert.equal(preferred.attribution, ATTRIBUTION.maptiler);
+  assert.equal(floor.attribution, ATTRIBUTION.openfreemap);
+});
+
+test("the floor needs no credentials, so it cannot fail the way the first step can", () => {
+  assert.match(fallbackBasemap(THEMES.dark).url, /openfreemap/);
+  assert.doesNotMatch(fallbackBasemap(THEMES.light).url, /key=/);
 });

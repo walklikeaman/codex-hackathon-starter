@@ -117,6 +117,33 @@ export function basemapFor(theme, key) {
   };
 }
 
+// A key that is REJECTED is worse than a key that is missing, and the difference is the
+// whole reason this exists.
+//
+// `styleUrl` falls back to OpenFreeMap when the key is absent or malformed — both of which
+// are visible here, in JS, before any request goes out. But MapTiler also rejects a
+// perfectly well-formed key whose `Origin` is not on its allow-list, and that failure
+// happens at the network. Nothing above can see it, so the map would ask for a style,
+// receive 403, and draw no ground at all.
+//
+// This is not hypothetical: Vercel gives every preview deployment its own subdomain, so a
+// key locked to the production domain fails on every pull request. The map must degrade to
+// the free tiles rather than to a blank screen.
+//
+// So a caller asks for the CHAIN and walks it: try each style in order, keep the first that
+// loads. The last entry never needs a key, which makes it a real floor rather than another
+// thing that can fail.
+export function basemapChain(theme, key) {
+  const preferred = basemapFor(theme, key);
+  if (preferred.provider === "openfreemap") return [preferred];
+  return [preferred, basemapFor(theme, null)];
+}
+
+// What to draw when everything that needs credentials has failed.
+export function fallbackBasemap(theme) {
+  return basemapFor(theme, null);
+}
+
 // Remembering the choice is the point: somebody comparing a frame with a facade switches
 // once and should not have to switch again at every pin. Stored per browser, never per
 // account — it is a preference about a screen, not a fact about a person.
