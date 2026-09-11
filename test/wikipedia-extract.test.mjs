@@ -7,6 +7,8 @@ import {
   extractionInstructions,
   MAX_LOCATIONS_PER_ARTICLE,
   quoteAppearsInSource,
+  sentenceClaimsIntentNotFact,
+  sentenceSupportsRole,
   sentenceMentionsPlace,
   wikipediaLocationsSchema,
 } from "../app/lib/wikipedia-extract.mjs";
@@ -325,4 +327,48 @@ test("but a different WORD still fails, which is the point of the gate", () => {
 test("smart quotes and ellipses fold too", () => {
   const page = "The director called it “a cathedral of rust” … and left.";
   assert.equal(quoteAppearsInSource('The director called it "a cathedral of rust" ... and left.', page), true);
+});
+
+
+// --- a place considered is not a place used --------------------------------------------
+
+test("a plan, a rumour and a scouting trip are not filming locations", () => {
+  // Measured 12.09 on harrypotter/Half-Blood Prince, whose Filming section is largely about
+  // locations never used. The model returned New Zealand and Ireland as filming locations;
+  // nothing was shot in either. sentenceSupportsRole passed them, because each sentence
+  // does contain the word "filming" — which is the limit of that gate and why this exists.
+  for (const claim of [
+    "This is North Scotland reported filming will take place in New Zealand.",
+    "They are particularly keen on Ireland, as the landscape is similar to Britain.",
+    "Some sources stated that filming may move from the UK.",
+    "The crew scouted Venice but ultimately filmed in Malta.",
+    "The producers are in talks to shoot in Iceland.",
+  ]) {
+    assert.equal(sentenceClaimsIntentNotFact(claim), true, claim);
+    assert.equal(sentenceSupportsRole(claim, "filming_location"), false, claim);
+  }
+});
+
+test("a sentence about what was actually done still passes", () => {
+  for (const claim of [
+    "On the weekend of 6 October 2007, the crew shot scenes involving the Hogwarts Express in Scotland.",
+    "Filming took place at Hashima Island for the exterior of the villain lair.",
+    "The production was based at Leavesden Studios.",
+  ]) {
+    assert.equal(sentenceSupportsRole(claim, "filming_location"), true, claim);
+  }
+  assert.equal(
+    sentenceSupportsRole("Rowling wrote much of the first book in Nicolson's Cafe.", "author_place"),
+    true,
+  );
+});
+
+test("the drop reason says which gate refused it", () => {
+  // "does not support the role" and "is a plan" send a reader looking in different places.
+  const prose = "Some sources stated that filming may move from the UK to New Zealand.";
+  const { accepted, rejected } = acceptExtraction({ locations: [
+    found({ place_name: "New Zealand", source_sentence: prose, place_role: "filming" }),
+  ] }, { prose, article });
+  assert.equal(accepted.length, 0);
+  assert.equal(rejected[0].reason, "quote_is_a_plan_not_a_fact");
 });

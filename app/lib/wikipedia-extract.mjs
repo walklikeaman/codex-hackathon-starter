@@ -221,14 +221,38 @@ export function sentenceMentionsPlace(sentence, placeName) {
 // The vocabulary is deliberately generous. A dropped true claim costs one place; an
 // accepted fictional one puts Hogwarts in a review queue that a person then has to clean.
 const ROLE_EVIDENCE = Object.freeze({
-  filming_location: /\b(film(ed|ing|s)?|shot|shoot(ing)?|record(ed|ing)|lens(ed)?|photograph(ed|y)|principal photography|on location|set up|scene(s)? (were|was)|stood in for|doubl(e|ed|ing) for|stand-in|production (moved|based)|studio)\b/i,
+  filming_location: /\b(film(ed|ing|s)?|shot|shoot(ing)?|record(ed|ing)|lens(ed)?|photograph(ed|y)|principal photography|on location|set up|scene(s)? (were|was)|stood in for|doubl(e|ed|ing) for|stand-in|production (was |is |were )?(moved|based|housed)|studios?)\b/i,
   author_place: /\b(wrote|written|writing|author(ed)?|drafted|penn(ed|ing)|compos(ed|ing)|drew|draw(n|ing)? (on|from)|inspir(ed|ation)|based (on|upon)|model(l)?ed (on|after)|named? (after|from)|took the name|sketch(ed)?|imagined|conceiv(ed)|set out to)\b/i,
 });
+
+// A place that was CONSIDERED is not a place that was used, and the sentence says which.
+//
+// **Measured 12.09 on harrypotter/Half-Blood Prince**, whose Filming section is largely
+// about locations that were never used: *"filming may move from the UK"*, *"reported
+// filming will take place in New Zealand"*, *"particularly keen on Ireland"*. The model
+// returned New Zealand and Ireland as filming locations. Nothing was shot in either.
+//
+// `sentenceSupportsRole` passed all of them, because each sentence does contain the word
+// "filming" — which is exactly the limit of that gate and the reason this one exists. The
+// giveaway is not the vocabulary of production but the vocabulary of INTENTION: a modal, a
+// future tense, a report of somebody's plan. A sentence describing what was done does not
+// say "may", "will take place" or "are keen on".
+//
+// This cannot be complete and is not meant to be. It removes the specific, common and
+// confidently-wrong shape; what remains is why every row still lands `pending`.
+const NOT_YET_DONE = /\b(may|might|could|would|plan(s|ned|ning)?|intend(s|ed)?|hope[sd]?|expect(s|ed)?|plann?ing to|will (be )?(take|film|shoot|move)|plans? to|plan for|scout(ing|ed)?|plann?ed to|plann?ed for|considering|considered|rumou?r(ed|s)?|report(s|ed|edly)? (that )?(filming|shooting|production)|keen on|in talks|approached|proposed|due to (film|shoot|begin)|is (set|slated|expected) to)\b/i;
+
+export function sentenceClaimsIntentNotFact(sentence) {
+  return NOT_YET_DONE.test(String(sentence ?? ""));
+}
 
 export function sentenceSupportsRole(sentence, relation) {
   const pattern = ROLE_EVIDENCE[relation];
   if (!pattern) return false;
-  return pattern.test(String(sentence ?? ""));
+  const text = String(sentence ?? "");
+  if (!pattern.test(text)) return false;
+  // A plan, a rumour, a scouting trip — production vocabulary, no production.
+  return !sentenceClaimsIntentNotFact(text);
 }
 
 export function acceptExtraction(parsed, { prose, article }) {
@@ -271,7 +295,10 @@ export function acceptExtraction(parsed, { prose, article }) {
     // And this asks whether it claims what the role claims. A sentence describing a place
     // inside the story says nothing was made or shot there.
     if (!sentenceSupportsRole(location.source_sentence, relation)) {
-      drop("quote_does_not_support_role"); continue;
+      drop(sentenceClaimsIntentNotFact(location.source_sentence)
+        ? "quote_is_a_plan_not_a_fact"
+        : "quote_does_not_support_role");
+      continue;
     }
 
     seen.add(key);
