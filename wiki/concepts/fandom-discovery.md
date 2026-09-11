@@ -22,6 +22,13 @@ all.
 
 ## Ask about what we hold, not about all of Wikidata
 
+**A skipped chunk is lost catalogue, not a lost request.** The first real run lost 2 of 16
+chunks to 502 and printed "754 works" as though that were the answer — 12% short, silently.
+Three attempts with a growing wait fixed it and the same run then found **957**, a quarter
+more; 4xx is not retried, because that is the query's fault and will fail identically. A
+chunk that still fails is counted, and the total says `INCOMPLETE: up to N works unasked`
+rather than presenting a short count as a finding.
+
 The first version paged the whole property with `LIMIT/OFFSET`. The public endpoint answered
 **502 on the second page** — an OFFSET over 206,443 statements re-sorts the lot on every
 request, and page two is what pays for it.
@@ -41,6 +48,41 @@ counts only works we actually hold.
 `memory-alpha` is third-largest **and CC-BY-NC**, so it is refused on licence before a
 single page is fetched. The licence is read live per wiki, and the list of wikis is not
 permission.
+
+## What it actually found, 11.09
+
+957 of our 6,044 works have a Fandom page, across 242 wikis. Sampling five pages on each of
+the top fourteen:
+
+| wiki | our works | readable free | prose | no section | rows |
+|---|---|---|---|---|---|
+| movies | 233 | 0 | 3 | 2 | 0 |
+| the80smovies | 81 | 0 | 0 | 5 | 0 |
+| scifi | 48 | 0 | 0 | 5 | 0 |
+| tropedia | 30 | 0 | 0 | 5 | 0 |
+| marvelcinematicuniverse | 22 | 0 | **5** | 0 | 0 |
+| television | 21 | 0 | 0 | 5 | 0 |
+| jamesbond | 20 | **2** | 3 | 0 | **41** |
+| disney | 17 | 0 | 3 | 2 | 0 |
+| memory-alpha | 15 | — | — | — | skipped, CC-BY-NC |
+| starwars | 13 | 0 | 4 | 1 | 0 |
+| dcextendeduniverse | 10 | 0 | **5** | 0 | 0 |
+
+**Two readings, and the second one is the useful one.**
+
+The free path is all but exhausted: 2 readable pages in 70, and every row still comes from
+the Bond wiki. The generic aggregators that dominate the overlap — `movies`,
+`the80smovies`, `scifi`, `tropedia`, `television` — carry no location section at all, five
+pages out of five.
+
+But **24 of the 70 sampled pages are prose**, and they are concentrated: MCU and
+`dcextendeduniverse` are prose on every page sampled, Star Wars on four of five. Those are
+the pages a model pass would be buying, and the report exists so that the number is known
+before the money is.
+
+Whether that prose actually names real filming locations rather than in-universe ones is the
+question a capped run answers — `--prose 40` over MCU and DCEU costs tens of calls, not
+thousands, and settles it.
 
 ## What the report is for
 

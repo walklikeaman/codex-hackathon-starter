@@ -22,7 +22,7 @@ import process from "node:process";
 import { createClient } from "@supabase/supabase-js";
 
 import { licenceAllows, locationSection, parseLocationRows } from "../app/lib/fandom-source.mjs";
-import { WIKIDATA_SPARQL, chunk, classifyPage, pairsQuery, rankWikis, splitFandomId } from "../app/lib/fandom-discovery.mjs";
+import { IDS_PER_QUERY, WIKIDATA_SPARQL, chunk, classifyPage, pairsQuery, rankWikis, splitFandomId } from "../app/lib/fandom-discovery.mjs";
 
 const arg = (name, fallback = null) => {
   const index = process.argv.indexOf(`--${name}`);
@@ -41,11 +41,30 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const WIKIDATA_DELAY = 5000;
 const WIKI_DELAY = 700;
 
+// **A skipped chunk is lost catalogue, not a lost request.** The first real run lost 2 of
+// 16 chunks to 502 and reported 754 overlapping works as if that were the answer — it was
+// 12% short and nothing said so. The endpoint 502s under load and answers the same query
+// seconds later, so a retry costs one wait and buys back a chunk of the catalogue.
+const SPARQL_ATTEMPTS = 3;
+
 async function sparql(query) {
   const url = `${WIKIDATA_SPARQL}?${new URLSearchParams({ query, format: "json" })}`;
-  const response = await fetch(url, { headers: { ...UA, Accept: "application/sparql-results+json" }, signal: AbortSignal.timeout(120_000) });
-  if (!response.ok) throw new Error(`wikidata http ${response.status}`);
-  return (await response.json()).results.bindings;
+  let last;
+  for (let attempt = 1; attempt <= SPARQL_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, { headers: { ...UA, Accept: "application/sparql-results+json" }, signal: AbortSignal.timeout(120_000) });
+      if (response.ok) return (await response.json()).results.bindings;
+      last = new Error(`wikidata http ${response.status}`);
+      // 4xx is the query's fault and will fail again identically; only a server-side
+      // refusal is worth waiting out.
+      if (response.status < 500 && response.status !== 429) throw last;
+    } catch (failure) {
+      last = failure;
+      if (failure?.name === "AbortError") last = new Error("wikidata timeout");
+    }
+    if (attempt < SPARQL_ATTEMPTS) await sleep(WIKIDATA_DELAY * attempt);
+  }
+  throw last ?? new Error("wikidata failed");
 }
 
 async function wikiApi(wiki, params) {
@@ -76,15 +95,17 @@ async function main() {
   // Only the ids we hold, in chunks. Paging the whole property answered 502 — see
   // [[fandom-discovery]].
   const pairs = [];
+  let lostChunks = 0;
   const batches = chunk([...held.keys()]);
   for (const [index, batch] of batches.entries()) {
     let rows;
     try {
       rows = await sparql(pairsQuery(batch));
     } catch (failure) {
-      // One bad chunk is not a failed run. The endpoint 502s under load and the next
-      // chunk usually answers.
-      console.log(`\n  wikidata chunk ${index + 1}: ${failure.message}`);
+      // Retried already. A chunk still failing is 400 works this run did not ask about,
+      // and the total below says so rather than presenting a short count as the answer.
+      lostChunks += 1;
+      console.log(`\n  wikidata chunk ${index + 1}: ${failure.message} (after ${SPARQL_ATTEMPTS} attempts)`);
       await sleep(WIKIDATA_DELAY);
       continue;
     }
@@ -99,7 +120,9 @@ async function main() {
 
   const ranked = rankWikis(pairs, { heldImdbIds: new Set(held.keys()) });
   const overlap = ranked.reduce((sum, w) => sum + w.works, 0);
-  console.log(`overlap: ${overlap} of our works have a Fandom page, across ${ranked.length} wikis\n`);
+  console.log(`overlap: ${overlap} of our works have a Fandom page, across ${ranked.length} wikis`
+    + (lostChunks ? `  — INCOMPLETE: ${lostChunks} chunk(s) failed, up to ${lostChunks * IDS_PER_QUERY} works unasked` : ""));
+  console.log();
 
   const report = [];
   for (const candidate of ranked.slice(0, WIKI_LIMIT)) {
@@ -153,7 +176,7 @@ async function main() {
 
   if (OUT) {
     mkdirSync(path.dirname(OUT), { recursive: true });
-    writeFileSync(OUT, JSON.stringify({ generated_at: new Date().toISOString(), overlap, report }, null, 2));
+    writeFileSync(OUT, JSON.stringify({ generated_at: new Date().toISOString(), overlap, lost_chunks: lostChunks, report }, null, 2));
     console.log(`${OUT}: written`);
   }
 }
