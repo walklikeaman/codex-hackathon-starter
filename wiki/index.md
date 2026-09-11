@@ -56,6 +56,10 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - [place-card](concepts/place-card.md) — the panel and the page: one table read from both
   ends, why every fact needs its own source, and the ORDER BY tie that let the two ends
   disagree; tabs, a takeable coordinate, the `[hidden]` rule any class outranks
+- [agent-tools](concepts/agent-tools.md) — GloryMap as six MCP tools; why they call the API
+  rather than the database, and the one dedup rule deliberately looser than the graph's
+- [demo-library](concepts/demo-library.md) — a real Letterboxd export locally, never
+  committed, never shipped
 - [studio-lots](concepts/studio-lots.md) — a fence is a polygon, never a name; why the
   Hilton is inside Universal's bounding box and outside Universal
 - [place-precision](concepts/place-precision.md) — when a pin may move, when two pins are one place

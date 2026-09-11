@@ -101,12 +101,28 @@ sources make before/after composites and sharing legal at scale.
 your language, grounded in sources.
 **Milestone:** [Phase 4](https://github.com/walklikeaman/codex-hackathon-starter/milestone/4) · 8 issues
 
-- Scene-nearby GPS-triggered narration · Walk mode (Wake Lock)
+- Scene-nearby GPS-triggered narration · Walk mode (Wake Lock) — *both built*
+- **Ambient narration: triggers on what you walk past, not a route you built**
+  ([#190](https://github.com/walklikeaman/codex-hackathon-starter/issues/190))
 - Streaming narration · TTS cache · Multilingual · Genre-styled voice
 - Fact-checked & sourced narration · Offline tour download
 
 *Why:* this is the audio-guide genre's core loop (Autio/VoiceMap) — but tied to
 **your** films and our verified places, not generic POIs.
+
+## 🔌 Phase 6 · Let other software use this
+**Goal:** an outside planner, an agent, or the traveller's own maps app can act on
+what we hold — without our sources' terms being breached in our name.
+**Issue:** [#191](https://github.com/walklikeaman/codex-hackathon-starter/issues/191)
+
+- Licence review per source *(first, and everything is contingent on it)*
+- "Open in Google Maps" + KML/GPX export · MCP server over the existing routes
+- Read API with keys and rate limits · *(webhooks: explicitly not being built)*
+
+*Why:* `POST /api/trip/plan` already answers a planning agent; what is missing is the
+transport, and the written answer to what we may redistribute. **We own 92 facts; the
+other 44,032 rows belong to somebody else**, and serving them is a different act from
+showing them with a link.
 
 ## 📖 Phase 5 · Story Trails
 **Goal:** follow a film or book by its **plot** — walk the story as it unfolds,

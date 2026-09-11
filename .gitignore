@@ -53,3 +53,6 @@ graphify-out/
 # operator handover notes — local only, not for the public/team repo
 HANDOVER.md
 .vercel
+
+# A real Letterboxd export for local testing. Personal, and this repo is public.
+public/demo-library.json
