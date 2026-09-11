@@ -12,6 +12,8 @@ import {
   buildSectionUrl,
   buildTocUrl,
   chooseSection,
+  sectionRankFor,
+  SUPPORTED_LANGUAGES,
   languagesForWork,
   preferredLanguages,
   cleanWikitext,
@@ -392,4 +394,53 @@ test("the entities request asks for the claims those properties live in", () => 
   // silently inert — which is exactly how the dead `preferred` argument survived this long.
   const url = buildEntitiesUrl(["Q1"]);
   assert.match(decodeURIComponent(url), /props=sitelinks\/urls\|claims/);
+});
+
+
+// --- a book is not made on a set -------------------------------------------------------
+
+test("a book article is read from the section a book actually has", () => {
+  // Measured 12.09 across the nine books in the catalogue: Crime and Punishment leads with
+  // "Background", Finnegans Wake with "Background and composition", The Lord of the Rings
+  // carries "Concept and creation". None appear in the film table, so before this every
+  // book resolved to "no production section" and all nine were unreachable.
+  const toc = { sections: [
+    { line: "Background", index: "1" },
+    { line: "Plot", index: "2" },
+    { line: "Production", index: "3" },
+  ] };
+  assert.equal(chooseSection(toc, "en", { kind: "book" }).line, "Background");
+  // The same article read as a film picks the film section, so the two tables cannot
+  // shadow each other.
+  assert.equal(chooseSection(toc, "en", { kind: "film" }).line, "Production");
+});
+
+test("the most specific book section wins over the vaguest", () => {
+  const toc = { sections: [
+    { line: "Background", index: "1" },
+    { line: "Concept and creation", index: "2" },
+  ] };
+  // "Background" is real but thin; "Concept and creation" is where the writing is described.
+  assert.equal(chooseSection(toc, "en", { kind: "book" }).line, "Concept and creation");
+});
+
+test("a book with no composition section is an ordinary answer", () => {
+  // Mrs Dalloway and Roughing It genuinely have none.
+  const toc = { sections: [{ line: "Plot summary", index: "1" }, { line: "Themes", index: "2" }] };
+  assert.equal(chooseSection(toc, "en", { kind: "book" }), null);
+});
+
+test("every edition we read has a book vocabulary too", () => {
+  // A language present for films and absent for books would silently skip every book in
+  // that edition.
+  for (const language of SUPPORTED_LANGUAGES) {
+    assert.ok(sectionRankFor(language, "book")?.length, `${language} has no book sections`);
+    assert.ok(sectionRankFor(language, "film")?.length, `${language} has no film sections`);
+  }
+  assert.equal(sectionRankFor("xx", "book"), null);
+});
+
+test("a series is read like a film, not like a book", () => {
+  const toc = { sections: [{ line: "Background", index: "1" }, { line: "Filming", index: "2" }] };
+  assert.equal(chooseSection(toc, "en", { kind: "series" }).line, "Filming");
 });

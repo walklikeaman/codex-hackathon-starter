@@ -54,6 +54,9 @@ function arg(name, fallback = null) {
 const DRY_RUN = process.argv.includes("--dry-run");
 const LIMIT = Number.parseInt(arg("limit", "5"), 10) || 5;
 const ONE_WORK = arg("work", null);
+// Books and films are enriched from differently-named sections, so a run is usually one
+// kind at a time — `--kind book` reads the nine books, which no run could reach before.
+const KIND = arg("kind", null);
 const LANGUAGES = Number.parseInt(arg("languages", ""), 10) || MAX_LANGUAGES_PER_WORK;
 
 const headers = { "User-Agent": USER_AGENT, "Accept-Encoding": "gzip" };
@@ -128,6 +131,7 @@ async function main() {
 
   let query = db.from("works").select("id, title, kind, year, wikidata_id").not("wikidata_id", "is", null);
   if (ONE_WORK) query = query.eq("id", ONE_WORK);
+  if (KIND) query = query.eq("kind", KIND);
   const { data: works, error } = await query.limit(LIMIT);
   if (error) throw new Error(error.message);
   if (!works?.length) { console.log("Nothing to enrich."); return; }
@@ -162,7 +166,7 @@ async function main() {
         continue;
       }
 
-      const section = chooseSection(toc.parse?.tocdata, language);
+      const section = chooseSection(toc.parse?.tocdata, language, { kind: work.kind });
       if (!section) { console.log(`   ${language}: no production section`); continue; }
 
       const revid = toc.parse?.revid;

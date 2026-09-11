@@ -85,6 +85,39 @@ const SECTION_RANK_BY_LANGUAGE = Object.freeze({
   pl: ["produkcja", "zdjęcia", "plenery", "miejsca zdjęć", "powstanie"],
 });
 
+// **A book is not made on a set, and its article says so in different words.**
+//
+// Measured 12.09 across the nine books in the catalogue: Crime and Punishment leads with
+// "Background", Finnegans Wake with "Background and composition", The Lord of the Rings
+// carries "Concept and creation", "Background" and "Writing". None of those appear in the
+// film table, so before this every book article resolved to "no production section" and the
+// nine of them were unreachable.
+//
+// This is where an author place comes from — the room the book was written in, the street
+// it was drawn from, the graveyard a name was taken off. [[three-axes]] calls that the
+// common shape of the best material.
+//
+// Mrs Dalloway and Roughing It have no such section at all, and that is an ordinary answer
+// rather than a gap to paper over.
+const BOOK_SECTION_RANK_BY_LANGUAGE = Object.freeze({
+  en: ["concept and creation", "background and composition", "composition", "writing",
+    "writing and publication", "genesis", "creation", "background", "origins", "inspiration"],
+  fr: ["genèse", "écriture", "rédaction", "création", "contexte"],
+  de: ["entstehung", "entstehungsgeschichte", "hintergrund"],
+  ru: ["история создания", "создание", "написание", "замысел", "работа над романом"],
+  es: ["génesis", "escritura", "creación", "composición", "contexto"],
+  it: ["genesi", "stesura", "composizione", "contesto"],
+  ja: ["成立", "執筆", "背景"],
+  pl: ["geneza", "powstanie", "tło"],
+});
+
+// Which table a work's article should be read with. A series is shot like a film; anything
+// else that is written rather than filmed reads like a book.
+export function sectionRankFor(language, kind = "film") {
+  const table = kind === "book" ? BOOK_SECTION_RANK_BY_LANGUAGE : SECTION_RANK_BY_LANGUAGE;
+  return table[language] ?? null;
+}
+
 // Ordered by how much production prose the edition tends to carry. English first
 // because it is the best-covered; after that an article in the work's own language is
 // usually the richest, and the caller decides which those are.
@@ -214,10 +247,10 @@ export function buildSectionUrl(title, index, language = "en") {
 }
 
 // Which section to read. Returns the `index`, never the `number` — see the header.
-export function chooseSection(tocdata, language = "en") {
+export function chooseSection(tocdata, language = "en", { kind = "film" } = {}) {
   const sections = tocdata?.sections;
   if (!Array.isArray(sections) || sections.length === 0) return null;
-  const ranked = SECTION_RANK_BY_LANGUAGE[language];
+  const ranked = sectionRankFor(language, kind);
   if (!ranked) return null;
 
   // An exact heading beats one that merely CONTAINS a listed word, and the difference
