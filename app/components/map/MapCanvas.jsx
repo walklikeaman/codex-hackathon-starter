@@ -21,6 +21,20 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 const MapContext = createContext(null);
 
+// **This component takes `[lat, lng]`, like everything else in the app.**
+//
+// Leaflet orders a coordinate latitude-first and MapLibre orders it longitude-first, and the
+// app is written throughout in the Leaflet order. Passing `mapCenter` straight through threw
+// `Invalid LngLat latitude value: must be between -90 and 90` — for Los Angeles, because
+// −118 is not a latitude. London would have been WORSE: 51.5 and −0.11 are both valid either
+// way round, so the map would have opened silently in the Gulf of Guinea.
+function toLngLat(point) {
+  if (!point) return null;
+  const [lat, lng] = Array.isArray(point) ? point : [point.lat, point.lng];
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return [lng, lat];
+}
+
 // The map instance, for children that draw into it. The equivalent of react-leaflet's
 // `useMap`, and named for it so the components that move across read the same.
 export function useMapCanvas() {
@@ -94,11 +108,16 @@ export default function MapCanvas({
       instance = new maplibregl.Map({
         container: containerRef.current,
         style: styleFor(basemap),
-        center,
+        center: toLngLat(center) ?? [0, 0],
         zoom,
         minZoom,
         maxZoom,
-        attributionControl: { compact: false },
+        // **Compact, not removed.** Every provider here requires its credit — OpenStreetMap
+        // by licence, MapTiler and Esri by terms — so it cannot go. But a paragraph of links
+        // across the bottom of the map is what the owner was looking at, and MapLibre's own
+        // compact mode is the accepted answer: an ⓘ that expands to the full text on click.
+        // The credit is still one tap away and still says everything it has to say.
+        attributionControl: { compact: true },
       });
 
       instance.on("error", (event) => {

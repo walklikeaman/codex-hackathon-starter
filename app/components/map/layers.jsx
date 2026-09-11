@@ -7,13 +7,28 @@
 // `<Marker>` is a DOM element the compositor redraws every frame, while a layer here is
 // data the GPU draws. With 1,008 places on screen that is 30 fps against 120 (#197).
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { circleFeature } from "../../lib/geo-circle.mjs";
 import { pinCirclePaint, pinFeature, pinLabelLayout, pinLabelPaint } from "../../lib/pin-style.mjs";
 import { claimClick, useGeoJsonLayer, useMapCanvas } from "./MapCanvas.jsx";
 
 const EMPTY = { type: "FeatureCollection", features: [] };
+
+// **Every component in this file takes `[lat, lng]`, and converts.**
+//
+// Leaflet orders a coordinate latitude-first; MapLibre and GeoJSON order it
+// longitude-first. The app is written throughout in the Leaflet order — `location.position`,
+// `routePositions`, `stop.position` — so the conversion happens HERE, once, at the boundary,
+// rather than at each of the twenty call sites. A swapped pair does not throw: it silently
+// puts Los Angeles in the Indian Ocean, which is the kind of bug that survives review.
+function toLngLat(point) {
+  if (!point) return null;
+  const [lat, lng] = Array.isArray(point) ? point : [point.lat, point.lng];
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return [lng, lat];
+}
 
 function collection(features) {
   return { type: "FeatureCollection", features: features.filter(Boolean) };
@@ -91,7 +106,9 @@ export function PinLayer({ id = "places", features, onSelect, selectedKey = null
 // the city under it grew and shrank, and the ring would stop meaning anything.
 export function AreaLayer({ id = "areas", areas }) {
   const data = useMemo(() => collection(
-    (areas ?? []).map((area) => circleFeature(area.position, area.radiusMeters, { id: area.id })),
+    (areas ?? []).map((area) => circleFeature(toLngLat(area.position), area.radiusMeters, {
+      id: area.id ?? "", active: Boolean(area.active),
+    })),
   ), [areas]);
 
   useGeoJsonLayer({
@@ -101,7 +118,12 @@ export function AreaLayer({ id = "areas", areas }) {
       {
         id: `${id}-fill`,
         type: "fill",
-        paint: { "fill-color": "#f7b733", "fill-opacity": 0.06 },
+        paint: {
+          "fill-color": "#f7b733",
+          // The selected area is filled more strongly — the same distinction the Leaflet
+          // ring made, and the only thing that answers "which of these did I click?".
+          "fill-opacity": ["case", ["to-boolean", ["get", "active"]], 0.12, 0.06],
+        },
       },
       {
         id: `${id}-outline`,
@@ -109,7 +131,7 @@ export function AreaLayer({ id = "areas", areas }) {
         paint: {
           "line-color": "#f7b733",
           "line-opacity": 0.55,
-          "line-width": 1,
+          "line-width": ["case", ["to-boolean", ["get", "active"]], 2, 1],
           // The dash is the whole point: a solid ring would read as a boundary we know,
           // and we do not know one. It is vagueness drawn honestly.
           "line-dasharray": [3, 3],
@@ -125,9 +147,7 @@ export function AreaLayer({ id = "areas", areas }) {
 // stand-in — a dashed line is the honest drawing of "we could not get directions".
 export function RouteLine({ id = "route", positions, dashed = false, color = "#f7b733" }) {
   const data = useMemo(() => {
-    const coordinates = (positions ?? [])
-      .map((point) => (Array.isArray(point) ? [point[1], point[0]] : [point.lng, point.lat]))
-      .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+    const coordinates = (positions ?? []).map(toLngLat).filter(Boolean);
 
     if (coordinates.length < 2) return EMPTY;
     return collection([{ type: "Feature", geometry: { type: "LineString", coordinates }, properties: {} }]);
@@ -155,7 +175,7 @@ export function RouteLine({ id = "route", positions, dashed = false, color = "#f
 // One marker, as a DOM element — for the handful of things that are genuinely one of a kind
 // and want real markup: where the reader is standing, and the numbered stops of a trail.
 // Using a layer for these would be the same mistake in reverse.
-export function MapMarker({ position, children, onClick, className = "", zIndex }) {
+export function MapMarker({ position, children, onClick, className = "", zIndex, title }) {
   // `children` is text only — see the effect at the end of this component for why.
   const map = useMapCanvas();
   const elementRef = useRef(null);
@@ -175,8 +195,10 @@ export function MapMarker({ position, children, onClick, className = "", zIndex 
       const mod = await import("maplibre-gl");
       const maplibregl = mod.default ?? mod;
       if (cancelled) return;
+      const lngLat = toLngLat(position);
+      if (!lngLat) return;
       marker = new maplibregl.Marker({ element: elementRef.current })
-        .setLngLat(position)
+        .setLngLat(lngLat)
         .addTo(map);
       markerRef.current = marker;
     })();
@@ -188,8 +210,9 @@ export function MapMarker({ position, children, onClick, className = "", zIndex 
     const element = elementRef.current;
     if (!element) return;
     element.className = className;
+    if (title) element.title = title;
     if (zIndex !== undefined) element.style.zIndex = String(zIndex);
-  }, [className, zIndex]);
+  }, [className, zIndex, title]);
 
   useEffect(() => {
     const element = elementRef.current;
@@ -200,7 +223,8 @@ export function MapMarker({ position, children, onClick, className = "", zIndex 
   }, [onClick]);
 
   useEffect(() => {
-    if (markerRef.current && position) markerRef.current.setLngLat(position);
+    const lngLat = toLngLat(position);
+    if (markerRef.current && lngLat) markerRef.current.setLngLat(lngLat);
   }, [position]);
 
   // `textContent`, never `innerHTML`. A marker here carries at most a number — a trail stop's
@@ -211,6 +235,124 @@ export function MapMarker({ position, children, onClick, className = "", zIndex 
     const element = elementRef.current;
     if (element) element.textContent = children == null ? "" : String(children);
   }, [children]);
+
+  return null;
+}
+
+// A popup anchored to a coordinate, with React inside it.
+//
+// Leaflet's `<Popup>` took children directly; MapLibre's takes a DOM node. So the node is
+// made here and React renders into it through a portal — which keeps the contents a normal
+// component (links, lists, conditional rows) instead of a string of HTML. That matters more
+// than it looks: the previous popup listed film titles from scraped sources, and building
+// that with `innerHTML` would have been a route from a scraped title to script execution.
+export function MapPopup({ position, onClose, children, maxWidth = "320px" }) {
+  const map = useMapCanvas();
+  const [host] = useState(() => (typeof document === "undefined" ? null : document.createElement("div")));
+  const popupRef = useRef(null);
+
+  useEffect(() => {
+    if (!map || !host || !position) return undefined;
+
+    let cancelled = false;
+    let popup = null;
+
+    (async () => {
+      const mod = await import("maplibre-gl");
+      const maplibregl = mod.default ?? mod;
+      if (cancelled) return;
+
+      const lngLat = toLngLat(position);
+      if (!lngLat) return;
+      popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth })
+        .setLngLat(lngLat)
+        .setDOMContent(host)
+        .addTo(map);
+      popupRef.current = popup;
+      // The reader closing the popup is the same event as dismissing the selection; without
+      // this the pin stays ringed with nothing open, which is the "what did I click" problem
+      // the ring exists to answer.
+      popup.on("close", () => { if (!cancelled) onCloseRef.current?.(); });
+    })();
+
+    return () => { cancelled = true; popup?.remove(); popupRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, host, position?.[0], position?.[1]]);
+
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  if (!host || !position) return null;
+  return createPortal(children, host);
+}
+
+// Move the map without changing its zoom.
+//
+// The rule behind this is the owner's, and it is absolute: "не меняй масштаб карты до тех
+// пор, пока я его сам не поменяю". Clicking a pin used to fly the map and zoom out, which
+// moved the thing being clicked out from under the cursor.
+export function PanTo({ position }) {
+  const map = useMapCanvas();
+
+  useEffect(() => {
+    const lngLat = toLngLat(position);
+    if (!map || !lngLat) return;
+    map.panTo(lngLat, { animate: true, duration: 400 });
+  }, [map, position?.[0], position?.[1]]);
+
+  return null;
+}
+
+// Fit a set of points, for a route — the one case where changing the zoom is the POINT,
+// because a route you cannot see all of is not a route you can follow.
+export function FitPositions({ positions, maxZoom = 14, padding = 48 }) {
+  const map = useMapCanvas();
+  const signature = (positions ?? []).length;
+
+  useEffect(() => {
+    const points = (positions ?? []).map(toLngLat).filter(Boolean);
+    if (!map || points.length < 2) return;
+
+    const bounds = points.reduce(
+      (box, [lng, lat]) => [
+        [Math.min(box[0][0], lng), Math.min(box[0][1], lat)],
+        [Math.max(box[1][0], lng), Math.max(box[1][1], lat)],
+      ],
+      [[points[0][0], points[0][1]], [points[0][0], points[0][1]]],
+    );
+    map.fitBounds(bounds, { maxZoom, padding, animate: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, signature]);
+
+  return null;
+}
+
+// Fly to a point at a zoom chosen for a radius — "what is near me" is a question about an
+// area, so the answer has to frame that area.
+export function FlyTo({ position, zoom }) {
+  const map = useMapCanvas();
+
+  useEffect(() => {
+    const lngLat = toLngLat(position);
+    if (!map || !lngLat) return;
+    map.flyTo({ center: lngLat, zoom, animate: true });
+  }, [map, position?.[0], position?.[1], zoom]);
+
+  return null;
+}
+
+// Hands the map out to the shell, so the furniture outside the canvas can drive it.
+export function ExposeMap({ onMap, onZoom }) {
+  const map = useMapCanvas();
+
+  useEffect(() => {
+    if (!map) return undefined;
+    onMap(map);
+    onZoom(map.getZoom());
+    const report = () => onZoom(map.getZoom());
+    map.on("zoomend", report);
+    return () => { map.off("zoomend", report); onMap(null); };
+  }, [map, onMap, onZoom]);
 
   return null;
 }

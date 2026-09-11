@@ -60,6 +60,14 @@
 // component renders it — a tile layer with the attribution stripped is the same class of
 // mistake as a place with its source stripped.
 
+// **There were four layers and there are three.** The raster "Street" layer was OpenStreetMap's
+// own 256 px tileset, and it was the last raster basemap left — upscaled on every retina
+// screen, which is exactly the "низкое разрешение, некрасивая карта" the owner kept reporting.
+// A street map is what Light already is, drawn as vector and sharp at any zoom, so Street was
+// not a fourth choice; it was a worse copy of one we already had.
+//
+// Satellite stays raster because imagery IS raster. There is nothing about a photograph to
+// draw sharper.
 export const MAP_LAYERS = Object.freeze([
   {
     id: "dark",
@@ -96,14 +104,6 @@ export const MAP_LAYERS = Object.freeze([
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     attribution:
       'Imagery &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics',
-    maxZoom: 19,
-  },
-  {
-    id: "street",
-    label: "Street",
-    hint: "Street names and doorways",
-    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19,
   },
 ]);
