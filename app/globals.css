@@ -4054,3 +4054,30 @@ figcaption a {
   background: rgba(12, 12, 16, 0.86);
   border: 1px solid rgba(255, 255, 255, 0.13);
 }
+
+.vector-map-surface { position: absolute; inset: 0; }
+.map-canvas { position: absolute; inset: 0; }
+.map-canvas .map-canvas-surface { position: absolute; inset: 0; }
+.vector-map-switch {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(12, 12, 16, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+}
+.vector-map-switch button {
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.vector-map-switch button.is-on { background: var(--accent, #f0a83c); color: #14110b; font-weight: 600; }
