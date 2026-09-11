@@ -138,7 +138,7 @@ const NOTHING_ON_SELECT = () => {};
 // because the pin count and the film count move together.
 const EMPTY_FILMS = Object.freeze([]);
 
-const FilmsInView = memo(function FilmsInView({ films, mode, onMode }) {
+const FilmsInView = memo(function FilmsInView({ films, mode, onMode, onHighlight }) {
   if (!films.length) return null;
 
   const cap = mode === VIEW_MODES.posters ? 60 : 120;
@@ -170,6 +170,14 @@ const FilmsInView = memo(function FilmsInView({ films, mode, onMode }) {
             <a
               key={film.work_id ?? film.title}
               className={`films-here-card${film.on_a_lot_only ? " is-lot" : ""}`}
+              // Hovering a row lights its places on the map, and leaving it puts them back.
+              // Borrowed from how Airbnb, Booking and Zillow all tie a list to a map: the
+              // two are one set seen twice, and without the tie the reader has to find the
+              // pin by eye among a thousand identical ones.
+              onMouseEnter={() => onHighlight?.(film)}
+              onMouseLeave={() => onHighlight?.(null)}
+              onFocus={() => onHighlight?.(film)}
+              onBlur={() => onHighlight?.(null)}
               href={film.work_id ? workPath({ id: film.work_id, title: film.title }) : undefined}
               title={`${film.title} — ${film.place_count} place${film.place_count === 1 ? "" : "s"} in view`}
             >
@@ -184,7 +192,11 @@ const FilmsInView = memo(function FilmsInView({ films, mode, onMode }) {
       ) : (
         <ul className="films-here-list">
           {films.slice(0, cap).map((film) => (
-            <li key={film.work_id ?? film.title}>
+            <li
+              key={film.work_id ?? film.title}
+              onMouseEnter={() => onHighlight?.(film)}
+              onMouseLeave={() => onHighlight?.(null)}
+            >
               {film.work_id
                 ? <a href={workPath({ id: film.work_id, title: film.title })}>{film.title}</a>
                 : film.title}
@@ -1294,6 +1306,9 @@ export default function SceneMapApp() {
   const [layersOpen, setLayersOpen] = useState(false);
   // Closed by default: the console answers an operator's questions, not a visitor's.
   const [layersConsoleOpen, setLayersConsoleOpen] = useState(false);
+  // Which film the reader is pointing at in the list. Null when they are pointing at
+  // nothing, which is most of the time.
+  const [highlightedFilm, setHighlightedFilm] = useState(null);
   const [legendOpen, setLegendOpen] = useState(false);
   const zoom = useMemo(() => zoomAffordance(mapZoom), [mapZoom]);
   useEffect(() => {
@@ -1485,6 +1500,18 @@ export default function SceneMapApp() {
   // a label is scarce on purpose, because a thousand of them is the same as none — they
   // collide, they cover the streets, and the eye has nowhere to land.
   const pinLabels = useMemo(() => labelledPlaces(filmsHere, { limit: 8 }), [filmsHere]);
+
+  // The coordinates of the film under the pointer, as the same "lat,lng" keys the pin layer
+  // uses. A Set rather than a list: a film holds up to 96 places at one address in this data
+  // set, and the layer asks "is this pin one of them?" once per pin per frame.
+  const highlightedKeys = useMemo(() => {
+    if (!highlightedFilm) return null;
+    return new Set(
+      (highlightedFilm.places ?? [])
+        .filter((place) => Number.isFinite(place?.lat) && Number.isFinite(place?.lng))
+        .map((place) => `${place.lat},${place.lng}`),
+    );
+  }, [highlightedFilm]);
 
   const visibleLocations = useMemo(
     () => sourceLocations.filter((location) =>
@@ -2576,6 +2603,7 @@ export default function SceneMapApp() {
               workId={graphWorkId || null}
               onCandidatesInView={setCandidatesDrawn}
               placeLabels={pinLabels}
+              highlightedKeys={highlightedKeys}
               showCandidates={candidatesOn}
               showStudioLots={studioLotsOn}
               isMine={candidateIsMine}
@@ -2965,6 +2993,7 @@ export default function SceneMapApp() {
                 films={candidatesOn ? filmsHere : EMPTY_FILMS}
                 mode={filmsViewMode}
                 onMode={setFilmsViewMode}
+                onHighlight={setHighlightedFilm}
               />
 
               {/* What the map may draw beyond the graph.

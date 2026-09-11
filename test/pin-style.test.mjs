@@ -27,6 +27,9 @@ function evaluate(expression, properties) {
 
 function draw(rawProperties) {
   const feature = pinFeature({ geometry: { type: "Point", coordinates: [0, 0] }, properties: rawProperties });
+  // `highlighted` is set by the layer, not by `pinFeature`, so it is merged in here the way
+  // the layer merges it.
+  feature.properties.highlighted = rawProperties.highlighted === true;
   const paint = pinCirclePaint();
   return {
     radius: evaluate(paint["circle-radius"], feature.properties),
@@ -126,4 +129,21 @@ test("the feature keeps its geometry, so it lands where the place is", () => {
   });
   assert.deepEqual(feature.geometry.coordinates, [-118.3269, 34.1016]);
   assert.equal(feature.type, "Feature");
+});
+
+// The list and the map are one set seen twice. Pointing at a row lights its places, which
+// is the same question selection answers — "which one is this?" — asked from the other side.
+test("a pin whose film is under the pointer is lit like a selected one", () => {
+  const plain = draw({ work_count: 2 });
+  const lit = draw({ work_count: 2, highlighted: true });
+  assert.equal(lit.stroke, PIN_SELECTED_RING);
+  assert.ok(lit.strokeWidth > plain.strokeWidth);
+});
+
+test("highlighting changes nothing else about the pin", () => {
+  const plain = draw({ work_count: 2, depicts_elsewhere: true });
+  const lit = draw({ work_count: 2, depicts_elsewhere: true, highlighted: true });
+  assert.equal(lit.fill, plain.fill);
+  assert.equal(lit.radius, plain.radius);
+  assert.equal(lit.label, plain.label);
 });

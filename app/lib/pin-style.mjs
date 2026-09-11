@@ -88,6 +88,9 @@ export function circleColorExpression() {
 export function circleStrokeColorExpression() {
   return [
     "case",
+    // Pointing at a row in the list lights its places. It reads like selection because it
+    // IS the same question — "which one is this?" — asked from the other side.
+    ["get", "highlighted"], PIN_SELECTED_RING,
     ["get", "selected"], PIN_SELECTED_RING,
     ["get", "checked"], "rgba(255, 255, 255, 0.85)",
     ["get", "kindColor"],
@@ -95,7 +98,7 @@ export function circleStrokeColorExpression() {
 }
 
 export function circleStrokeWidthExpression() {
-  return ["case", ["get", "selected"], 4, ["get", "checked"], 2, 1.5];
+  return ["case", ["get", "highlighted"], 4, ["get", "selected"], 4, ["get", "checked"], 2, 1.5];
 }
 
 // One film prints nothing. A "1" on every pin is noise, and the number exists to mark the
