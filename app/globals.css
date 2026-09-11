@@ -4077,3 +4077,38 @@ figcaption a {
   cursor: pointer;
 }
 .vector-map-switch button.is-on { background: var(--accent, #f0a83c); color: #14110b; font-weight: 600; }
+
+/* The panel's first row: the place is the question, so its field leads. */
+.ask-row { display: grid; gap: 0.55rem; }
+.ask-row .account-button { justify-self: start; }
+
+/* The layers console, closed by default. It answers an operator's questions; a visitor
+   should be able to ignore it without scrolling past 1,220 px of it. */
+.layers-console {
+  margin-top: 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.layers-console-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: rgba(236, 232, 225, 0.8);
+  list-style: none;
+}
+.layers-console-summary::-webkit-details-marker { display: none; }
+.layers-console-summary:hover { color: #fff; }
+.layers-console-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  color: rgba(247, 183, 51, 0.85);
+}
+.layers-console[open] .layers-console-summary {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.layers-console .graph-layer-panel { border: 0; margin: 0; padding: 0.6rem 0.7rem; }
