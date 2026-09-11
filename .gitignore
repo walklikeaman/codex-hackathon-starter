@@ -56,3 +56,4 @@ HANDOVER.md
 
 # A real Letterboxd export for local testing. Personal, and this repo is public.
 public/demo-library.json
+public/maplibre-gl-worker.mjs

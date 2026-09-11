@@ -748,6 +748,20 @@ function VectorBasemap({ style, attribution, onReady }) {
           import("@maplibre/maplibre-gl-leaflet"),
         ]);
         if (cancelled) return;
+
+        // The same worker fix the standalone MapLibre map needs (#202). MapLibre spawns its
+        // tile-parsing worker with `new Worker(url, { type: "module" })`, and under Next.js
+        // that URL is not served — the browser refuses the HTML 404 for its MIME type. The
+        // library then parses the style and stops: no source loads and nothing is drawn.
+        //
+        // Here that failure was INVISIBLE, which is why it survived so long. This layer draws
+        // a raster fallback underneath until the vector reports itself painted, so a dead
+        // vector layer does not look broken — it looks like the raster. The complaint it
+        // produced instead was about the LOOK of the map: "низкое разрешение", "не выглядит
+        // красивой". That was OpenStreetMap's 256 px raster upscaled, because the vector
+        // style behind it had never once rendered.
+        maplibregl.setWorkerUrl?.("/maplibre-gl-worker.mjs");
+
         // The plugin attaches itself to the Leaflet global as `L.maplibreGL`.
         layer = L.maplibreGL({ style, attribution, maplibregl });
         layer.addTo(map);
