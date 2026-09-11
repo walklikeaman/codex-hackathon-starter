@@ -113,6 +113,19 @@ export default function VectorMap({
       const maplibregl = mod.default ?? mod;
       if (cancelled || !containerRef.current) return;
 
+      // Point MapLibre at a worker the browser can actually fetch.
+      //
+      // It spawns its tile-parsing worker with `new Worker(url, { type: "module" })`, and
+      // under Next.js that URL is not served — the request returns the HTML 404 page and the
+      // browser refuses it for its MIME type. Without the worker MapLibre parses the style
+      // and then stops: no source begins loading, `load` never fires, no tile is requested,
+      // and the map is a black rectangle. Measured on production before this line:
+      // `built:y load:n styledata:2 sourcedata:0`.
+      //
+      // The file is copied into `public/` by `scripts/copy-maplibre-worker.mjs`, which runs
+      // before `dev` and `build` so it can never be a different version from the bundle.
+      maplibregl.setWorkerUrl?.("/maplibre-gl-worker.mjs");
+
       // The chain, not the style: a well-formed key that MapTiler rejects by origin fails at
       // the network, where no amount of checking in JS can see it. Walking the chain means a
       // rejected key degrades to free tiles instead of to a blank map.
