@@ -75,7 +75,7 @@ import {
   filmsInView,
   filmsInViewLabel,
 } from "../lib/films-in-view.mjs";
-import { notableHere } from "../lib/notable-here.mjs";
+import { labelledPlaces, notableHere } from "../lib/notable-here.mjs";
 import {
   DEFAULT_SORT,
   IMDB_MAX,
@@ -1474,6 +1474,11 @@ export default function SceneMapApp() {
   // question a visitor arrives with is "what is this place famous for".
   const notable = useMemo(() => notableHere(filmsHere, { limit: 5 }), [filmsHere]);
 
+  // Which pins have earned a name. The same ranking the list above uses, spent on the map:
+  // a label is scarce on purpose, because a thousand of them is the same as none — they
+  // collide, they cover the streets, and the eye has nowhere to land.
+  const pinLabels = useMemo(() => labelledPlaces(filmsHere, { limit: 8 }), [filmsHere]);
+
   const visibleLocations = useMemo(
     () => sourceLocations.filter((location) =>
       selectedFilms.includes(location.filmId)
@@ -2563,6 +2568,7 @@ export default function SceneMapApp() {
               kinds={graphKinds.length ? graphKinds : null}
               workId={graphWorkId || null}
               onCandidatesInView={setCandidatesDrawn}
+              placeLabels={pinLabels}
               showCandidates={candidatesOn}
               showStudioLots={studioLotsOn}
               isMine={candidateIsMine}
