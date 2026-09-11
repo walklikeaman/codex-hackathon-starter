@@ -74,6 +74,22 @@ export const MAP_LAYERS = Object.freeze([
     maxZoom: 19,
   },
   {
+    id: "light",
+    label: "Light",
+    hint: "The same map in daylight",
+    // The counterpart to dark, and the reason it can exist at all: the dark layer is a
+    // vector style, so a second one costs a URL rather than a second tile pipeline.
+    //
+    // It is `positron` rather than a lightened `dark`. A dark style inverted is not a light
+    // style — the contrasts it was drawn for run the wrong way, and roads end up paler than
+    // the ground they cross. Positron is drawn for daylight from the start.
+    vector: "https://tiles.openfreemap.org/styles/positron",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors '
+      + '&copy; <a href="https://openfreemap.org">OpenFreeMap</a>',
+    maxZoom: 19,
+  },
+  {
     id: "satellite",
     label: "Satellite",
     hint: "The roof and the footprint",

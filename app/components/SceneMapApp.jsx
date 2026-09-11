@@ -898,6 +898,29 @@ function ExposeMap({ onMap, onZoom }) {
   return null;
 }
 
+// Keeps the container's ground class in step with the chosen basemap.
+//
+// It cannot be done with `className` on <MapContainer>: react-leaflet writes that once, when
+// Leaflet builds the container, and never again. Switching from dark to light left the class
+// saying `map-vector-dark` while every other piece of state — the stored preference, the
+// menu label, the pressed option — already said light, so the ground behind the tiles and
+// the dimming on the raster stand-in stayed dark under a daylight map.
+function BasemapGround({ layerId, vector }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    const ours = [...container.classList].filter((name) => name.startsWith("map-vector"));
+    container.classList.remove(...ours);
+    if (vector) container.classList.add("map-vector", `map-vector-${layerId}`);
+    return () => {
+      container.classList.remove("map-vector", `map-vector-${layerId}`);
+    };
+  }, [map, layerId, vector]);
+
+  return null;
+}
+
 function FlyToUser({ position, radius }) {
   const map = useMap();
 
@@ -2792,9 +2815,9 @@ export default function SceneMapApp() {
           minZoom={3}
           maxZoom={19}
           zoomControl={false}
-          className={basemap.vector ? "map-vector" : undefined}
         >
           <ExposeMap onMap={setMapApi} onZoom={setMapZoom} />
+          <BasemapGround layerId={basemap.id} vector={Boolean(basemap.vector)} />
           {/* Keyed by id so Leaflet replaces the layer instead of mutating the one it
               has: without the key the attribution of the previous provider stays on
               screen under the new provider's tiles, which is an attribution bug rather

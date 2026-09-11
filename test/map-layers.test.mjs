@@ -117,3 +117,23 @@ test("nothing embeds imagery we are not licensed to embed", () => {
     assert.ok(!/\/vt\?|staticmap|tile/.test(link.url), `${link.id} looks like an embed`);
   }
 });
+
+// Light is the counterpart to dark, and it is cheap only because dark is a vector style:
+// a second one costs a URL, not a second tile pipeline.
+test("the map offers a light basemap as well as a dark one", () => {
+  const light = MAP_LAYERS.find((layer) => layer.id === "light");
+  assert.ok(light, "no light basemap");
+  assert.ok(light.vector, "light must be vector, or it is a second raster pipeline");
+  assert.notEqual(light.vector, MAP_LAYERS.find((layer) => layer.id === "dark").vector);
+});
+
+// A dark style inverted is not a light style: the contrasts it was drawn for run the wrong
+// way, and roads come out paler than the ground they cross.
+test("light is its own style, not the dark one lightened", () => {
+  const light = MAP_LAYERS.find((layer) => layer.id === "light");
+  assert.match(light.vector, /positron/);
+});
+
+test("dark stays the one the map opens on", () => {
+  assert.equal(layerById(DEFAULT_LAYER_ID).id, "dark");
+});

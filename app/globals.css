@@ -3697,8 +3697,16 @@ figcaption a {
    blue. */
 /* The vector basemap paints into its own canvas under the pins. The container needs a dark
    ground beneath it so the first frame is not a white flash before the style loads. */
+/* The ground the vector style is drawn over, and it has to match the style or the edges and
+   the first half-second of every pan are the wrong colour. */
 .map-vector { background: #0c0c0c; }
+.map-vector-light { background: #eaeaea; }
 .map-vector .leaflet-tile-pane { filter: none; }
+
+/* The raster stand-in shown until the vector style reports itself painted. It is dimmed to
+   sit under a dark style; under the light one that dimming is exactly backwards, so the
+   light layer shows it as it comes. */
+.map-vector-light .basemap-fallback { filter: none; }
 
 /* Everything on screen, as a list. It sits under the queue switches because it lists what
    they narrowed — a panel that ignored them would contradict the map beside it. */
