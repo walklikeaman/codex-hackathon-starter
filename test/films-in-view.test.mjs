@@ -96,3 +96,26 @@ test("the list opens on posters, and both modes are real", () => {
   assert.equal(isViewMode("list"), true);
   assert.equal(isViewMode("grid"), false);
 });
+
+// Carried through so the panel can rank what is worth seeing here; without them every film
+// in view scores the same and the ranked list is alphabetical by accident.
+test("a film in view keeps the rating and the vote count it arrived with", () => {
+  const [film] = filmsInView([{
+    geometry: { type: "Point", coordinates: [-118.3, 34.1] },
+    properties: {
+      name: "Somewhere",
+      films: [{ work_id: "w1", title: "Forrest Gump", imdb: 8.8, imdb_votes: 2532967 }],
+    },
+  }]);
+  assert.equal(film.imdb, 8.8);
+  assert.equal(film.imdb_votes, 2532967);
+});
+
+test("a film with no rating carries null rather than zero", () => {
+  const [film] = filmsInView([{
+    geometry: { type: "Point", coordinates: [-118.3, 34.1] },
+    properties: { name: "Somewhere", films: [{ work_id: "w2", title: "Unrated" }] },
+  }]);
+  assert.equal(film.imdb, null);
+  assert.equal(film.imdb_votes, null);
+});
