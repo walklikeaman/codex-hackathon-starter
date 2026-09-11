@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import {
   Circle,
@@ -125,6 +125,93 @@ import { PIN_LEGEND, pinHtml, pinSize } from "../lib/map-pin.mjs";
 // two, not a theme.
 const VECTOR_FALLBACK_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 import { RATING_LABELS } from "../lib/work-ratings.mjs";
+
+// A new `() => {}` every render is a changed prop, and a changed prop re-renders the whole
+// marker layer — which is the work this whole component is trying not to do. Clicking a pin
+// deliberately does nothing here: the popup opens and the map does not move, because sliding
+// the map out from under the cursor is the behaviour that was complained about.
+const NOTHING_ON_SELECT = () => {};
+
+// The films in this view, as its own memoised component — for the same reason GraphLayer is
+// memoised, and with the same measurement behind it.
+//
+// This list renders up to 60 poster cards or 120 rows, and it sat inline in a component that
+// re-renders on every piece of state it holds. Opening a menu rebuilt all of it. With the
+// marker layer already memoised, one click still blocked the main thread for ~98 ms with
+// 1,008 pins drawn against ~45 ms with 10 — and this list is what still scaled with the pins,
+// because the pin count and the film count move together.
+const EMPTY_FILMS = Object.freeze([]);
+
+const FilmsInView = memo(function FilmsInView({ films, mode, onMode }) {
+  if (!films.length) return null;
+
+  const cap = mode === VIEW_MODES.posters ? 60 : 120;
+
+  return (
+    <div className="films-here">
+      <div className="films-here-head">
+        <strong>{filmsInViewLabel(films)}</strong>
+        {/* Posters for browsing, titles for finding one. Different tasks, not a matter of
+            taste, so both are offered rather than one chosen. */}
+        <div className="films-here-modes" role="group" aria-label="How to show the films in view">
+          {[[VIEW_MODES.posters, "Posters"], [VIEW_MODES.list, "List"]].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={mode === value ? "is-on" : ""}
+              aria-pressed={mode === value}
+              onClick={() => onMode(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {mode === VIEW_MODES.posters ? (
+        <div className="films-here-grid">
+          {films.slice(0, cap).map((film) => (
+            <a
+              key={film.work_id ?? film.title}
+              className={`films-here-card${film.on_a_lot_only ? " is-lot" : ""}`}
+              href={film.work_id ? workPath({ id: film.work_id, title: film.title }) : undefined}
+              title={`${film.title} — ${film.place_count} place${film.place_count === 1 ? "" : "s"} in view`}
+            >
+              <span className="films-here-thumb" aria-hidden="true">
+                {String(film.title ?? "?").slice(0, 2).toUpperCase()}
+              </span>
+              <span className="films-here-title">{film.title}</span>
+              <span className="films-here-count">{film.place_count}</span>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <ul className="films-here-list">
+          {films.slice(0, cap).map((film) => (
+            <li key={film.work_id ?? film.title}>
+              {film.work_id
+                ? <a href={workPath({ id: film.work_id, title: film.title })}>{film.title}</a>
+                : film.title}
+              {film.year ? <span className="films-here-year"> {film.year}</span> : null}
+              <span className="films-here-count">{film.place_count}</span>
+              {/* A film seen only on a backlot is a different answer from one seen on the
+                  street, and it is said before anybody walks. */}
+              {film.on_a_lot_only && <span className="films-here-lot">studio lot</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {films.length > cap && (
+        <p className="graph-note">
+          Showing {cap} of {films.length} — zoom in to narrow the view.
+        </p>
+      )}
+    </div>
+  );
+});
+
+
 
 const londonCenter = [51.5094, -0.1183];
 const GUEST_LIBRARY_KEY = "scenemap-library";
@@ -2798,7 +2885,7 @@ export default function SceneMapApp() {
               // Clicking a pin opens its popup and moves nothing. The pin is on screen —
               // that is how it got clicked — and sliding the map out from under the cursor
               // is the behaviour being complained about, not a nicety on top of it.
-              onSelect={() => {}}
+              onSelect={NOTHING_ON_SELECT}
             />
           )}
           {routePositions.length > 1 && (
@@ -3056,69 +3143,11 @@ export default function SceneMapApp() {
                   somebody asks while panning across a city. It updates as the map moves,
                   and it lists what was DRAWN, so the studio-lot and library switches above
                   narrow it too. */}
-              {candidatesOn && filmsHere.length > 0 && (
-                <div className="films-here">
-                  <div className="films-here-head">
-                    <strong>{filmsInViewLabel(filmsHere)}</strong>
-                    {/* Posters for browsing, titles for finding one. Different tasks, not
-                        a matter of taste, so both are offered rather than one chosen. */}
-                    <div className="films-here-modes" role="group" aria-label="How to show the films in view">
-                      {[[VIEW_MODES.posters, "Posters"], [VIEW_MODES.list, "List"]].map(([mode, label]) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          className={filmsViewMode === mode ? "is-on" : ""}
-                          aria-pressed={filmsViewMode === mode}
-                          onClick={() => setFilmsViewMode(mode)}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {filmsViewMode === VIEW_MODES.posters ? (
-                    <div className="films-here-grid">
-                      {filmsHere.slice(0, 60).map((film) => (
-                        <a
-                          key={film.work_id ?? film.title}
-                          className={`films-here-card${film.on_a_lot_only ? " is-lot" : ""}`}
-                          href={film.work_id ? workPath({ id: film.work_id, title: film.title }) : undefined}
-                          title={`${film.title} — ${film.place_count} place${film.place_count === 1 ? "" : "s"} in view`}
-                        >
-                          <span className="films-here-thumb" aria-hidden="true">
-                            {String(film.title ?? "?").slice(0, 2).toUpperCase()}
-                          </span>
-                          <span className="films-here-title">{film.title}</span>
-                          <span className="films-here-count">{film.place_count}</span>
-                        </a>
-                      ))}
-                    </div>
-                  ) : (
-                    <ul className="films-here-list">
-                      {filmsHere.slice(0, 120).map((film) => (
-                        <li key={film.work_id ?? film.title}>
-                          {film.work_id
-                            ? <a href={workPath({ id: film.work_id, title: film.title })}>{film.title}</a>
-                            : film.title}
-                          {film.year ? <span className="films-here-year"> {film.year}</span> : null}
-                          <span className="films-here-count">{film.place_count}</span>
-                          {/* A film seen only on a backlot is a different answer from one
-                              seen on the street, and it is said before anybody walks. */}
-                          {film.on_a_lot_only && <span className="films-here-lot">studio lot</span>}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {filmsHere.length > (filmsViewMode === VIEW_MODES.posters ? 60 : 120) && (
-                    <p className="graph-note">
-                      Showing {filmsViewMode === VIEW_MODES.posters ? 60 : 120} of {filmsHere.length} —
-                      zoom in to narrow the view.
-                    </p>
-                  )}
-                </div>
-              )}
+              <FilmsInView
+                films={candidatesOn ? filmsHere : EMPTY_FILMS}
+                mode={filmsViewMode}
+                onMode={setFilmsViewMode}
+              />
 
               {/* What the map may draw beyond the graph.
                   The graph holds 70 places in the world and the queue holds 32,148
