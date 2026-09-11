@@ -223,6 +223,9 @@ async function main() {
         place_name: location.place_name,
         area_hint: location.area_hint,
         source_sentence: location.source_sentence,
+        // Filming, or somewhere the author made the work. Both belong on the map and a
+        // reviewer must not have to re-read the sentence to tell which is which.
+        relation_kind: location.relation_kind,
         source_title: location.article_title,
         source_revid: location.article_revid,
         // The credit points at the edition the sentence was copied from. A French

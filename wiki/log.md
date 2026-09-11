@@ -7,6 +7,60 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-12] decision | A work is not only a film, and a place is not only where a camera stood
+
+**Object**: `app/lib/wikipedia-extract.mjs`, `app/lib/fandom-source.mjs`,
+`scripts/enrich-from-wikipedia.mjs`, `scripts/ingest-fandom.mjs`,
+`supabase/migrations/20260912000000_submission_relation_kind.sql`
+**Scenario**: decision · **Outcome**: ✅ author places reach the queue as their own kind;
+fictional places refused structurally rather than by prompt
+**Code changes**: this commit
+
+Owner's rule, 12.09: we work with books as well as films, and a place tied to a work is not
+only where it was shot. If Rowling wrote in a particular Edinburgh café and took character
+names off the stones in Greyfriars Kirkyard, those are real places a reader can walk to and
+they belong on the map.
+
+**This was already the project's own position, carried nowhere.** `relation_kind` in the
+content graph has held `author_place` since July, and [[three-axes]] names this exact case —
+*"a fan naming the café J.K. Rowling wrote in"* — as **the common shape of the best
+material**, measured against operator itineraries where we cover 8 of the 47 Edinburgh Harry
+Potter stops. But `location_submissions` had no such column, so every row arriving through
+the review queue was implicitly a filming location, and `acceptExtraction` dropped anything
+whose `is_filming_location` was not true.
+
+So: a `place_role` on the extraction, mapped to a relation kind in the accept pass; a
+`relation_kind` column on the queue defaulting to `filming_location`, which is not a guess
+about the existing rows but what they are.
+
+**Widening the roles widened a hole, and a test found it before the model did.** Asked only
+for filming locations, a model returning Hogwarts is obviously wrong. Asked for "places tied
+to the work", the same answer starts to look arguable — and *"Hogwarts is the school at the
+centre of the series"* passed every check: verbatim quote, names the place, accepted role.
+Nothing structural refused it.
+
+The code cannot know Hogwarts is fictional. What it can insist on is that the **sentence**
+says something was made, shot or written there, which a sentence describing a place inside
+the story does not. `sentenceSupportsRole` is the same shape as `sentenceMentionsPlace`: the
+quote is real, and this asks whether it is real about this kind of claim. The vocabulary is
+deliberately generous — a dropped true claim costs one place, an accepted fictional one puts
+Hogwarts in a queue a person then has to clean.
+
+**Two things that stopped the rehearsal, both backwards.** `--dry-run` skipped the model
+entirely, so the one thing you most want to see before writing to the queue was the one
+thing you could not see without writing to it; prose is opt-in via `--prose N` already, and
+`--dry-run` now decides whether rows are *stored*, not whether they are read. And the script
+demanded `SUPABASE_SERVICE_ROLE_KEY` even for a dry run that only reads `works` — the safe
+rehearsal needed the dangerous credential. A dry run takes the anon key.
+
+**The prose run itself did not happen.** `OPENAI_API_KEY` in `.env.local` is the placeholder
+`sk-YOUR-KEY` and the API answers 401; there is no OpenRouter key either. Everything up to
+the model call is verified against live pages: the rehearsal on MCU and DCEU found five
+prose candidates — Inhumans, Wonder Woman 1984, The Flash, Justice League, Suicide Squad —
+matched them to works and reached the request. A real key is the only thing missing.
+
+---
+
 ## [2026-09-11] decision | Fandom's "only two wikis" was the parser's shape, not Fandom's content
 
 **Object**: `app/lib/fandom-source.mjs`, `scripts/ingest-fandom.mjs`

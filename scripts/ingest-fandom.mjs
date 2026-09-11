@@ -84,12 +84,19 @@ async function wikiLicence(wiki) {
 }
 
 async function main() {
-  const { NEXT_PUBLIC_SUPABASE_URL: url, SUPABASE_SERVICE_ROLE_KEY: key } = process.env;
-  if (!url || !key) {
-    console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+  // A dry run only reads `works`, which the anon key can do. Demanding the service key for
+  // it meant the safe rehearsal needed the dangerous credential — exactly backwards, and it
+  // stopped the run that was supposed to precede the run that writes.
+  const { NEXT_PUBLIC_SUPABASE_URL: url, SUPABASE_SERVICE_ROLE_KEY: key,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: anon } = process.env;
+  const readKey = key || (DRY_RUN ? anon : null);
+  if (!url || !readKey) {
+    console.error(DRY_RUN
+      ? "Missing NEXT_PUBLIC_SUPABASE_URL, and neither a service nor an anon key"
+      : "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY (writing needs the service key)");
     process.exit(1);
   }
-  const db = createClient(url, key, { auth: { persistSession: false } });
+  const db = createClient(url, readKey, { auth: { persistSession: false } });
 
   // The catalogue, by normalised title. A wiki page carries no year, so an ambiguous
   // title matches nothing rather than guessing — see `matchWork`.
@@ -113,7 +120,12 @@ async function main() {
 
   // "cheap": every answer passes the verbatim-quote gate before it is stored, so a bad one
   // is visibly bad and costs a retry rather than becoming a fact ([[model-providers]]).
-  const runtime = PROSE_LIMIT > 0 && !DRY_RUN ? createModelClient(process.env, { tier: "cheap" }) : null;
+  // **A dry run still asks the model.** The first version skipped it, on the reasoning
+  // that a dry run should not spend anything — which made the one thing you most want to
+  // see before writing to the queue the one thing you could not see without writing to it.
+  // Prose is opt-in already: `--prose N` is the consent, and `--dry-run` decides whether
+  // the rows are stored, not whether they are read.
+  const runtime = PROSE_LIMIT > 0 ? createModelClient(process.env, { tier: "cheap" }) : null;
   const throttle = createThrottle();
   if (PROSE_LIMIT > 0 && !runtime) console.log("prose requested but no model client is configured — tables and lists only");
 
