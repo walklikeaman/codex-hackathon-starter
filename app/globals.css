@@ -3847,3 +3847,51 @@ figcaption a {
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* The rating sliders. A slider earns its place over a dropdown here because the question is
+   "somewhere around eight", not "pick one of six" — and because the map redraws as it moves,
+   so the reader sees the answer change under their thumb. */
+.list-control.is-slider {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 132px;
+}
+.list-control.is-slider > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+/* The value is the loud part: it is what the reader is setting, and on a slider there is no
+   text box telling them where they landed. */
+.list-control.is-slider strong {
+  color: #f0a83c;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.list-control.is-slider input[type="range"] {
+  width: 100%;
+  height: 3px;
+  margin: 0.25rem 0 0;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.list-control.is-slider input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f0a83c;
+  border: 2px solid #16130c;
+  cursor: grab;
+}
+.list-control.is-slider input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f0a83c;
+  border: 2px solid #16130c;
+  cursor: grab;
+}

@@ -253,3 +253,44 @@ test("IMDb's steps are out of ten, not out of five", async () => {
   assert.equal(imdbLabel(7), "7");
   assert.equal(imdbLabel(7.5), "7.5");
 });
+
+// ---------- the sliders ----------
+
+test("the IMDb range is where the data is, not where the scale is", async () => {
+  const { IMDB_MAX, IMDB_MIN } = await import("../app/lib/library-view.mjs");
+  // Measured over the works with a Los Angeles row: 1,397 films clear 5.0 and five clear
+  // 9.0. Below 5 it is barely a filter; above 9 there is nothing left to filter.
+  assert.equal(IMDB_MIN, 5);
+  assert.equal(IMDB_MAX, 9);
+});
+
+test("a slider's float is snapped to the precision IMDb publishes", async () => {
+  const { clampImdb } = await import("../app/lib/library-view.mjs");
+  // Stepping by 0.1 in a browser produces 7.300000000000001. The filter has to compare —
+  // and the label has to print — the number the reader actually chose.
+  assert.equal(clampImdb(7.300000000000001), 7.3);
+  assert.equal(clampImdb("8"), 8);
+  assert.equal(clampImdb(8.04), 8);
+});
+
+test("the slider cannot be dragged outside the range", async () => {
+  const { clampImdb, IMDB_MAX, IMDB_MIN } = await import("../app/lib/library-view.mjs");
+  assert.equal(clampImdb(99), IMDB_MAX);
+  assert.equal(clampImdb(1), IMDB_MIN);
+});
+
+test("zero means Any, and is not clamped up to the minimum", async () => {
+  const { NO_MINIMUM, clampImdb, clampStars } = await import("../app/lib/library-view.mjs");
+  // The one value below the range that has to survive: it is the off position, not a
+  // rating of five.
+  assert.equal(clampImdb(0), NO_MINIMUM);
+  assert.equal(clampStars(0), NO_MINIMUM);
+  assert.equal(clampImdb(""), NO_MINIMUM);
+});
+
+test("stars snap to halves, because there is no such rating as 3.7", async () => {
+  const { clampStars } = await import("../app/lib/library-view.mjs");
+  assert.equal(clampStars(3.7), 3.5);
+  assert.equal(clampStars(3.8), 4);
+  assert.equal(clampStars(9), 5);
+});
