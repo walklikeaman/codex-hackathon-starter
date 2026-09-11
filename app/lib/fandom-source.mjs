@@ -420,7 +420,15 @@ export function namesAPlaceInAList(value) {
   // catches "…closed for filming. Photos taken by residents…".
   if (/\b[A-Za-z]{4,}[.!?]\s+[A-Z]/.test(text)) return false;
   // And a predicate, because a long clause can run on without a full stop at all.
-  if (/\b(was|were|is|are|been|began|begun|shot|filmed|took|taken|used|doubles?|doubled|serves?|stood|built|closed|reported|features?)\b/i.test(text)) return false;
+  if (/\b(was|were|is|are|been|began|begun|begin|start(s|ed|ing)?|shot|shoot(s|ing)?|film(s|ed|ing)?|took|taken|takes|used|doubles?|doubled|serves?|stood|built|closed|reported|features?|involv(e|ed|ing))\b/i.test(text)) return false;
+  // A pronoun opens a sentence, never a place name.
+  if (/^(they|it|this|these|he|she|we|there|their|his|her)\b/i.test(text)) return false;
+  // The hole a stripped wikilink leaves. "They started shooting the forest scenes at [[X]]
+  // on 10 June" becomes "…at on 10 June" once the link is gone, and the result reads like a
+  // name to everything downstream. Two prepositions in a row is not a place — it is the
+  // place having been removed. This reached the live queue on harrypotter/Deathly Hallows
+  // 1 and 2 before the guard existed.
+  if (/\b(at|in|on|near|outside|inside)\s+(at|in|on|near|and|the\s+(at|in|on))\b/i.test(text)) return false;
   // A bare external link — "[http://imdb.com/… Halifirien on IMDB]" sits in the middle of
   // the Halifirien list and names no place at all.
   if (/^(https?:\/\/|\[https?:)/i.test(text)) return false;
