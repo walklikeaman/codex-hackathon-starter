@@ -76,7 +76,7 @@ import { externalPlaceLinks } from "../lib/place-links.mjs";
 import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { createCoalescingRunner } from "../lib/coalesce.mjs";
 import { WALKING_SPEED_KMH, haversineKm, isLatLng } from "../lib/geo.mjs";
-import { libraryRating, mergeLibraries, parseMediaCsv, workIsInLibrary } from "../lib/media-library.mjs";
+import { libraryRating, mergeLibraries, parseMediaCsv, upgradeLibraryScale, workIsInLibrary } from "../lib/media-library.mjs";
 import { citySlugFromName, mapUrlQuery, readMapUrl } from "../lib/map-url.mjs";
 import { workPath } from "../lib/work-url.mjs";
 import {
@@ -92,10 +92,11 @@ import {
   IMDB_STEP,
   NO_MINIMUM,
   SORT,
-  STAR_MAX,
-  STAR_STEP,
+  MINE_MAX,
+  MINE_MIN,
+  MINE_STEP,
   clampImdb,
-  clampStars,
+  clampMine,
   imdbLabel,
   impliesLibraryOnly,
   passesImdbFilter,
@@ -216,11 +217,16 @@ const FilmsInView = memo(function FilmsInView({ films, mode, onMode }) {
 const londonCenter = [51.5094, -0.1183];
 const GUEST_LIBRARY_KEY = "scenemap-library";
 
+// Read, and put on the ten-point scale on the way out. A library saved before the scale
+// was settled holds Letterboxd half-stars, and a 4.5 read against a bar that now means
+// "4.5 out of ten" would quietly demote the reader's favourite films to below-average.
+// `upgradeLibraryScale` is keyed on a marker rather than on the value, so this is safe on
+// every read rather than only the first ([[personal-library]]).
 function readStoredLibrary(key) {
   if (typeof window === "undefined") return [];
   try {
     const storedLibrary = JSON.parse(localStorage.getItem(key) || "[]");
-    return Array.isArray(storedLibrary) ? storedLibrary : [];
+    return Array.isArray(storedLibrary) ? upgradeLibraryScale(storedLibrary) : [];
   } catch {
     return [];
   }
@@ -1153,7 +1159,7 @@ export default function SceneMapApp() {
   // ratings for 2,422 films.
   const [sortBy, setSortBy] = useState(DEFAULT_SORT);
   const [minRating, setMinRating] = useState(NO_MINIMUM);
-  // The public score, independent of the reader's own. "Films I rated 4★ AND the world
+  // The public score, independent of the reader's own. "Films I rated 8 AND the world
   // rated 7.5" is a real question and neither filter answers it alone. It works without a
   // library, which the reader's own cannot.
   const [minImdb, setMinImdb] = useState(NO_MINIMUM);
@@ -3405,13 +3411,13 @@ export default function SceneMapApp() {
             </select>
           </label>
 
-          {/* Two bars, not one. "Films I rated 4★ AND the world rated 7.5" is a real
+          {/* Two bars, not one. "Films I rated 8 AND the world rated 7.5" is a real
               question and neither answers it alone. The reader's own needs a library;
               IMDb's works for anybody. */}
           {/* Sliders, not fixed steps. "Somewhere around eight" is a real request and a
               list of half-points is not a fine enough answer to it — IMDb publishes tenths
-              and the filter can compare them. The star bar stays in halves, because
-              Letterboxd has no finer rating to give.
+              and the filter can compare them. The reader's own bar steps in whole points,
+              because IMDb has no finer rating to give.
 
               **Zero is the OFF position, to the left of the range**, so the control reads
               as one line from "everything" to "only the best" instead of needing a
@@ -3424,12 +3430,15 @@ export default function SceneMapApp() {
               </span>
               <input
                 type="range"
-                min={0}
-                max={STAR_MAX}
-                step={STAR_STEP}
+                // One step below the range is the off position, and on a ten-point scale
+                // stepping by one that lands exactly on 0 — which is why this bar runs the
+                // whole scale where the IMDb one below is narrowed.
+                min={MINE_MIN - MINE_STEP}
+                max={MINE_MAX}
+                step={MINE_STEP}
                 value={minRating}
                 aria-label="Minimum rating you gave"
-                onChange={(event) => setMinRating(clampStars(event.target.value))}
+                onChange={(event) => setMinRating(clampMine(event.target.value))}
               />
             </label>
           )}

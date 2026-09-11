@@ -5,9 +5,9 @@
 
 ## Why it exists
 
-The map's most interesting behaviour — *only my films*, *my rating 4★ and up*, the film list
-for a viewport — is invisible without a library, and importing a 2,422-film export by hand
-before every test is the kind of friction that stops a feature being tested at all.
+The map's most interesting behaviour — *only my films*, *my rating 8/10 and up*, the film
+list for a viewport — is invisible without a library, and importing a 2,798-film export by
+hand before every test is the kind of friction that stops a feature being tested at all.
 
 ## The two guards, and why each is there
 
@@ -19,13 +19,24 @@ imported their own list keeps it.
 
 ## And it is gitignored, which is the point
 
-A watch history is personal — 2,422 films, dated, rated — and **this repository is public**.
+A watch history is personal — 2,798 films, dated, rated — and **this repository is public**.
 `public/demo-library.json` is generated on the machine that needs it and committed nowhere.
 Anybody else who wants the demo runs the script against their own export:
 
 ```bash
-node scripts/seed-demo-library.mjs ~/Downloads/letterboxd-you-2026-08-04.zip
+node scripts/seed-demo-library.mjs ~/Downloads/imdb-ratings.csv       # IMDb
+node scripts/seed-demo-library.mjs ~/Downloads/letterboxd-you.zip     # Letterboxd
 ```
+
+**Three shapes, because the two services hand you different things.** Letterboxd gives a ZIP
+of several CSVs, of which watched.csv and ratings.csv matter; IMDb gives one CSV per list,
+and the ratings list is the one worth seeding because every row in it carries an opinion.
+
+The service is read off the **header**, not the filename — an IMDb export downloads as a
+bare UUID (`6b860a10-….csv`), so there is nothing in the name to read. An IMDb export leads
+with a `Const` column and a Letterboxd one carries `Letterboxd URI`; anything else is
+refused rather than guessed at, because guessing wrong does not throw — it puts every rating
+on the wrong scale ([[personal-library]]).
 
 The script uses **the same parser and the same merge the browser importer uses**
 (`parseMediaCsv`, `mergeLibraries`). A demo built by a different code path would test
