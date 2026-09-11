@@ -13,6 +13,7 @@ import {
   buildTocUrl,
   chooseSection,
   languagesForWork,
+  preferredLanguages,
   cleanWikitext,
   isStorableQuote,
   MAX_QUOTE_WORDS,
@@ -342,4 +343,53 @@ test("a prefix reverses the meaning, so an exact heading wins over a containing 
 
   // With no exact match anywhere, a containing heading is still better than nothing.
   assert.equal(chooseSection({ sections: [{ index: "3", line: "Vorproduktion", hLevel: 2 }] }, "de").index, "3");
+});
+
+
+// --- the edition in the work's own language --------------------------------------------
+
+const claim = (id) => ({ mainsnak: { datavalue: { value: { id } } } });
+const FOUR_EDITIONS = { enwiki: { title: "X" }, dewiki: { title: "X" }, ruwiki: { title: "X" }, frwiki: { title: "X" } };
+
+test("the work's own language is read from P364, and there can be several", () => {
+  // Verified against the live API 12.09: Der Untergang carries Q188, Q7737 and Q9067 —
+  // German, Russian and Hungarian. Hungarian is not an edition we read and drops out.
+  const entity = { sitelinks: FOUR_EDITIONS, claims: { P364: [claim("Q188"), claim("Q7737"), claim("Q9067")] } };
+  assert.deepEqual(preferredLanguages(entity), ["de", "ru"]);
+  // English still leads — it is the best-covered edition — then the work's own, in the
+  // order the work states them rather than the order SUPPORTED_LANGUAGES happens to list.
+  assert.deepEqual(languagesForWork(entity, { limit: 3 }), ["en", "de", "ru"]);
+});
+
+test("country of origin is the fallback when there is no P364", () => {
+  const entity = { sitelinks: FOUR_EDITIONS, claims: { P495: [claim("Q142")] } };
+  assert.deepEqual(preferredLanguages(entity), ["fr"]);
+  assert.deepEqual(languagesForWork(entity, { limit: 2 }), ["en", "fr"]);
+});
+
+test("a multilingual country is left alone rather than guessed at", () => {
+  // Switzerland and Belgium say nothing about which edition to read, and both are real
+  // cases in a film catalogue. An empty answer is correct, not a gap.
+  for (const country of ["Q39", "Q31"]) {
+    assert.deepEqual(preferredLanguages({ claims: { P495: [claim(country)] } }), []);
+  }
+});
+
+test("no signal at all is an ordinary answer", () => {
+  assert.deepEqual(preferredLanguages({ claims: {} }), []);
+  assert.deepEqual(preferredLanguages({}), []);
+  // and the order is then whatever is available, English first.
+  assert.deepEqual(languagesForWork({ sitelinks: FOUR_EDITIONS, claims: {} }, { limit: 2 }), ["en", "fr"]);
+});
+
+test("an explicit preferred still wins, and a bare string still works", () => {
+  const entity = { sitelinks: FOUR_EDITIONS, claims: { P364: [claim("Q188")] } };
+  assert.deepEqual(languagesForWork(entity, { preferred: "ru", limit: 2 }), ["en", "ru"]);
+});
+
+test("the entities request asks for the claims those properties live in", () => {
+  // Without claims in props, preferredLanguages has nothing to read and the whole thing is
+  // silently inert — which is exactly how the dead `preferred` argument survived this long.
+  const url = buildEntitiesUrl(["Q1"]);
+  assert.match(decodeURIComponent(url), /props=sitelinks\/urls\|claims/);
 });
