@@ -1,4 +1,10 @@
 import { normalizeWorkTitle } from "./content-graph.mjs";
+import { RATING_SCALE, isMediaSource, storedScale, toTenPoint } from "./media-sources.mjs";
+
+// Re-exported so callers that already think in terms of the library keep one import for
+// it. The definitions live in [[media-sources]], which is the only place that knows what
+// a service rates out of.
+export { RATING_SCALE, toTenPoint };
 
 function parseCsvRows(text) {
   const rows = [];
@@ -125,56 +131,42 @@ export function libraryRating(work, library) {
   return Number.isFinite(rating) ? rating : null;
 }
 
-// **One scale, decided at the edge.** Letterboxd rates in half-stars 0.5–5 and IMDb in
-// whole numbers 1–10, and they are the same opinion said twice: 4.5★ and 9/10 are one
-// judgement. Holding both raw in one list makes every comparison a lie — a "rated 4 and
-// up" bar would pass an IMDb 4, which is a film the reader disliked, and sorting mixes a
-// 5 that means best-possible with a 5 that means mediocre. The merge already puts the two
-// services in one row (`sources: ["letterboxd", "imdb"]`), so there is nowhere later that
-// could tell them apart.
+// **One scale, decided at the edge.** The services rate out of different numbers and mean
+// the same thing by them: 4.5 stars out of five and 9 out of ten are one judgement. Holding
+// both raw in one list makes every comparison a lie — a "rated 4 and up" bar would pass an
+// IMDb 4, which is a film the reader disliked, and sorting mixes a 5 that means
+// best-possible with a 5 that means mediocre. The merge already puts several services in
+// one row (`sources: ["letterboxd", "imdb"]`), so there is nowhere later that could tell
+// them apart.
 //
-// So the conversion happens once, in the parser, and the library holds one number meaning
-// one thing. Ten is the scale kept because it is the finer of the two: every Letterboxd
-// half-star is a whole number out of ten and nothing is lost, where halving IMDb would
-// round 7 and 8 onto the same 3.5★.
-export const RATING_SCALE = 10;
+// So the conversion happens once, in the parser, against the scale each service declares in
+// [[media-sources]].
 
-const SOURCE_SCALE = Object.freeze({ letterboxd: 5, imdb: 10 });
-
-export function toTenPoint(rating, source) {
-  if (!Number.isFinite(rating) || rating <= 0) return null;
-  const scale = SOURCE_SCALE[source] ?? RATING_SCALE;
-  return Math.round((rating * RATING_SCALE / scale) * 10) / 10;
-}
-
-// A library saved before the scale was settled carries raw Letterboxd half-stars, and
-// there is one in every reader's localStorage and in `user_media_libraries`. It is
-// upgraded on read.
+// A library saved before the scale was settled carries each service's raw number, and there
+// is one in every reader's localStorage and in `user_media_libraries`. It is upgraded on
+// read.
 //
 // **The marker is what makes this safe to run twice**, and a heuristic would not be: a
 // migration that doubled "any Letterboxd row scoring 5 or less" would, run a second time,
-// turn a genuine 0.5★ into 1 and then into 2. `ratingScale` says whether the row has
+// turn a genuine 0.5 star into 1 and then into 2. `ratingScale` says whether the row has
 // already been converted, so a second pass is a no-op instead of a corruption.
 export function upgradeLibraryScale(library) {
   if (!Array.isArray(library)) return [];
   return library.map((movie) => {
     if (!movie || typeof movie !== "object") return movie;
     if (movie.ratingScale === RATING_SCALE) return movie;
-    // Sources is the only record of where the number came from, and it is persisted.
-    // A row with no source at all is left alone: guessing would be the corruption above.
-    const source = (movie.sources ?? []).includes("letterboxd") && !(movie.sources ?? []).includes("imdb")
-      ? "letterboxd"
-      : "imdb";
-    return {
-      ...movie,
-      rating: Number.isFinite(movie.rating) ? toTenPoint(movie.rating, source) : movie.rating ?? null,
-      ratingScale: RATING_SCALE,
-    };
+    // The sources the row carries say what its number is out of — the general rule, and
+    // what it does when they disagree, is `storedScale`.
+    const scale = storedScale(movie.sources);
+    const rating = Number.isFinite(movie.rating)
+      ? Math.round((movie.rating * RATING_SCALE / scale) * 10) / 10
+      : movie.rating ?? null;
+    return { ...movie, rating, ratingScale: RATING_SCALE };
   });
 }
 
 export function parseMediaCsv(text, source) {
-  if (!new Set(["letterboxd", "imdb"]).has(source)) throw new Error("Unsupported media source");
+  if (!isMediaSource(source)) throw new Error("Unsupported media source");
   const [headerRow, ...dataRows] = parseCsvRows(text);
   if (!headerRow) throw new Error("The CSV file is empty");
 

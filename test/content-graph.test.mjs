@@ -64,7 +64,9 @@ test("libraryItemsFromLetterboxd builds unique per-work entries with source + ra
     { tmdbId: "194", rating: null },
   ]);
   assert.deepEqual(entries, [
-    { naturalKey: "tmdb:509", source: "letterboxd", rating: 4 },
+    // 4 stars out of five is 8 out of ten: the server side converts on the way in for the
+    // same reason the browser importer does ([[media-sources]]).
+    { naturalKey: "tmdb:509", source: "letterboxd", rating: 8 },
     { naturalKey: "tmdb:194", source: "letterboxd", rating: null },
   ]);
 });

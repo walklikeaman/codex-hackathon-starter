@@ -1,4 +1,4 @@
-import { RATING_SCALE } from "./media-library.mjs";
+import { RATING_SCALE, isMediaSource } from "./media-sources.mjs";
 
 const TABLE_NAME = "user_media_libraries";
 const MAX_LIBRARY_SIZE = 10000;
@@ -20,7 +20,9 @@ export function normalizeCloudLibrary(value) {
     if (!title) return [];
 
     const sources = Array.isArray(movie.sources)
-      ? [...new Set(movie.sources.filter((source) => source === "letterboxd" || source === "imdb"))]
+      // Whatever [[media-sources]] knows about, rather than a list that has to be found
+      // and updated when a service is added.
+      ? [...new Set(movie.sources.filter(isMediaSource))]
       : [];
 
     return [{

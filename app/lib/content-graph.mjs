@@ -6,6 +6,8 @@
 // Canonical title normalization for dedup (works.title_norm, pg_trgm) when there
 // is no external id: NFKD, strip accents, fold to a-z0-9. Stricter than the older
 // media-library.mjs variant (which kept accents) so cross-source titles match.
+import { toTenPoint } from "./media-sources.mjs";
+
 export function normalizeWorkTitle(value) {
   if (typeof value !== "string") return "";
   return value
@@ -56,6 +58,17 @@ export function dedupWorkRows(rows) {
 // Build the per-user library entries keyed by natural key, carrying the source and
 // an optional rating. The route resolves natural key → work uuid after the works
 // upsert, then writes user_library_items.
+// The rating is converted to the library's ten-point scale here for the same reason the
+// browser importer converts: the row records its source, but nothing that reads it later
+// should have to ask.
+//
+// **The scale is not written down, because `user_library_items` has no column for it** —
+// only `source` and `rating`. That is survivable today only because nothing reads the table:
+// it is written by the RSS route and read by no code in the app. Rows written before this
+// change are on the service's own scale and are indistinguishable from rows written after.
+// So a reader arriving here needs a `rating_scale` column first, and a backfill keyed on
+// `source` and `added_at`. Noted in [[personal-library]] rather than fixed, because adding
+// a column to production is not this change's business.
 export function libraryItemsFromLetterboxd(items, { source = "letterboxd" } = {}) {
   const seen = new Set();
   const entries = [];
@@ -67,7 +80,7 @@ export function libraryItemsFromLetterboxd(items, { source = "letterboxd" } = {}
     entries.push({
       naturalKey: key,
       source,
-      rating: Number.isFinite(item.rating) ? item.rating : null,
+      rating: toTenPoint(item.rating, source),
     });
   }
   return entries;

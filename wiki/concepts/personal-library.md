@@ -20,6 +20,28 @@ The user's "My movies": import, storage, map filtering. Implementation:
 - **No account is needed for any of it.** Import, storage and the map filter are all
   client-side; signing in adds cloud sync across devices and nothing else.
 
+## The services are a registry, not a pair written out seven times
+
+`app/lib/media-sources.mjs` is the only place that knows which services exist and what
+their numbers mean. Each one declares its `scale`, `label`, `blurb`, `accept` and whether
+it hands you an `archive`.
+
+Before it, the pair was written out independently in **seven** places: the CSV parser's
+allow-list, the cloud normaliser's filter, the scale table, the legacy migration's
+letterboxd-or-imdb guess, the file input's `accept`, the ZIP check, and the two connector
+cards. Adding a third service meant finding all seven, and missing one does not throw —
+it puts a whole library on the wrong scale.
+
+**Adding a service is a row there plus a header alias in `parseMediaCsv`.** The connector
+cards render from the registry, so the card appears by itself. `test/media-sources.test.mjs`
+asserts the properties that must hold for *every* registered service — a top score converts
+to 10/10, the cloud normaliser keeps it, the legacy migration reads its scale — so a service
+added without wiring fails there rather than in somebody's library.
+
+The database was already built for this: `user_library_items.source` has a check constraint
+naming **letterboxd, imdb, trakt, kinopoisk, goodreads, openlibrary, lastfm, manual**. The
+schema anticipated the general case; the client did not.
+
 ## One scale, and why the conversion happens at the edge
 
 Letterboxd rates in half-stars 0.5–5; IMDb rates in whole numbers 1–10. **They are the same
@@ -48,10 +70,15 @@ genuine 0.5★ to 1, then to 2, then to 4. The row carries `ratingScale` instead
 pass is a no-op. `normalizeCloudLibrary` keeps the field through a sync round trip for the
 same reason: dropped there, a synced library would come back looking legacy and be doubled.
 
-**Still on the five-point scale**: `app/lib/connectors/letterboxd-rss.mjs`, which reads
-`letterboxd:memberRating` raw. It writes server-side library rows and never reaches the
-client library the map filters read, so the scales cannot meet today — but wiring that
-connector into the panel means converting first.
+**The server side converts too**, since `libraryItemsFromLetterboxd` now runs the rating
+through `toTenPoint`. What it cannot do is say so: `user_library_items` has columns for
+`source` and `rating` and none for the scale, so rows written before that change are on
+Letterboxd's own scale and cannot be told apart from rows written after.
+
+That is survivable only because **nothing reads the table** — it is written by the RSS
+import route and read by no code in the app. A reader arriving here needs a `rating_scale`
+column first and a backfill keyed on `source` and `added_at`. Adding a column to production
+was not that change's business.
 
 ## The feature existed for weeks and could not be reached
 

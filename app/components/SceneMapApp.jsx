@@ -77,6 +77,7 @@ import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { createCoalescingRunner } from "../lib/coalesce.mjs";
 import { WALKING_SPEED_KMH, haversineKm, isLatLng } from "../lib/geo.mjs";
 import { libraryRating, mergeLibraries, parseMediaCsv, upgradeLibraryScale, workIsInLibrary } from "../lib/media-library.mjs";
+import { MEDIA_SOURCES, mediaSource, mediaSourceLabel } from "../lib/media-sources.mjs";
 import { citySlugFromName, mapUrlQuery, readMapUrl } from "../lib/map-url.mjs";
 import { workPath } from "../lib/work-url.mjs";
 import {
@@ -2000,9 +2001,9 @@ export default function SceneMapApp() {
     setPendingConnector(connector);
     setImportMessage("");
     if (connectorInputRef.current) {
-      connectorInputRef.current.accept = connector === "letterboxd"
-        ? ".zip,.csv,application/zip,text/csv"
-        : ".csv,text/csv";
+      // What this service hands you, declared once in [[media-sources]] rather than as a
+      // ternary that has to be found and widened every time a service is added.
+      connectorInputRef.current.accept = mediaSource(connector)?.accept ?? ".csv,text/csv";
       connectorInputRef.current.click();
     }
   }
@@ -2039,8 +2040,8 @@ export default function SceneMapApp() {
 
     try {
       const isZip = file.name.toLowerCase().endsWith(".zip") || file.type === "application/zip";
-      if (isZip && pendingConnector !== "letterboxd") {
-        throw new Error("ZIP imports are supported for Letterboxd exports only.");
+      if (isZip && !mediaSource(pendingConnector)?.archive) {
+        throw new Error(`${mediaSourceLabel(pendingConnector) ?? "This service"} exports a CSV, not a ZIP.`);
       }
 
       const imported = isZip
@@ -4200,22 +4201,24 @@ export default function SceneMapApp() {
             <input
               ref={connectorInputRef}
               type="file"
-              accept={pendingConnector === "letterboxd" ? ".zip,.csv,application/zip,text/csv" : ".csv,text/csv"}
+              accept={mediaSource(pendingConnector)?.accept ?? ".csv,text/csv"}
               hidden
               onChange={importLibrary}
             />
 
+            {/* One card per service in [[media-sources]]. A new connector is a row there,
+                not another block here that could disagree with the parser about what the
+                service is called or what it hands you. */}
             <div className="connector-list">
-              <button className="connector-card" type="button" onClick={() => selectConnector("letterboxd")}>
-                <span className="connector-logo is-letterboxd"><Film size={20} /></span>
-                <span><strong>Letterboxd</strong><small>Upload the complete ZIP export or a CSV</small></span>
-                <Link2 size={18} />
-              </button>
-              <button className="connector-card" type="button" onClick={() => selectConnector("imdb")}>
-                <span className="connector-logo is-imdb">IMDb</span>
-                <span><strong>IMDb</strong><small>Ratings, Check-ins or list CSV</small></span>
-                <Link2 size={18} />
-              </button>
+              {Object.entries(MEDIA_SOURCES).map(([id, source]) => (
+                <button className="connector-card" key={id} type="button" onClick={() => selectConnector(id)}>
+                  <span className={`connector-logo is-${id}`}>
+                    {source.logoText ?? <Film size={20} />}
+                  </span>
+                  <span><strong>{source.label}</strong><small>{source.blurb}</small></span>
+                  <Link2 size={18} />
+                </button>
+              ))}
             </div>
 
             {importMessage && <p className="import-message" role="status"><CheckCircle2 size={16} />{importMessage}</p>}
@@ -4250,7 +4253,7 @@ export default function SceneMapApp() {
                   <span className="library-poster">{movie.title.slice(0, 2).toUpperCase()}</span>
                   <div>
                     <strong>{movie.title}</strong>
-                    <span>{movie.year ?? "Year unknown"} · {(movie.sources ?? []).map((source) => source === "imdb" ? "IMDb" : "Letterboxd").join(" + ")}</span>
+                    <span>{movie.year ?? "Year unknown"} · {(movie.sources ?? []).map((source) => mediaSourceLabel(source) ?? source).join(" + ")}</span>
                   </div>
                   {movie.rating !== null && <span className="movie-rating"><Star size={14} />{movie.rating}</span>}
                 </article>
