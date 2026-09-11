@@ -3569,9 +3569,10 @@ figcaption a {
    The filter is on the TILE PANE only. Putting it on the map container would invert the
    pins, the route and the popups with it, which is how a "dark mode" turns amber pins
    blue. */
-.map-dark .leaflet-tile-pane {
-  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85) saturate(0.35);
-}
+/* The vector basemap paints into its own canvas under the pins. The container needs a dark
+   ground beneath it so the first frame is not a white flash before the style loads. */
+.map-vector { background: #0c0c0c; }
+.map-vector .leaflet-tile-pane { filter: none; }
 
 /* Everything on screen, as a list. It sits under the queue switches because it lists what
    they narrowed — a panel that ignored them would contradict the map beside it. */
@@ -3696,3 +3697,113 @@ figcaption a {
 }
 .point-films li { padding: 0.1rem 0; font-size: 0.78rem; }
 .point-film-year { color: rgba(0, 0, 0, 0.45); }
+
+/* MapLibre renders into a canvas inside a Leaflet pane. Leaflet owns the interaction, so
+   the canvas must never intercept a click meant for a pin. */
+.map-vector .leaflet-gl-layer canvas { pointer-events: none; }
+
+/* ---------------------------------------------------------------------------------------
+   ONE pin.
+
+   The map had three: an amber diamond for a searched work's places, a filled circle for
+   the graph, a hollow circle for the queue — three shapes for one idea, from three code
+   paths that never met. What varies here is what actually differs about a place.
+   --------------------------------------------------------------------------------------- */
+.map-pin {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  font: 600 11px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.02em;
+  transition: transform 120ms ease;
+}
+.map-pin-body { display: grid; place-items: center; }
+
+/* Checked against unchecked is EVIDENCE, not decoration: filled means somebody looked.
+   32,138 located rows are unchecked; 92 facts are not. */
+.map-pin.is-checked {
+  background: #f7b733;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  color: #16130c;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+.map-pin.is-unchecked {
+  background: rgba(12, 10, 7, 0.55);
+  border: 1.5px dashed rgba(247, 183, 51, 0.75);
+  color: #f7b733;
+  backdrop-filter: blur(1px);
+}
+
+/* A studio lot keeps the checked distinction and changes colour, because it is a different
+   KIND of place, not a weaker one: the camera was here and the scene is set elsewhere. */
+.map-pin.is-studio.is-checked { background: #b98cff; color: #17102b; }
+.map-pin.is-studio.is-unchecked { border-color: rgba(185, 140, 255, 0.8); color: #b98cff; }
+
+/* Where the story happens, which is not a claim that anything was filmed there. */
+.map-pin.is-narrative.is-checked { background: #6fd3c7; color: #0b2320; }
+.map-pin.is-narrative.is-unchecked { border-color: rgba(111, 211, 199, 0.8); color: #6fd3c7; }
+
+/* A point holding several films is solid enough to carry a number legibly. Without this the
+   count sits on a translucent disc over a dark street and cannot be read. */
+.map-pin.has-many.is-unchecked { background: rgba(12, 10, 7, 0.88); border-style: solid; }
+
+/* Selection is a ring, and it is what answers "what did I just click?". It never changes
+   the other three answers — a selected studio lot is still violet, still outlined if
+   nobody checked it. */
+.map-pin.is-selected {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 4px rgba(255, 243, 165, 0.55), 0 0 0 9px rgba(247, 183, 51, 0.22), 0 6px 16px rgba(0, 0, 0, 0.55);
+  border-color: #fff3a5;
+}
+.map-pin:hover { transform: scale(1.12); }
+
+/* The legend. Sentences, not nouns — "Exact / Approximate / Studio" is the vocabulary the
+   reader could not decode. */
+.pin-legend { display: grid; gap: 0.35rem; margin: 0.5rem 0 0; padding: 0; list-style: none; }
+.pin-legend li {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.74rem;
+  color: rgba(236, 232, 225, 0.62);
+}
+.pin-legend .map-pin { width: 20px; height: 20px; font-size: 9px; }
+
+/* The dashed ring in the legend — the same shape the map draws for a place we know only to
+   the city. It is deliberately big on the map: a dot on Istanbul's centre would invent a
+   doorway no source ever claimed. */
+.legend-area {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(247, 183, 51, 0.75);
+  background: rgba(247, 183, 51, 0.08);
+}
+
+/* The way out of the card. Top-right, where a close control is looked for first. */
+.sheet-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.6rem;
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(12, 10, 7, 0.72);
+  color: rgba(236, 232, 225, 0.85);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.sheet-close:hover { background: rgba(12, 10, 7, 0.9); color: #fff3a5; }
+
+/* The raster stand-in under a loading vector style. Dimmed so the swap is not a flash of a
+   bright map, and so it reads as a backdrop rather than the real thing. */
+.basemap-fallback { filter: brightness(0.42) saturate(0.5); }

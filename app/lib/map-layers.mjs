@@ -25,44 +25,52 @@
 //
 // ---------------------------------------------------------------------------------------
 //
-// **CARTO was removed on 11.09.2026 because it stopped being free.** Every tile it serves
-// without a key now arrives with `API KEY REQUIRED / carto.com/basemaps/apikey` burned
-// diagonally across the image. Not an error, not a 403 — a 200 with the words painted into
-// the PNG, so the map looked broken while every check said it was fine. The legacy
-// `cartodb-basemaps-*.global.ssl.fastly.net` endpoint is watermarked identically.
+// **CARTO was removed on 11.09 because it stopped being free**, and the OSM raster that
+// replaced it was replaced again the same day because it looked bad. Both facts are worth
+// keeping, because the second one has a cause people usually guess wrong.
 //
-// **What replaced it, and what did not:**
+// CARTO's URL ended `{z}/{x}/{y}{r}.png`, and Leaflet expands `{r}` to `@2x` on a
+// high-DPI screen. **We were serving retina tiles and did not know it.** OSM's standard
+// tileset has no @2x, so every tile arrived at 256 px and was upscaled to 512 — which is
+// exactly what "низкое разрешение" looks like. Inverting them for a dark theme made it
+// worse: `invert()` on a bitmap muddies every colour it touches.
 //
-//   * **Esri's Dark Gray Canvas was the obvious swap and it fails where it matters.** It is
-//     clean and dark at city zoom, and at z18 it returns a light grey tile reading "Map
-//     data not yet available". z18-19 is precisely where this product works — somebody
-//     standing at a doorway comparing it with a frame — so a basemap that gives up at z16
-//     is no basemap for it.
-//   * **Every keyed provider is out for now** — Stadia, Thunderforest, MapTiler, Jawg and
-//     CARTO's own free tier all need an account. Not refused on principle; simply not
-//     something to require before the app can draw a map.
+// So the dark layer is **vector**, from [OpenFreeMap](https://openfreemap.org): free,
+// **no key, no signup, no usage limit**, and rendered on the client, so it is sharp at any
+// zoom and any pixel density by construction rather than by buying a bigger bitmap. Its
+// `dark` style is a dark-matter descendant — background `rgb(12,12,12)` — which is the
+// look CARTO had.
 //
-// So the dark layer is **OpenStreetMap's own tiles, rendered dark in the browser**. Same
-// tiles as the street layer, same attribution, one CSS filter. It is honest — nothing is
-// restyled server-side and nothing is re-hosted — and it costs no key and no signup.
+// **What that costs:** `maplibre-gl` is ~800 kB and only the dark layer needs it, so it is
+// loaded lazily, when that layer is first shown. A reader who stays on satellite never
+// downloads it.
 //
-// **The real limit, stated rather than discovered later:** OSM's tile usage policy is
-// written for low-volume use and asks heavy consumers to move to a keyed provider or to
-// self-host. This is fine for an app with one user testing Los Angeles and is NOT fine at
-// scale. The day traffic justifies it, the fix is a key in `url` — the shape of this file
-// does not change.
+// The raster entries stay raster. Esri's imagery is the satellite layer and has no vector
+// equivalent that is free; OSM's own raster is kept as the plain "Street" layer, where the
+// upscaling matters far less than it does under a dark theme.
+//
+//   * **Google satellite tiles are refused.** Not licensed outside Google's own APIs, and
+//     pulling `mt1.google.com/vt` into Leaflet is a terms breach whether or not anything is
+//     sold — the same ruling made about Doctor Who Locations Guide and Reelstreets.
+//   * **Apple's satellite needs MapKit JS and a signed token.** Not refused on principle;
+//     simply not available without a developer key and a server to sign with.
+//   * **Esri World Imagery is free with attribution**, which is why satellite is Esri's.
+//
+// Attribution is not decoration. Every entry carries the text its provider requires and the
+// component renders it — a tile layer with the attribution stripped is the same class of
+// mistake as a place with its source stripped.
 
 export const MAP_LAYERS = Object.freeze([
   {
     id: "dark",
     label: "Dark",
     hint: "Pins first, city second",
-    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    // Applied to the tile images in the browser. The tiles arrive exactly as OSM served
-    // them; only the rendering is inverted, which is why the attribution is unchanged and
-    // no second provider appears in it.
-    filter: "invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85) saturate(0.35)",
+    // Vector, not raster: rendered on the client, so it is sharp at any zoom and any pixel
+    // density by construction rather than by buying a bigger bitmap.
+    vector: "https://tiles.openfreemap.org/styles/dark",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors '
+      + '&copy; <a href="https://openfreemap.org">OpenFreeMap</a>',
     maxZoom: 19,
   },
   {
