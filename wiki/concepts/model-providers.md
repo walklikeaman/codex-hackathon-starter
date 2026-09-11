@@ -47,10 +47,31 @@ schema is silently unenforced.
 
 ## Which free model
 
-Of the five free models advertising structured outputs, only one survived the real
-extraction schema: **`google/gemma-4-26b-a4b-it:free`** (262K context, vision, served by
-Darkbloom). `openai/gpt-oss-20b:free` fenced its answer in ```json and
-`nvidia/nemotron-3-super-120b:free` returned a shape the SDK could not read.
+**A model id in a config file is a claim about somebody else's inventory, and it expires.**
+Measured 12.09, the previous default `google/gemma-4-26b-a4b-it:free` answered
+`404 No endpoints found that can handle the requested parameters` — it still advertises
+`response_format` but no longer `structured_outputs`, and a schema request needs the
+latter. Nothing in the repository changed; OpenRouter's catalogue did, and every model
+call had been failing as `request_failed` with no clue in the log as to why.
+
+Of the five free models now advertising structured outputs, tested against the REAL
+extraction schema on a passage holding two filming locations, two author places and one
+fictional one:
+
+| model | result |
+|---|---|
+| **`liquid/lfm-2.5-2.6b:free`** | **4 of 4**, filming and author told apart, Hogwarts refused |
+| `nvidia/nemotron-3-super-120b-a12b:free` | 2 of 4 — missed both author places |
+| `dots-studio/dots-3-note-preview:free` | 2 of 4 — missed both author places |
+| `nex-agi/nex-n2.5-pro:free` | truncated |
+
+A 2.6B model beating a 120B one is not what anybody would guess, which is the argument for
+testing against the real schema rather than a toy one — the lesson the earlier reading of
+this same table already recorded and which still holds.
+
+An earlier measurement had `nvidia/nemotron-3-super-120b:free` "returning a shape the SDK
+could not read". That is a different model id from the `-a12b` one tested now, and it reads
+the schema fine; the catalogue had moved there too.
 
 ## Bad answers are outcomes, not crashes
 

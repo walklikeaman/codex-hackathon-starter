@@ -140,8 +140,25 @@ export function buildExtractionInput({ title, year, prose, section = "Production
 // Whitespace differs between the prose we cleaned and the sentence a model echoes back
 // — a newline becomes a space, two spaces become one. That is not paraphrase, so the
 // comparison ignores it. Everything else must match.
+// **Typography is not paraphrase either.** Wiki prose is full of curly apostrophes, smart
+// quotes and en-dashes; a model retyping the sentence answers with the ASCII it has on its
+// keyboard. Measured 12.09 on a live extraction: a true claim about the café Rowling wrote
+// in was discarded as `quote_not_in_source` because the model wrote "Nicolson's" where the
+// page has "Nicolson’s" — one character, and the place was lost.
+//
+// That is the same reasoning the whitespace fold already carries: a newline becoming a
+// space is not the model inventing anything, and neither is a straight apostrophe. What
+// must still match is every WORD.
 function comparable(text) {
-  return String(text ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  return String(text ?? "")
+    // ' ‘ ’ ʼ ′  →  '      " “ ” ″  →  "      – — −  →  -
+    .replace(/[\u2018\u2019\u02bc\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u2033]/g, '"')
+    .replace(/[\u2013\u2014\u2212]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 export function quoteAppearsInSource(quote, prose) {

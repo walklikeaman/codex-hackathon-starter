@@ -301,3 +301,28 @@ test("an unknown role drops that item and nothing beside it", () => {
   assert.equal(accepted[0].relation_kind, "filming_location");
   assert.equal(rejected[0].reason, "role_not_accepted");
 });
+
+
+// --- typography is not paraphrase ------------------------------------------------------
+
+test("a straight apostrophe matches the page's curly one", () => {
+  // Measured 12.09 on a live extraction: a true claim about the café Rowling wrote in was
+  // discarded as quote_not_in_source because the model typed "Nicolson's" where the page
+  // has "Nicolson’s". One character, and the place was lost. Wiki prose is full of them.
+  const page = "Rowling wrote much of the first book in Nicolson’s Cafe — a room above a shop.";
+  assert.equal(
+    quoteAppearsInSource("Rowling wrote much of the first book in Nicolson's Cafe - a room above a shop.", page),
+    true,
+  );
+});
+
+test("but a different WORD still fails, which is the point of the gate", () => {
+  const page = "Rowling wrote much of the first book in Nicolson’s Cafe.";
+  assert.equal(quoteAppearsInSource("Rowling wrote all of the first book in Nicolson's Cafe.", page), false);
+  assert.equal(quoteAppearsInSource("Rowling wrote much of the second book in Nicolson's Cafe.", page), false);
+});
+
+test("smart quotes and ellipses fold too", () => {
+  const page = "The director called it “a cathedral of rust” … and left.";
+  assert.equal(quoteAppearsInSource('The director called it "a cathedral of rust" ... and left.', page), true);
+});

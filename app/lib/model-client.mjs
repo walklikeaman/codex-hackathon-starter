@@ -28,7 +28,23 @@ export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 // structured outputs, this was the only one that returned valid JSON with every quote
 // copied verbatim — gpt-oss-20b wrapped its answer in a ```json fence and
 // nemotron-3-super returned a shape the SDK could not read at all.
-export const DEFAULT_FREE_MODEL = "google/gemma-4-26b-a4b-it:free";
+// **Re-measured 12.09, because the old default stopped working.** OpenRouter answered
+// `404 No endpoints found that can handle the requested parameters` for
+// `google/gemma-4-26b-a4b-it:free`: it still advertises `response_format` but no longer
+// `structured_outputs`, and the schema request needs the latter. The catalogue moved
+// under us — a model id in a config file is a claim about somebody else's inventory.
+//
+// Of the five free models now advertising structured outputs, three survived the REAL
+// extraction schema and one of them read the passage best:
+//
+//   liquid/lfm-2.5-2.6b:free              4 of 4 places, filming and author told apart
+//   nvidia/nemotron-3-super-120b-a12b     2 of 4 — missed both author places
+//   dots-studio/dots-3-note-preview       2 of 4 — missed both author places
+//   nex-agi/nex-n2.5-pro:free             truncated
+//
+// A 2.6B model beating a 120B one is not what anybody would guess, which is the whole
+// argument for testing against the real schema rather than a toy one.
+export const DEFAULT_FREE_MODEL = "liquid/lfm-2.5-2.6b:free";
 export const DEFAULT_OPENAI_MODEL = "gpt-5-nano";
 
 // OpenRouter attributes traffic by these and shows the app on its site. Neither is a

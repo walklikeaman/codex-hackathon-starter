@@ -77,7 +77,7 @@ rm -f /tmp/or-check.json
 [ -s "$ENV_FILE" ] && [ "$(tail -c1 "$ENV_FILE" | wc -l)" -eq 0 ] && echo >> "$ENV_FILE"
 printf 'OPENROUTER_API_KEY=%s\n' "$KEY" >> "$ENV_FILE"
 grep -qE '^OPENROUTER_MODEL=' "$ENV_FILE" \
-  || printf 'OPENROUTER_MODEL=google/gemma-4-26b-a4b-it:free\n' >> "$ENV_FILE"
+  || printf 'OPENROUTER_MODEL=liquid/lfm-2.5-2.6b:free\n' >> "$ENV_FILE"
 unset KEY
 chmod 600 "$ENV_FILE"
 
