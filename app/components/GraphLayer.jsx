@@ -127,6 +127,9 @@ function GraphLayer({
   // see [[notable-here]]. Passed in rather than computed here because the panel and the map
   // must name the SAME places; two rankings would disagree and look like a bug.
   placeLabels = null,
+  // The places of the film the reader is pointing at in the list, so the map can answer
+  // "where is this one?" without them hunting for it among a thousand identical pins.
+  highlightedKeys = null,
 }) {
   const map = useMapCanvas();
   const [data, setData] = useState({ features: [], candidates: [], clustered: false, fictional: [] });
@@ -275,6 +278,7 @@ function GraphLayer({
       <PinLayer
         id="graph-candidates"
         placeLabels={placeLabels}
+        highlightedKeys={highlightedKeys}
         features={candidatePins}
         selectedKey={openPoint?.kind === "candidate" ? openPoint.key : null}
         onSelect={(properties) => {

@@ -36,7 +36,9 @@ function collection(features) {
 
 // The places. One source, two layers: a circle carrying the vocabulary from `map-pin.mjs`,
 // and a label carrying the count for the points that stack several films.
-export function PinLayer({ id = "places", features, onSelect, selectedKey = null, placeLabels = null }) {
+export function PinLayer({
+  id = "places", features, onSelect, selectedKey = null, placeLabels = null, highlightedKeys = null,
+}) {
   const map = useMapCanvas();
 
   const data = useMemo(() => collection(
@@ -53,10 +55,12 @@ export function PinLayer({ id = "places", features, onSelect, selectedKey = null
           // The name of the best-known work at this point, for the few places that earned
           // one. Empty for everything else, and MapLibre draws no label for an empty string.
           placeLabel: placeLabels?.get(key) ?? "",
+          // Lit because the reader is pointing at this film in the list beside the map.
+          highlighted: highlightedKeys ? highlightedKeys.has(key) : false,
         },
       };
     }),
-  ), [features, selectedKey, placeLabels]);
+  ), [features, selectedKey, placeLabels, highlightedKeys]);
 
   const circleId = `${id}-circles`;
   const labelId = `${id}-labels`;
