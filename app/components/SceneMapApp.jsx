@@ -30,6 +30,7 @@ import {
   LogOut,
   MapPin,
   Maximize2,
+  Minus,
   Plus,
   Route,
   Search,
@@ -70,6 +71,7 @@ import { libraryImportSummary, matchLibrary } from "../lib/library-match.mjs";
 import {
   DEFAULT_LAYER_ID, MAP_LAYERS, layerById, readStoredLayerId, writeStoredLayerId,
 } from "../lib/map-layers.mjs";
+import { activeLayerLabel, zoomAffordance } from "../lib/map-controls.mjs";
 import { externalPlaceLinks } from "../lib/place-links.mjs";
 import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { createCoalescingRunner } from "../lib/coalesce.mjs";
@@ -753,6 +755,29 @@ function InvalidateOnResize() {
       observer.disconnect();
     };
   }, [map]);
+
+  return null;
+}
+
+// Lifts the Leaflet map out to the shell so the furniture can be rendered as a SIBLING of
+// the map rather than a child of it. Rendered inside the container, every control would sit
+// in Leaflet's own pane: a click on "+" would also pan the map underneath it, and each
+// button would need `L.DomEvent.disableClickPropagation` to undo that. Outside, there is
+// nothing to undo — and the furniture can also sit above `.map-stage::after`, the full-bleed
+// vignette at z-index 500 that paints over every child of the stage.
+function ExposeMap({ onMap, onZoom }) {
+  const map = useMap();
+
+  useEffect(() => {
+    onMap(map);
+    onZoom(map.getZoom());
+    return () => onMap(null);
+  }, [map, onMap, onZoom]);
+
+  // Leaflet does not re-render React when the zoom changes, so the zoom buttons would keep
+  // whatever affordance they had on mount. The zoom NUMBER is lifted rather than the map,
+  // because setting state to the same map object changes nothing and would not re-render.
+  useMapEvents({ zoomend: () => onZoom(map.getZoom()) });
 
   return null;
 }
@@ -1500,6 +1525,14 @@ export default function SceneMapApp() {
   // render: the server has no localStorage, and reading it inline makes the first client
   // render disagree with the server's and blank the map.
   const [basemapId, setBasemapId] = useState(DEFAULT_LAYER_ID);
+  // The Leaflet map itself, lifted by <ExposeMap> so the furniture outside the container
+  // can drive it. The zoom it reports is the `mapZoom` already declared above — the one
+  // the viewport refresh keeps — so the +/- buttons go dead at the limits from the same
+  // number the rest of the component reads, rather than a second copy of it.
+  const [mapApi, setMapApi] = useState(null);
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const zoom = useMemo(() => zoomAffordance(mapZoom), [mapZoom]);
   useEffect(() => {
     if (typeof window !== "undefined") setBasemapId(readStoredLayerId(window.localStorage));
   }, []);
@@ -2487,23 +2520,144 @@ export default function SceneMapApp() {
   return (
     <main className="scene-shell">
       <section className="map-stage" aria-label="GloryMap locations map">
-        {/* The product's question is not "where is this" but "is this the building I saw
-            in the film", and you cannot answer that on a grey street map. Satellite gives
-            the roof and the footprint, street gives the name and the doorway. */}
-        <div className="basemap-switch" role="group" aria-label="Base map">
-          {MAP_LAYERS.map((layer) => (
+        {/* The furniture every map has, down the right edge where every map puts it.
+            Before this the map had NO zoom buttons (`zoomControl={false}` with nothing in
+            its place), the only way to re-centre on yourself was three levels down the left
+            panel, and the three basemaps sat as a permanent strip across the bottom. One
+            layers button with a menu costs a click and gives the bottom of the map back.
+
+            The product's question is not "where is this" but "is this the building I saw in
+            the film", and you cannot answer that on a grey street map — so the three layers
+            stay three, they just stop being three buttons. */}
+        <div className="map-furniture" role="group" aria-label="Map controls">
+          <div className="map-furniture-group">
             <button
-              key={layer.id}
               type="button"
-              className={`basemap-option${layer.id === basemap.id ? " is-active" : ""}`}
-              aria-pressed={layer.id === basemap.id}
-              title={layer.hint}
-              onClick={() => chooseBasemap(layer.id)}
+              className="map-control"
+              onClick={() => mapApi?.zoomIn()}
+              disabled={!zoom.canZoomIn}
+              aria-label="Zoom in"
+              title="Zoom in"
             >
-              {layer.label}
+              <Plus size={18} aria-hidden="true" />
             </button>
-          ))}
+            <button
+              type="button"
+              className="map-control"
+              onClick={() => mapApi?.zoomOut()}
+              disabled={!zoom.canZoomOut}
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              <Minus size={18} aria-hidden="true" />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="map-control map-furniture-group"
+            onClick={useCurrentLocation}
+            aria-label="Centre the map on my location"
+            title="My location"
+          >
+            <LocateFixed size={18} aria-hidden="true" />
+          </button>
+
+          <div className="map-furniture-group map-layers">
+            <button
+              type="button"
+              className={`map-control${layersOpen ? " is-on" : ""}`}
+              onClick={() => setLayersOpen((open) => !open)}
+              aria-expanded={layersOpen}
+              aria-label={`Base map: ${activeLayerLabel(MAP_LAYERS, basemap.id)}`}
+              title={`Base map: ${activeLayerLabel(MAP_LAYERS, basemap.id)}`}
+            >
+              <Layers size={18} aria-hidden="true" />
+            </button>
+            {layersOpen && (
+              <div className="map-layers-menu" role="group" aria-label="Base map">
+                {MAP_LAYERS.map((layer) => (
+                  <button
+                    key={layer.id}
+                    type="button"
+                    className={`map-layers-option${layer.id === basemap.id ? " is-active" : ""}`}
+                    aria-pressed={layer.id === basemap.id}
+                    onClick={() => { chooseBasemap(layer.id); setLayersOpen(false); }}
+                  >
+                    <strong>{layer.label}</strong>
+                    <small>{layer.hint}</small>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* The legend belonged to the map and lived in the left panel, which meant reading
+            it required opening a panel that covers the thing it explains. On the map it is
+            collapsed to one button by default: it is a thing you consult once and then stop
+            needing, so it must not hold a corner of the map open forever. */}
+        {graphLayerOn && (
+          <div className={`map-key${legendOpen ? " is-open" : ""}`}>
+            <button
+              type="button"
+              className="map-control map-key-toggle"
+              onClick={() => setLegendOpen((open) => !open)}
+              aria-expanded={legendOpen}
+              aria-label={legendOpen ? "Hide what the pins mean" : "What do the pins mean?"}
+            >
+              <Info size={16} aria-hidden="true" />
+              <span>What the pins mean</span>
+            </button>
+            {legendOpen && (
+              <ul className="pin-legend">
+                {PIN_LEGEND.map((row) => (
+                  <li key={row.text}>
+                    {row.kind === "area" ? (
+                      <span aria-hidden="true" className="legend-area" />
+                    ) : row.kind === "count" ? (
+                      <span
+                        aria-hidden="true"
+                        // eslint-disable-next-line react/no-danger
+                        dangerouslySetInnerHTML={{ __html: pinHtml({ filmCount: 12, checked: false }) }}
+                      />
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        // eslint-disable-next-line react/no-danger
+                        dangerouslySetInnerHTML={{
+                          __html: pinHtml({
+                            filmCount: 1,
+                            checked: row.checked,
+                            depicts_elsewhere: row.kind === "studio",
+                          }),
+                        }}
+                      />
+                    )}
+                    <span>{row.text}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* "Only my films" was a checkbox inside a collapsed panel, under a disclosure, below
+            a scroll — the reader had imported 2,422 films and reported he could not find the
+            switch that shows them. It is the single most-wanted filter in the product, so it
+            is on the map, and it says how many of his films the current view holds. */}
+        {library.length > 0 && (
+          <button
+            type="button"
+            className={`map-mine${mineOnly ? " is-on" : ""}`}
+            aria-pressed={mineOnly}
+            onClick={() => setMineOnly((on) => !on)}
+          >
+            <Film size={15} aria-hidden="true" />
+            Only my films
+            <span className="map-mine-count">{mineOnly ? filmsHere.length : library.length}</span>
+          </button>
+        )}
         {/* minZoom was 11 — a city. You could not zoom out to Britain, so the
             behaviour this whole viewport change exists for was unreachable by
             hand. 5 shows a country; below that the answer stops being a set of
@@ -2524,6 +2678,7 @@ export default function SceneMapApp() {
           zoomControl={false}
           className={basemap.vector ? "map-vector" : undefined}
         >
+          <ExposeMap onMap={setMapApi} onZoom={setMapZoom} />
           {/* Keyed by id so Leaflet replaces the layer instead of mutating the one it
               has: without the key the attribution of the previous provider stays on
               screen under the new provider's tiles, which is an attribution bug rather
@@ -2698,10 +2853,10 @@ export default function SceneMapApp() {
           <span className="panel-handle-label">{panelOpen ? "Hide panel" : "Search & filters"}</span>
         </button>
 
+        {/* The clapperboard that sat here said "films" beside a heading that already
+            says it, and ate the width the city name wanted — "Stories on the map · Los
+            Angeles" wrapped to three lines because of it. The word is the brand. */}
         <div className="brand-row">
-          <div className="brand-mark">
-            <Clapperboard size={22} />
-          </div>
           <div>
             <p className="eyebrow">GloryMap</p>
             <h1>Stories on the map · {cityName}</h1>
@@ -2717,7 +2872,10 @@ export default function SceneMapApp() {
             type="button"
             onClick={() => setAccountOpen(true)}
           >
-            {accountUser ? <User size={18} /> : <Film size={17} />}
+            {/* Signed in, the avatar says WHOSE library this is and earns its place.
+                Signed out, a film icon beside the words "My movies" was decoration in the
+                one row with no width to spare. */}
+            {accountUser ? <User size={18} /> : null}
             {library.length > 0 ? `My movies · ${library.length}` : "My movies"}
           </button>
         </div>
@@ -2744,39 +2902,9 @@ export default function SceneMapApp() {
 
           {graphLayerOn && (
             <>
-              {/* The legend explains the ONE pin, in sentences. The old one listed four
-                  nouns — "Filmed here / Approximate / Studio / Set here" — beside four
-                  coloured dots that did not match the three different pin shapes actually
-                  on the map. A reader could not decode it, and said so. */}
-              <ul className="pin-legend">
-                {PIN_LEGEND.map((row) => (
-                  <li key={row.text}>
-                    {row.kind === "area" ? (
-                      <span aria-hidden="true" className="legend-area" />
-                    ) : row.kind === "count" ? (
-                      <span
-                        aria-hidden="true"
-                        // eslint-disable-next-line react/no-danger
-                        dangerouslySetInnerHTML={{ __html: pinHtml({ filmCount: 12, checked: false }) }}
-                      />
-                    ) : (
-                      <span
-                        aria-hidden="true"
-                        // eslint-disable-next-line react/no-danger
-                        dangerouslySetInnerHTML={{
-                          __html: pinHtml({
-                            filmCount: 1,
-                            checked: row.checked,
-                            depicts_elsewhere: row.kind === "studio",
-                          }),
-                        }}
-                      />
-                    )}
-                    <span>{row.text}</span>
-                  </li>
-                ))}
-              </ul>
-
+              {/* The legend used to be here and is now ON THE MAP, collapsed behind one
+                  button — reading it used to mean opening the panel that covers the thing
+                  it explains. See `.map-key` in the map stage above. */}
               <div className="graph-filters">
                 <div className="kind-chips" role="group" aria-label="Filter by kind">
                   {["film", "series", "book"].map((kind) => {
