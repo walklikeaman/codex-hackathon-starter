@@ -31,7 +31,7 @@ import {
   licenceAllows,
   locationSection,
   matchWork,
-  parseLocationTable,
+  parseLocationRows,
   toSubmission,
 } from "../app/lib/fandom-source.mjs";
 
@@ -122,7 +122,9 @@ async function main() {
 
       const section = locationSection(parsed.wikitext["*"]);
       if (!section) { skipped.noSection += 1; continue; }
-      const table = parseLocationTable(section);
+      // A table if the page keeps one, otherwise a bullet list under a heading that says
+      // the places in it are real. Prose is left for a pass that can afford a model.
+      const table = parseLocationRows(section);
       if (!table.length) { skipped.noTable += 1; continue; }
 
       const work = matchWork(page, byTitle);
