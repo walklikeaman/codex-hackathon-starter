@@ -112,12 +112,23 @@ export default function MapCanvas({
         zoom,
         minZoom,
         maxZoom,
-        // **Compact, not removed.** Every provider here requires its credit — OpenStreetMap
-        // by licence, MapTiler and Esri by terms — so it cannot go. But a paragraph of links
-        // across the bottom of the map is what the owner was looking at, and MapLibre's own
-        // compact mode is the accepted answer: an ⓘ that expands to the full text on click.
-        // The credit is still one tap away and still says everything it has to say.
-        attributionControl: { compact: true },
+        // **Automatic, not forced compact — and that distinction is a licence term.**
+        //
+        // MapTiler requires the attribution to be visible and readable, and allows it behind
+        // a one-tap control ONLY on small screens. Forcing `compact: true` hid it on the
+        // desktop too, which is not something their terms permit. Omitting the option is
+        // exactly right: MapLibre compacts on its own when the map is too narrow for the
+        // text, and shows it in full when there is room.
+        //
+        // On the free plan MapTiler also requires their logo, which rides in
+        // `customAttribution` when a MapTiler style is the one being drawn.
+        attributionControl: {
+          customAttribution: basemap.attribution?.includes("MapTiler")
+            ? '<a href="https://www.maptiler.com" target="_blank" rel="noreferrer">'
+              + '<img src="https://api.maptiler.com/resources/logo.svg" alt="MapTiler" '
+              + 'width="60" height="16" style="vertical-align:middle" /></a>'
+            : undefined,
+        },
       });
 
       instance.on("error", (event) => {
