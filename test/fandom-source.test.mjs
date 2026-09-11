@@ -416,3 +416,21 @@ test("a nested bullet is a qualifier on its parent, not a second place", () => {
 `;
   assert.deepEqual(parseLocationRows(locationSection(nested)).map((r) => r.real), ["Somerset House, London"]);
 });
+
+
+test("a sentence fragment left by a stripped wikilink is not a place", () => {
+  // This reached the LIVE queue on harrypotter/Deathly Hallows 1 and 2 before the guard
+  // existed. "They started shooting the forest scenes at [[Swinley Forest]] on 10 June"
+  // loses its link to stripMarkup and the hole reads like a name to everything downstream.
+  assert.equal(namesAPlaceInAList("They started shooting the forest scenes at on 10 June 2009"), false);
+  // Two prepositions in a row is the signature: the place has been removed from between them.
+  assert.equal(namesAPlaceInAList("Filmed at in Surrey"), false);
+  assert.equal(namesAPlaceInAList("The scenes at on the coast"), false);
+  // A pronoun opens a sentence, never a name.
+  assert.equal(namesAPlaceInAList("It was used for the exterior"), false);
+  assert.equal(namesAPlaceInAList("There they built the set"), false);
+  // And the shapes that must survive.
+  assert.equal(namesAPlaceInAList("Somerset House, London"), true);
+  assert.equal(namesAPlaceInAList("St. Michael's Mount, Cornwall"), true);
+  assert.equal(namesAPlaceInAList("Leavesden Studios"), true);
+});
