@@ -120,6 +120,21 @@ function coreLocationPattern({ lat, lng, radius, workIds, config, excludeLocatio
             wdt:${config.locationProperty} ?location .${excludedLocation}`;
 }
 
+// The label language is "en,mul", NOT "en,ru".
+//
+// It asked for Russian as the fallback, which is what put "Форрест Гамп" on an otherwise
+// English card: the label service walks the list in order, so any entity without an English
+// label fell through to Russian. Every other query in this project asks for "en" alone;
+// this one was the outlier. "mul" is Wikidata's language-agnostic label, added for exactly
+// this — a proper name that is the same in every language, which is a better fallback than
+// a translation into somebody else's.
+//
+// This is a DISPLAY preference, not a filter, and the distinction is the owner's rule
+// (11.09): the interface is English for now and will offer other languages later, so
+// nothing may DISCARD non-English text. Where a source wrote in its own language that
+// wording is the original and is kept verbatim — the 15 Cyrillic sentences in the queue are
+// somebody's actual words about a place, and stripping them would throw away evidence to
+// tidy a page. This only says which label to ASK Wikidata for.
 export function buildLocationsSparql({
   lat,
   lng,
@@ -171,7 +186,7 @@ WHERE {
     ?location schema:description ?locationDescription .
     FILTER(LANG(?locationDescription) = "en")
   }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en,ru" . }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" . }
 }
 GROUP BY ?work ?workLabel ?location ?locationLabel ?coord ?locationDescription`;
 }
