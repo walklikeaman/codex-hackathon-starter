@@ -46,6 +46,9 @@ export default function VectorMap({
   const mapRef = useRef(null);
   const requestRef = useRef(null);
   const timerRef = useRef(null);
+  // Whether the initial style has finished and our layers are on it. Guards the style-swap
+  // path so it cannot fire during the first load, which is what stalled the map.
+  const portedRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [drawn, setDrawn] = useState(0);
   const [provider, setProvider] = useState(null);
@@ -121,6 +124,12 @@ export default function VectorMap({
       setProvider(chain[0].provider);
 
       map.on("error", (event) => {
+        // ALWAYS say what happened. Registering an `error` listener REPLACES MapLibre's own
+        // logging, so a handler that returns quietly makes the library silent — which is how
+        // a black map with no console output was debugged for an hour. Whatever else this
+        // does, it reports first.
+        console.error("maplibre:", event?.error?.status ?? "", event?.error?.message ?? event?.error, event?.sourceId ?? "");
+
         // Only a failure of the STYLE itself is worth falling back for. A single missing
         // tile is not: swapping the whole basemap because one tile 404ed would flicker the
         // map for a fault that fixes itself on the next pan.
@@ -166,14 +175,26 @@ export default function VectorMap({
           return;
         }
 
+        portedRef.current = true;
         setReady(true);
         load();
       };
 
-      map.on("load", ensureLayers);
-      // A style swap — a theme change, or falling back from a rejected key — replaces the
-      // style wholesale, and the new one carries none of our layers. So they are put back.
-      map.on("styledata", ensureLayers);
+      // `load` is the ONLY event that may add layers for the first time.
+      //
+      // Adding them from `styledata` as well looked like belt and braces and was the bug:
+      // `styledata` fires repeatedly DURING the initial style load, so layers were being
+      // attached to a style that had not finished parsing. No error was raised — MapLibre
+      // simply never completed initialisation: `load` never fired, `loaded()` stayed false,
+      // and not one vector tile was ever requested, while the style itself was readable and
+      // every URL in it returned 200 with correct CORS from the page. A black map.
+      //
+      // So `styledata` is for RE-attaching after a deliberate style swap only, and it is
+      // gated on having got through `load` once already.
+      map.once("load", ensureLayers);
+      map.on("styledata", () => {
+        if (portedRef.current) ensureLayers();
+      });
 
       map.on("moveend", () => {
         clearTimeout(timerRef.current);
