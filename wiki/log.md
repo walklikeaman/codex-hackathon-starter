@@ -7,6 +7,53 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-11] ingest | 5,495 IMDb ratings, two rating filters, and a Russian label on an English page
+
+**Object**: `scripts/ingest-imdb-ratings.mjs`, `app/lib/library-view.mjs`,
+`app/lib/location-search.mjs`, `supabase/migrations/20260911000659_map_points_carry_the_public_rating.sql`
+**Scenario**: ingest + feature + fix · **Outcome**: ✅ `work_ratings` 32 → **5,495**
+**Code changes**: this commit
+
+**A public rating filter was impossible and now is not.** `work_ratings` held **32 rows
+across 12 works** out of 7,063; of the 1,642 works with a Los Angeles row, exactly one
+carried a rating. That is why the first rating filter could only be the reader's own.
+
+The source is **IMDb's own published dataset** — `title.ratings.tsv.gz`, 8.6 MB, 1.7 million
+rows, keyed by the `tconst` that is already our `imdb_id`. [[source-evaluation]] refused the
+IMDb *site* in July and still does; what it explicitly allowed is this — *"bulk metadata via
+IMDb's own published datasets"*. Nothing reads a page; the stored `source_url` is a link a
+reader can check, and linking is not extracting.
+
+**5,495 of the 6,044 works with an IMDb id matched**, and **1,519 of the 1,642 Los Angeles
+works** now carry a rating (92.5%), 355 of them at 7.5 or better. Rows below **100 votes**
+are skipped: a 9.1 from seven people is not an opinion, and letting it outrank a famous
+title would make the filter worse than none.
+
+**Two bars, not one**, because "films I rated 4★ AND the world rated 7.5" is a real question
+and neither answers it alone. The reader's own needs a library; IMDb's works for anybody.
+Both are asked of the same film, and both treat **unrated as failing** — 123 of the Los
+Angeles works have no IMDb score, and letting them through a "7.5 and up" filter would put
+unknown films among the ones asked for. Null is not a score.
+
+**And a Russian title on an English page.** `location-search.mjs` asked Wikidata for labels
+in **`"en,ru"`** — the label service walks that list in order, so any entity without an
+English label fell through to Russian, which is how "Форрест Гамп" appeared on the Paramount
+card. Every other query in this project asks for `"en"` alone; this one was the outlier. It
+is `"en,mul"` now — Wikidata's language-agnostic label, a name rather than a translation
+into somebody else's.
+
+**The owner's rule, recorded where the change was made:** this is a DISPLAY preference and
+never a filter. Other languages come in a later revision, and until then nothing may
+DISCARD non-English text — where a source wrote in its own language, that wording is the
+original and is kept verbatim. The 15 Cyrillic sentences in the queue are somebody's actual
+words about a place, and stripping them to tidy a page would be throwing away evidence.
+
+Measured while looking: **zero** Cyrillic titles in `works`, 3 place names and 15 sentences
+in 44,032 queue rows. The Russian on screen was never our data — it was what we asked
+Wikidata for.
+
+**1,333 tests, all passing** (4 new).
+
 ## [2026-09-11] update | One pin, a vector basemap, and a card you can close
 
 **Object**: `app/lib/map-pin.mjs`, `app/lib/map-layers.mjs`, `app/components/SceneMapApp.jsx`,

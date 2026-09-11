@@ -85,10 +85,13 @@ import {
 } from "../lib/films-in-view.mjs";
 import {
   DEFAULT_SORT,
+  IMDB_STEPS,
   NO_MINIMUM,
   RATING_STEPS,
   SORT,
+  imdbLabel,
   impliesLibraryOnly,
+  passesImdbFilter,
   passesLibraryFilter,
   ratingLabel,
   sortLabel,
@@ -1027,6 +1030,10 @@ export default function SceneMapApp() {
   // ratings for 2,422 films.
   const [sortBy, setSortBy] = useState(DEFAULT_SORT);
   const [minRating, setMinRating] = useState(NO_MINIMUM);
+  // The public score, independent of the reader's own. "Films I rated 4★ AND the world
+  // rated 7.5" is a real question and neither filter answers it alone. It works without a
+  // library, which the reader's own cannot.
+  const [minImdb, setMinImdb] = useState(NO_MINIMUM);
   const [graphKinds, setGraphKinds] = useState([]);   // [] = every kind
   const [graphWorkId, setGraphWorkId] = useState(""); // "" = the whole library
   const [graphWorks, setGraphWorks] = useState([]);
@@ -1475,12 +1482,15 @@ export default function SceneMapApp() {
 
   const mapFilms = useMemo(() => {
     const kept = films.filter((film) => (
-      effectiveMineOnly || impliesLibraryOnly(minRating)
+      (effectiveMineOnly || impliesLibraryOnly(minRating)
         ? passesLibraryFilter(film, { library, mineOnly: effectiveMineOnly, minRating })
-        : true
+        : true)
+      // The chips answer to the same public bar as the pins, or the list beside the map
+      // would describe a different set from the one on it.
+      && passesImdbFilter(film, minImdb)
     ));
     return sortWorks(kept, { by: sortBy, library });
-  }, [films, library, effectiveMineOnly, minRating, sortBy]);
+  }, [films, library, effectiveMineOnly, minRating, minImdb, sortBy]);
 
   useEffect(() => {
     if (!mapFilms.some((film) => film.id === tourFilmId)) {
@@ -1550,17 +1560,23 @@ export default function SceneMapApp() {
   // everything": an empty library filtering the map to nothing would look like an outage.
   const candidateIsMine = useMemo(() => {
     const wantsRating = impliesLibraryOnly(minRating);
-    if ((!candidatesMineOnly && !wantsRating) || library.length === 0) return null;
+    const wantsImdb = Number(minImdb) > NO_MINIMUM;
+    const wantsLibrary = (candidatesMineOnly || wantsRating) && library.length > 0;
+    if (!wantsLibrary && !wantsImdb) return null;
+
+    // The public bar applies with or without a library; the personal one cannot. Both are
+    // asked of the same film, so a point survives only if some film on it clears BOTH.
+    if (!wantsLibrary) return (film) => passesImdbFilter(film, minImdb);
     // The SAME predicate the chips use. The panel counting one set while the map drew
     // another is the "header contradicting the thing it heads" bug this project already
     // fixed once for the viewport count.
     // Called per FILM now, not per pin: a point carries a list, and each entry is its own
     // work with its own title and year.
-    return (film) => passesLibraryFilter(
+    return (film) => passesImdbFilter(film, minImdb) && passesLibraryFilter(
       { title: film?.title ?? "", year: film?.year ?? null },
       { library, mineOnly: candidatesMineOnly || wantsRating, minRating },
     );
-  }, [candidatesMineOnly, library, minRating]);
+  }, [candidatesMineOnly, library, minRating, minImdb]);
 
   // The address bar follows the map, so whatever is on screen can be sent to somebody.
   // `replaceState`, never `pushState`: a map is dragged continuously and every nudge would
@@ -3176,9 +3192,12 @@ export default function SceneMapApp() {
             </select>
           </label>
 
+          {/* Two bars, not one. "Films I rated 4★ AND the world rated 7.5" is a real
+              question and neither answers it alone. The reader's own needs a library;
+              IMDb's works for anybody. */}
           {library.length > 0 && (
             <label className="list-control">
-              <span>Rated</span>
+              <span>Mine</span>
               <select
                 value={String(minRating)}
                 onChange={(event) => setMinRating(Number(event.target.value))}
@@ -3191,12 +3210,30 @@ export default function SceneMapApp() {
             </label>
           )}
 
+          <label className="list-control">
+            <span>IMDb</span>
+            <select
+              value={String(minImdb)}
+              onChange={(event) => setMinImdb(Number(event.target.value))}
+            >
+              <option value={String(NO_MINIMUM)}>Any</option>
+              {IMDB_STEPS.map((step) => (
+                <option key={step} value={String(step)}>{imdbLabel(step)}+</option>
+              ))}
+            </select>
+          </label>
+
           <small className="list-control-note">
             {sortLabel(sortBy)}
             {impliesLibraryOnly(minRating)
               // Said out loud: a bar on YOUR rating can only describe your list, and a
               // reader who did not expect the map to narrow deserves to know why it did.
               ? ` · ${ratingLabel(minRating)} and up, from your list only`
+              : ""}
+            {Number(minImdb) > NO_MINIMUM
+              // And the same for the public bar, which also hides every film nobody has
+              // rated — 123 of the 1,642 Los Angeles works.
+              ? ` · IMDb ${imdbLabel(minImdb)}+, rated films only`
               : ""}
           </small>
         </div>

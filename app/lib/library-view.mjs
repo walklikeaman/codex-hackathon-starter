@@ -35,6 +35,29 @@ export function isSortMode(mode) {
 export const RATING_STEPS = Object.freeze([3, 3.5, 4, 4.5, 5]);
 export const NO_MINIMUM = 0;
 
+// IMDb is out of ten, so its steps are its own. Half points above 6, because below that
+// almost nothing in the catalogue survives the filter and the choice stops being useful:
+// of the 1,642 Los Angeles works, 1,519 carry a rating and only 355 reach 7.5.
+export const IMDB_STEPS = Object.freeze([6, 6.5, 7, 7.5, 8, 8.5]);
+
+export function imdbLabel(score) {
+  if (!Number.isFinite(score)) return null;
+  return `${Number(score.toFixed(1))}`;
+}
+
+// Does this film clear the public bar?
+//
+// **An unrated film fails a minimum, and that is deliberate** — the same rule the reader's
+// own rating follows. 123 of the 1,642 Los Angeles works have no IMDb rating at all, and
+// letting them through a "7.5 and up" filter would put unknown films among the ones the
+// reader asked for. Null is not a score.
+export function passesImdbFilter(film, minImdb = NO_MINIMUM) {
+  const bar = Number(minImdb) || NO_MINIMUM;
+  if (bar <= NO_MINIMUM) return true;
+  const score = Number(film?.imdb);
+  return Number.isFinite(score) && score >= bar;
+}
+
 export function ratingLabel(rating) {
   if (!Number.isFinite(rating)) return null;
   // "4★", "4.5★" — never "4.0★". A trailing zero reads as a precision Letterboxd does

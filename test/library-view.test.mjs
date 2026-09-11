@@ -217,3 +217,39 @@ test("the sort follows the year, so two same-titled films keep their own scores"
   assert.equal(libraryRating({ title: "Ghostbusters", year: 1984 }, library), 4.5);
   assert.equal(libraryRating({ title: "Ghostbusters", year: 2016 }, library), 2);
 });
+
+// ---------- the public score, beside the reader's own ----------
+
+test("the two rating filters are independent, and both can be on", async () => {
+  const { passesImdbFilter } = await import("../app/lib/library-view.mjs");
+  // "Films I rated 4★ AND the world rated 7.5" is a real question and neither filter
+  // answers it alone.
+  const film = { title: "Heat", year: 1995, imdb: 8.3 };
+  assert.equal(passesImdbFilter(film, 7.5), true);
+  assert.equal(passesImdbFilter(film, 8.5), false);
+  assert.equal(passesLibraryFilter(film, { library: [{ title: "Heat", year: 1995, rating: 4.5 }], minRating: 4 }), true);
+});
+
+test("no public bar lets everything through, unrated included", async () => {
+  const { NO_MINIMUM, passesImdbFilter } = await import("../app/lib/library-view.mjs");
+  assert.equal(passesImdbFilter({ imdb: null }, NO_MINIMUM), true);
+  assert.equal(passesImdbFilter({}, NO_MINIMUM), true);
+});
+
+test("an unrated film fails a public bar, exactly as it fails the reader's own", async () => {
+  const { passesImdbFilter } = await import("../app/lib/library-view.mjs");
+  // 123 of the 1,642 Los Angeles works carry no IMDb rating. Letting them through a
+  // "7.5 and up" filter would put unknown films among the ones asked for. Null is not a
+  // score.
+  assert.equal(passesImdbFilter({ imdb: null }, 7.5), false);
+  assert.equal(passesImdbFilter({ imdb: undefined }, 7), false);
+  assert.equal(passesImdbFilter({ imdb: 0 }, 7), false);
+});
+
+test("IMDb's steps are out of ten, not out of five", async () => {
+  const { IMDB_STEPS, imdbLabel } = await import("../app/lib/library-view.mjs");
+  assert.ok(IMDB_STEPS.every((s) => s >= 6 && s <= 10));
+  // And they are printed without a trailing zero, like the star ratings.
+  assert.equal(imdbLabel(7), "7");
+  assert.equal(imdbLabel(7.5), "7.5");
+});
