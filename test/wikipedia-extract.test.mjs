@@ -25,7 +25,7 @@ const found = (overrides = {}) => ({
   place_name: "Hankley Common",
   area_hint: "Surrey",
   source_sentence: "Filming took place at Hankley Common in Surrey.",
-  is_filming_location: true,
+  place_role: "filming",
   ...overrides,
 });
 
@@ -131,12 +131,12 @@ test("a place the article merely mentions is not a filming location", () => {
     found({
       place_name: "Venice",
       source_sentence: "The crew scouted Venice but ultimately filmed in Malta.",
-      is_filming_location: false,
+      place_role: "other",
     }),
   ] }, { prose: PROSE, article });
 
   assert.equal(accepted.length, 0);
-  assert.equal(rejected[0].reason, "not_a_filming_location");
+  assert.equal(rejected[0].reason, "role_not_accepted");
 });
 
 test("one place listed twice is listed once", () => {
@@ -226,11 +226,78 @@ test("one malformed item costs itself, not the whole extraction", () => {
   // all-or-nothing, so per-field limits belong in the accept pass.
   const parsed = wikipediaLocationsSchema.parse({ locations: [
     found(),
-    { place_name: "Somewhere", area_hint: "", source_sentence: "", is_filming_location: true },
-    { place_name: "X", area_hint: "", source_sentence: PROSE.split("\n")[1], is_filming_location: true },
+    { place_name: "Somewhere", area_hint: "", source_sentence: "", place_role: "filming" },
+    { place_name: "X", area_hint: "", source_sentence: PROSE.split("\n")[1], place_role: "filming" },
   ] });
 
   const { accepted, rejected } = acceptExtraction(parsed, { prose: PROSE, article });
   assert.equal(accepted.length, 1);
   assert.deepEqual(rejected.map((r) => r.reason).sort(), ["no_name", "quote_wrong_length"]);
+});
+
+
+// --- a work is not only a film, and a place is not only where a camera stood ----------
+
+test("a place where the author wrote is kept, as an author_place", () => {
+  // The owner's rule, 12.09, and [[three-axes]] already called this the common shape of
+  // the best material: the café Rowling wrote in is a real place a reader can walk to.
+  const prose = "Rowling wrote much of the first book in Nicolson's Cafe on Nicolson Street.";
+  const { accepted } = acceptExtraction({ locations: [
+    found({
+      place_name: "Nicolson's Cafe",
+      area_hint: "Edinburgh",
+      source_sentence: prose,
+      place_role: "author",
+    }),
+  ] }, { prose, article });
+
+  assert.equal(accepted.length, 1);
+  assert.equal(accepted[0].relation_kind, "author_place");
+  assert.equal(accepted[0].place_name, "Nicolson's Cafe");
+});
+
+test("a place a name was taken from is an author_place too", () => {
+  const prose = "She took the name Thomas Riddell from a headstone in Greyfriars Kirkyard.";
+  const { accepted } = acceptExtraction({ locations: [
+    found({
+      place_name: "Greyfriars Kirkyard",
+      area_hint: "Edinburgh",
+      source_sentence: prose,
+      place_role: "inspiration",
+    }),
+  ] }, { prose, article });
+
+  assert.equal(accepted.length, 1);
+  assert.equal(accepted[0].relation_kind, "author_place");
+});
+
+test("a filming location still says so, and the two are told apart", () => {
+  const { accepted } = acceptExtraction({ locations: [found({ place_role: "filming" })] }, { prose: PROSE, article });
+  assert.equal(accepted[0].relation_kind, "filming_location");
+});
+
+test("a place inside the story is refused whatever role is claimed", () => {
+  // The refusal that keeps the map walkable. Hogwarts is not a place.
+  const prose = "Hogwarts is the school at the centre of the series.";
+  for (const role of ["filming", "author", "inspiration", "setting", "other", "", null]) {
+    const { accepted, rejected } = acceptExtraction({ locations: [
+      found({ place_name: "Hogwarts", source_sentence: prose, place_role: role }),
+    ] }, { prose, article });
+    // Either the role is refused outright, or the quote gate refuses it: what matters is
+    // that nothing claiming a fictional place reaches the queue as an accepted row.
+    if (accepted.length) assert.fail(`role ${role} let a fictional place through`);
+    assert.ok(rejected.length === 1, `role ${role} should drop exactly one`);
+  }
+});
+
+test("an unknown role drops that item and nothing beside it", () => {
+  // The lesson this file already records twice: one bad item must not cost the good ones.
+  const { accepted, rejected } = acceptExtraction({ locations: [
+    found({ place_role: "teleportation" }),
+    found({ place_name: "Hankley Common", place_role: "filming" }),
+  ] }, { prose: PROSE, article });
+
+  assert.equal(accepted.length, 1);
+  assert.equal(accepted[0].relation_kind, "filming_location");
+  assert.equal(rejected[0].reason, "role_not_accepted");
 });

@@ -493,10 +493,11 @@ export function toProseSubmission(location, { work, wiki, page, revid, licence }
     name: location?.place_name,
     area: location?.area_hint ?? null,
     sentence: () => sentence,
+    relation: location?.relation_kind ?? "filming_location",
   }, { work, wiki, page, revid, licence });
 }
 
-function fandomSubmission({ name: rawName, area, sentence, references = [] }, { work, wiki, page, revid, licence }) {
+function fandomSubmission({ name: rawName, area, sentence, references = [], relation = "filming_location" }, { work, wiki, page, revid, licence }) {
   const name = String(rawName ?? "").trim();
   if (!name || !work?.id) return null;
   // A cell that is a sentence rather than a name is left for the geocoder's own rule to
@@ -510,6 +511,9 @@ function fandomSubmission({ name: rawName, area, sentence, references = [] }, { 
     work_id: work.id,
     place_name: name,
     area_hint: area,
+    // A table or list under a filming heading is a filming location by construction; a
+    // prose row carries whatever the model said and the accept pass allowed.
+    relation_kind: relation,
     source_kind: SOURCE,
     // NOT NULL on the table. It names what a reader is being sent to, and "the wiki page"
     // is the honest description — the link goes to one revision of one fan-written page.
