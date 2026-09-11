@@ -42,6 +42,9 @@ _probe_*
 tools/scraperai/.cache/
 data/*/*.ndjson
 data/*/state.json
+# The discovery report is a measurement of a moment — wiki licences change and pages are
+# rewritten. Regenerate it rather than reading a stale one out of the repo.
+data/*/candidates.json
 
 # Obsidian per-user state (shared config stays tracked)
 .obsidian/workspace.json

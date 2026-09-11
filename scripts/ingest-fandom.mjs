@@ -27,9 +27,18 @@ import process from "node:process";
 import { createClient } from "@supabase/supabase-js";
 
 import { normalizeWorkTitle } from "../app/lib/content-graph.mjs";
+import { createModelClient, createThrottle, parseStructured } from "../app/lib/model-client.mjs";
+import { cleanWikitext } from "../app/lib/wikipedia-source.mjs";
+import {
+  acceptExtraction,
+  buildExtractionInput,
+  extractionInstructions,
+  wikipediaLocationsSchema,
+} from "../app/lib/wikipedia-extract.mjs";
 import {
   licenceAllows,
   locationSection,
+  toProseSubmission,
   matchWork,
   parseLocationRows,
   toSubmission,
@@ -41,6 +50,19 @@ function arg(name, fallback = null) {
 }
 const DRY_RUN = process.argv.includes("--dry-run");
 const WRITE_BATCH = 200;
+
+// Prose is opt-in and metered, because it is the only part of this that costs anything.
+//
+// Measured 11.09 over 48 pages on six wikis: 12 of the 26 pages carrying a filming section
+// keep it as prose, which no regular expression reaches. A model can read them — under the
+// rule [[location-discovery]] states and this pipeline already follows elsewhere: **a model
+// may NAME a place, never locate one.** It names; the geocoding cascade locates afterwards,
+// separately, with its own provenance.
+//
+// The cap is the point. `--prose 40` means at most forty model calls in a run, so the bill
+// is known before the run rather than after it, and a wiki that turns out to be all prose
+// cannot quietly become the expensive one.
+const PROSE_LIMIT = Number(arg("prose", 0));
 const PAGE_LIMIT = Number(arg("pages", 60));
 
 // Where the tables actually are. Adding a wiki is one line, and the licence is still
@@ -85,7 +107,15 @@ async function main() {
   console.log(`catalogue: ${byTitle.size} distinct titles`);
 
   const rows = [];
-  const skipped = { licence: 0, noSection: 0, noTable: 0, noWork: 0 };
+  const skipped = { licence: 0, noSection: 0, noTable: 0, noWork: 0, prose: 0 };
+  let proseCalls = 0;
+  let proseRows = 0;
+
+  // "cheap": every answer passes the verbatim-quote gate before it is stored, so a bad one
+  // is visibly bad and costs a retry rather than becoming a fact ([[model-providers]]).
+  const runtime = PROSE_LIMIT > 0 && !DRY_RUN ? createModelClient(process.env, { tier: "cheap" }) : null;
+  const throttle = createThrottle();
+  if (PROSE_LIMIT > 0 && !runtime) console.log("prose requested but no model client is configured — tables and lists only");
 
   for (const wiki of WIKIS) {
     let licence;
@@ -125,16 +155,57 @@ async function main() {
       // A table if the page keeps one, otherwise a bullet list under a heading that says
       // the places in it are real. Prose is left for a pass that can afford a model.
       const table = parseLocationRows(section);
-      if (!table.length) { skipped.noTable += 1; continue; }
 
+      // The work is resolved BEFORE the model is asked. A page we cannot attach to a work
+      // is a page whose extraction we would pay for and then throw away.
       const work = matchWork(page, byTitle);
       if (!work) { skipped.noWork += 1; continue; }
 
-      const made = table
+      let made = table
         .map((row) => toSubmission(row, { work, wiki, page, revid: parsed.revid, licence: licence.text }))
         .filter(Boolean);
+
+      // Prose only where the free path found nothing. A page with a table has already
+      // given up its rows, and its table carries the story-to-shoot pairing that prose
+      // does not — paying to re-read it would buy strictly less.
+      if (!made.length && runtime && proseCalls < PROSE_LIMIT) {
+        const prose = cleanWikitext(section.text);
+        if (prose.length >= 200) {
+          proseCalls += 1;
+          await throttle();
+          const extraction = await parseStructured({
+            runtime,
+            schema: wikipediaLocationsSchema,
+            schemaName: "fandom_locations",
+            instructions: extractionInstructions({ source: "fan wiki page", section: "section" }),
+            input: buildExtractionInput({ title: work.title, year: work.year, prose, section: "Section" }),
+            maxTokens: 20_000,
+            timeout: 180_000,
+          });
+          if (!extraction.ok) {
+            // A free endpoint refusing, rate-limiting or running out of tokens is an
+            // ordinary outcome. Record it and take the next page rather than abandoning
+            // every page still queued behind this one.
+            skipped.prose += 1;
+            console.log(`  ${page.slice(0, 46).padEnd(48)} prose ${extraction.reason}`);
+          } else {
+            const { accepted, rejected } = acceptExtraction(extraction.parsed, {
+              prose,
+              article: { title: page, revid: parsed.revid },
+            });
+            made = accepted
+              .map((location) => toProseSubmission(location, { work, wiki, page, revid: parsed.revid, licence: licence.text }))
+              .filter(Boolean);
+            proseRows += made.length;
+            console.log(`  ${page.slice(0, 46).padEnd(48)} ${String(made.length).padStart(3)} rows (model`
+              + `${rejected.length ? `, ${rejected.length} failed the quote gate` : ""}) -> ${work.title}`);
+          }
+        }
+      }
+
+      if (!made.length) { skipped.noTable += 1; continue; }
       rows.push(...made);
-      console.log(`  ${page.slice(0, 46).padEnd(48)} ${String(made.length).padStart(3)} rows -> ${work.title}`);
+      if (table.length) console.log(`  ${page.slice(0, 46).padEnd(48)} ${String(made.length).padStart(3)} rows -> ${work.title}`);
       await new Promise((r) => setTimeout(r, 250));
     }
   }
