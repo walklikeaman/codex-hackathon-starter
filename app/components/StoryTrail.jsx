@@ -17,25 +17,21 @@
 // Confusing them would tell someone to walk in the order the plot happens, which is
 // exactly the wrong instruction.
 
-import { Marker, Polyline, Tooltip } from "react-leaflet";
-import L from "leaflet";
-
 import { isWalkableStop, trailPath } from "../lib/story-trail.mjs";
+import { MapMarker, RouteLine } from "./map/layers.jsx";
 
 // Numbers, not pins: the position in the story IS the information here, and a marker
 // that merely repeats "a place" adds nothing next to the pins already on the map.
-function stopIcon(index, { isNext, walkable }) {
-  // An area gets a different mark on purpose. A numbered pin says "stand here", and
-  // for a city centroid there is no here — the film was shot somewhere in that city,
-  // and we do not know where. Saying that plainly is the whole product.
-  const classes = ["trail-stop", isNext ? "is-next" : "", walkable ? "" : "is-area"]
+//
+// These stay DOM markers rather than a GPU layer, and that is deliberate. There are a
+// handful of them, they carry a number and a title, and they are clicked — a layer would be
+// the same mistake as a marker per pin, made in the other direction.
+function stopClasses({ isNext, walkable }) {
+  // An area gets a different mark on purpose. A numbered pin says "stand here", and for a
+  // city centroid there is no here — the film was shot somewhere in that city, and we do not
+  // know where. Saying that plainly is the whole product.
+  return ["trail-stop", isNext ? "is-next" : "", walkable ? "" : "is-area"]
     .filter(Boolean).join(" ");
-  return L.divIcon({
-    className: "",
-    html: `<span class="${classes}">${walkable ? index : "~"}</span>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
-  });
 }
 
 export default function StoryTrail({ stops, nextStopId = null, onSelect }) {
@@ -46,38 +42,29 @@ export default function StoryTrail({ stops, nextStopId = null, onSelect }) {
 
   return (
     <>
-      {path.length > 1 && (
-        <Polyline
-          positions={path}
-          pathOptions={{
-            color: "#7cc4ff",
-            // Dashed and thinner than the walking route, deliberately — see above.
-            dashArray: "2 9",
-            weight: 3,
-            opacity: 0.85,
-          }}
-        />
-      )}
-      {ordered.map((stop) => (
-        <Marker
-          key={stop.id}
-          position={stop.position}
-          icon={stopIcon(stop.sequence_index, {
-            isNext: stop.id === nextStopId,
-            walkable: isWalkableStop(stop),
-          })}
-          eventHandlers={onSelect ? { click: () => onSelect(stop) } : undefined}
-        >
-          {/* The place name only. The plot beat is withheld here on purpose — the
-              spoiler shield decides what a reader has earned, and a map tooltip is
-              not the place to quietly bypass it. */}
-          <Tooltip direction="top" offset={[0, -12]}>
-            {isWalkableStop(stop)
+      {/* Dashed and thinner than the walking route, deliberately — see above. */}
+      <RouteLine id="story-trail" positions={path} dashed color="#7cc4ff" />
+
+      {ordered.map((stop) => {
+        const walkable = isWalkableStop(stop);
+        return (
+          <MapMarker
+            key={stop.id}
+            position={stop.position}
+            className={stopClasses({ isNext: stop.id === nextStopId, walkable })}
+            onClick={onSelect ? () => onSelect(stop) : undefined}
+            // The place name only. The plot beat is withheld on purpose — the spoiler
+            // shield decides what a reader has earned, and a map label is not the place
+            // to quietly bypass it. A `title` is the browser's own tooltip, which costs
+            // nothing and cannot be styled into saying more than it should.
+            title={walkable
               ? `${stop.sequence_index}. ${stop.place}`
               : `${stop.sequence_index}. Somewhere in ${stop.place} — exact spot unknown`}
-          </Tooltip>
-        </Marker>
-      ))}
+          >
+            {walkable ? stop.sequence_index : "~"}
+          </MapMarker>
+        );
+      })}
     </>
   );
 }

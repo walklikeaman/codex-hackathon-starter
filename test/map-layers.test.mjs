@@ -49,7 +49,6 @@ test("the map opens on the layer the product is about", () => {
   // switch to once you have found the pin you care about.
   assert.equal(layerById(DEFAULT_LAYER_ID).id, "dark");
   assert.ok(MAP_LAYERS.some((layer) => layer.id === "satellite"));
-  assert.ok(MAP_LAYERS.some((layer) => layer.id === "street"));
 });
 
 test("an unknown stored layer falls back instead of blanking the map", () => {
@@ -136,4 +135,20 @@ test("light is its own style, not the dark one lightened", () => {
 
 test("dark stays the one the map opens on", () => {
   assert.equal(layerById(DEFAULT_LAYER_ID).id, "dark");
+});
+
+
+// The raster "Street" layer was OpenStreetMap's own 256 px tileset — the last raster basemap,
+// upscaled on every retina screen, and the literal source of "низкое разрешение". Light is a
+// street map already, drawn as vector; Street was a worse copy of a choice we had.
+test("no raster street layer survives — Light is the street map now", () => {
+  assert.equal(MAP_LAYERS.some((layer) => layer.id === "street"), false);
+  assert.ok(MAP_LAYERS.find((layer) => layer.id === "light")?.vector);
+});
+
+// Satellite stays raster on purpose: imagery IS raster, and there is nothing about a
+// photograph to draw sharper.
+test("satellite is the only raster layer left", () => {
+  const raster = MAP_LAYERS.filter((layer) => layer.url);
+  assert.deepEqual(raster.map((layer) => layer.id), ["satellite"]);
 });

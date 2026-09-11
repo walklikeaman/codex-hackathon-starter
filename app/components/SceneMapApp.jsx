@@ -1,17 +1,6 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import L from "leaflet";
-import {
-  Circle,
-  MapContainer,
-  Marker,
-  Polyline,
-  Popup,
-  TileLayer,
-  useMap,
-  useMapEvents,
-} from "react-leaflet";
 import {
   Check,
   CheckCircle2,
@@ -117,6 +106,10 @@ import {
 import { ACCESS, accessNote, isRoutable, MAX_PLACES_PER_QUERY } from "../lib/place-access.mjs";
 import VoiceGuide from "./VoiceGuide";
 import GraphLayer from "./GraphLayer";
+import MapCanvas from "./map/MapCanvas.jsx";
+import {
+  AreaLayer, ExposeMap, FitPositions, FlyTo, MapMarker, PanTo, PinLayer, RouteLine,
+} from "./map/layers.jsx";
 import SearchBox from "./SearchBox";
 import { ImageAttribution } from "./ImageAttribution";
 import { normalizeAttribution, requiredNotices } from "../lib/attribution.mjs";
@@ -526,76 +519,10 @@ function worksFromLocations(sourceLocations) {
   ])).values()];
 }
 
-// Leaflet's animated moves interpolate through the container size. When that size is
-// zero — a hidden tab, a headless/preview pane, a panel that has not been laid out yet
-// — the arithmetic yields NaN and Leaflet throws "Invalid LatLng object", which took
-// the WHOLE app into the error boundary over an animation nobody could see. Valid
-// coordinates are not enough; the map itself has to be measurable.
-function mapHasSize(map) {
-  const size = map?.getSize?.();
-  return Boolean(size) && size.x > 0 && size.y > 0;
-}
 
-// Move the map, degrading to a plain jump when it cannot be animated.
-function moveMap(map, center, zoom) {
-  if (!isLatLng(center)) return;
-  if (!mapHasSize(map)) {
-    map.setView(center, zoom, { animate: false });
-    return;
-  }
-  map.flyTo(center, zoom, { duration: 0.8 });
-}
 
-// Moving to a selection must never change the ZOOM.
-//
-// It flew to a hardcoded 12 for a centre and 14 for a place, so clicking a pin at street
-// level threw the reader back out to city level — "карта отъезжает и отдаляется", and it
-// did, every time. The zoom is the reader's: they set it deliberately, and nothing here
-// has a better opinion about how close they want to be.
-//
-// And it only PANS when it has to. A pin you just clicked is on screen by definition;
-// sliding the map under the cursor moves the thing being pointed at. So a point already
-// comfortably in view is left exactly where it is.
-function panWithoutZooming(map, target) {
-  if (!isLatLng(target) || !mapHasSize(map)) return;
-  const point = L.latLng(target);
-  // The middle 60% of the viewport. A point near the edge is nudged in — its popup would
-  // otherwise open off-screen — and one already central is not touched.
-  const bounds = map.getBounds().pad(-0.2);
-  if (bounds.contains(point)) return;
-  map.panTo(point, { animate: true, duration: 0.4 });
-}
 
-function RecenterOnSelection({ center, position }) {
-  const map = useMap();
 
-  useEffect(() => {
-    panWithoutZooming(map, center);
-  }, [center, map]);
-
-  useEffect(() => {
-    panWithoutZooming(map, position);
-  }, [map, position]);
-
-  return null;
-}
-
-function FitRoute({ positions }) {
-  const map = useMap();
-
-  useEffect(() => {
-    // fitBounds derives the zoom from the container size too, so it needs the same guard.
-    if (positions.length > 1 && mapHasSize(map)) {
-      map.fitBounds(L.latLngBounds(positions), {
-        animate: true,
-        maxZoom: 14,
-        padding: [48, 48],
-      });
-    }
-  }, [map, positions]);
-
-  return null;
-}
 
 // The viewport IS the question. Dragging used to refresh the search and zooming did
 // not, so widening the view to a country kept answering about the city — the places in
@@ -605,98 +532,7 @@ function FitRoute({ positions }) {
 // and each one would otherwise be a request.
 const VIEWPORT_DEBOUNCE_MS = 400;
 
-function RefreshLocationsOnViewport({ onViewportChange, onBoundsChange }) {
-  const timerRef = useRef(null);
 
-  // The count of what is on screen (#160) is NOT debounced, and the fetch still is. They
-  // are different costs: the fetch is a network request per gesture, and the count is a
-  // filter over a list already in memory. Debouncing the count would leave the panel
-  // stating the previous viewport for 400 ms after every drag, which is the one moment a
-  // reader is actually looking at it.
-  const publishBounds = useCallback((map) => {
-    if (!onBoundsChange) return;
-    const bounds = map.getBounds();
-    onBoundsChange({
-      north: bounds.getNorth(),
-      south: bounds.getSouth(),
-      east: bounds.getEast(),
-      west: bounds.getWest(),
-    });
-  }, [onBoundsChange]);
-
-  const schedule = useCallback((map) => {
-    publishBounds(map);
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      const center = map.getCenter();
-      const distanceToCorner = map.distance(center, map.getBounds().getNorthEast());
-
-      // A map that has not been laid out reports a zero-size viewport, and
-      // `mapSearchRadiusKm` refuses a non-positive distance — correctly, since a search
-      // radius of nothing is not a question. The refusal is a THROW inside a setTimeout,
-      // so it is uncaught, and it killed the whole update: every layer kept whatever it
-      // had loaded and never asked again. Observed as an empty Los Angeles that stayed
-      // empty, with three uncaught errors in the console and no other symptom.
-      //
-      // This is the same shape as the zero-sized-container bug in [[place-card]]: the map
-      // has not said what is in view yet, and the honest answer is to wait for the resize
-      // that follows rather than to ask about nothing.
-      if (!Number.isFinite(distanceToCorner) || distanceToCorner <= 0) return;
-
-      onViewportChange({
-        center: [Number(center.lat.toFixed(5)), Number(center.lng.toFixed(5))],
-        radiusKm: mapSearchRadiusKm(distanceToCorner),
-        // Carried so the address bar can describe the view. Without it a shared link
-        // reopens at a default zoom and shows a different map from the one that was sent.
-        zoom: map.getZoom(),
-      });
-    }, VIEWPORT_DEBOUNCE_MS);
-  }, [onViewportChange, publishBounds]);
-
-  const map = useMapEvents({
-    dragend: () => schedule(map),
-    zoomend: () => schedule(map),
-    // A resize changes what is visible without firing either of the others.
-    resize: () => schedule(map),
-  });
-
-  // The first paint fires none of those events, so without this the panel would count
-  // every place we hold until the reader touched the map.
-  useEffect(() => {
-    if (map) publishBounds(map);
-  }, [map, publishBounds]);
-
-  useEffect(() => () => clearTimeout(timerRef.current), []);
-
-  return null;
-}
-
-// The SAME pin the queue layer draws. There is no second vocabulary any more.
-//
-// This path drew an amber diamond while the graph and queue layers drew circles — three
-// shapes for one idea, from three code paths that never met. The owner's verdict was the
-// whole argument: "почему одни жёлтые ромбики, а другие кружочки? Не понимаешь, что это
-// означает." What a pin MEANS now lives in [[map-pin]] and nowhere else.
-//
-// A location on this path is one film's place, so it carries no count — the number is
-// reserved for points where several films are stacked, which is the thing it exists to
-// reveal.
-function makeMarkerIcon(selected, nearest, kind, candidate) {
-  const size = pinSize(1);
-  return L.divIcon({
-    className: "",
-    html: pinHtml({
-      filmCount: 1,
-      // Hollow is a claim about evidence, not a style: solid means somebody stated this
-      // place belongs to this work, hollow means only that an article mentions it.
-      checked: !candidate,
-      narrative: kind === "narrative",
-      selected: selected || nearest,
-    }),
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-  });
-}
 
 // How big an area is, roughly, so it can be drawn as one. These are not claims about
 // the boundary — we do not have boundaries — they are honest orders of magnitude: a
@@ -709,227 +545,12 @@ function areaRadiusMeters(precision) {
   return AREA_RADIUS_M[precision] ?? AREA_RADIUS_M.unknown;
 }
 
-const userIcon = L.divIcon({
-  className: "",
-  html: '<span class="user-pin"><span></span></span>',
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
-});
 
-// Leaflet caches the container's size and only re-measures on a WINDOW resize. A container
-// that changes size on its own — a panel opening beside it, a phone rotating, a hidden pane
-// becoming visible — leaves the map laid out for the old size: tiles cover a patch and the
-// rest is background, and `getBounds()` describes a viewport nobody is looking at.
-//
-// Observed while showing Los Angeles: 24 tiles all loaded successfully and the map was a
-// small square in the middle of a black screen. Every check said the tiles were fine,
-// because they were.
-//
-// This is the same family as the zero-sized-container bug in [[place-card]], where Leaflet
-// answered `getBounds()` on an unlaid-out map and the panel printed "No places in view"
-// over five pins.
-// The vector basemap, rendered by MapLibre inside the Leaflet map.
-//
-// `maplibre-gl` is ~800 kB and only this layer needs it, so it is imported **lazily** —
-// a reader who stays on satellite or street never downloads it. That is also why this is
-// a component rather than a branch inside <TileLayer>: the import has to happen after the
-// layer is chosen, not while the module is being evaluated.
-function VectorBasemap({ style, attribution, onReady }) {
-  const map = useMap();
 
-  useEffect(() => {
-    let layer = null;
-    let cancelled = false;
 
-    (async () => {
-      try {
-        // `mod.default ?? mod`, not `{ default: … }` — and this line is why the map has
-        // been raster since the vector layer was written. Destructuring the default gave
-        // `undefined` here, so `L.maplibreGL({ maplibregl: undefined })` failed, the catch
-        // below logged it where nobody was looking, and the raster fallback underneath kept
-        // drawing. A vector layer that never renders does not look broken; it looks like the
-        // raster. That is what "низкое разрешение / не выглядит красивой" actually was: OSM's
-        // 256 px tiles upscaled, because the vector style behind them had never once drawn.
-        const [mod] = await Promise.all([
-          import("maplibre-gl"),
-          import("@maplibre/maplibre-gl-leaflet"),
-        ]);
-        const maplibregl = mod.default ?? mod;
-        if (cancelled) return;
 
-        // The same worker fix the standalone MapLibre map needs (#202). MapLibre spawns its
-        // tile-parsing worker with `new Worker(url, { type: "module" })`, and under Next.js
-        // that URL is not served — the browser refuses the HTML 404 for its MIME type. The
-        // library then parses the style and stops: no source loads and nothing is drawn.
-        //
-        // Here that failure was INVISIBLE, which is why it survived so long. This layer draws
-        // a raster fallback underneath until the vector reports itself painted, so a dead
-        // vector layer does not look broken — it looks like the raster. The complaint it
-        // produced instead was about the LOOK of the map: "низкое разрешение", "не выглядит
-        // красивой". That was OpenStreetMap's 256 px raster upscaled, because the vector
-        // style behind it had never once rendered.
-        maplibregl.setWorkerUrl?.("/maplibre-gl-worker.mjs");
 
-        // The plugin attaches itself to the Leaflet global as `L.maplibreGL`.
-        layer = L.maplibreGL({ style, attribution, maplibregl });
-        layer.addTo(map);
-        // Only once the style is actually painted. WebGL can fail on a machine or a
-        // browser that Leaflet raster never would — a blocked context, an old GPU
-        // driver — and a map with no backdrop at all is worse than a blurry one.
-        const gl = layer.getMaplibreMap?.();
-        if (gl?.once) gl.once("load", () => { if (!cancelled) onReady?.(); });
-        else onReady?.();
-      } catch (error) {
-        // A basemap that fails must not take the pins with it, and must not leave the map
-        // blank: `onReady` is never called, so the raster underneath stays visible.
-        console.error("Vector basemap failed to load", error);
-      }
-    })();
 
-    return () => {
-      cancelled = true;
-      if (layer) map.removeLayer(layer);
-    };
-  }, [map, style, attribution, onReady]);
-
-  return null;
-}
-
-// Clicking the map itself puts the card away.
-//
-// Leaflet fires `click` on the map only when nothing on it was hit — a pin, a circle or a
-// popup swallows the event first — so this cannot dismiss the card out from under the
-// thing that just opened it. Escape does the same, because a reader who wants the map
-// clean should not have to hunt for a target.
-function DismissOnMapClick({ onDismiss }) {
-  useMapEvents({ click: () => onDismiss?.() });
-
-  useEffect(() => {
-    const onKey = (event) => { if (event.key === "Escape") onDismiss?.(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onDismiss]);
-
-  return null;
-}
-
-function InvalidateOnResize() {
-  const map = useMap();
-
-  useEffect(() => {
-    const container = map.getContainer();
-
-    // ONCE ON MOUNT, before any observer. Leaflet measures its container when the map is
-    // constructed, and React can construct it before the browser has laid the container
-    // out — during hydration, or inside a panel that is still opening. The map then holds
-    // a size of 0 and NOTHING later corrects it: `getBounds()` returns a box where
-    // `west === east`, every layer asks the server about a viewport of zero area, and the
-    // answer is honestly empty.
-    //
-    // A ResizeObserver alone does not save this. It fires when the size CHANGES, and here
-    // it never does — the container was 1280x720 from the first paint and only Leaflet's
-    // copy was wrong.
-    // `setTimeout`, not `requestAnimationFrame`. rAF does not run while the tab is not
-    // painting — a background tab, a hidden panel — and that is exactly a case where the
-    // map is constructed unlaid-out. Waiting for a frame that never comes leaves the map
-    // stuck at size zero for as long as nobody looks at it, and then it is still stuck
-    // when they do. Two passes: one immediately after layout, one after a beat for a
-    // container that is still animating open.
-    // Retried, not fired once. A container can still be laying out — fonts loading, a
-    // panel animating open, a tab that has never painted — and a single pass then measures
-    // zero just as the constructor did. This gives up after ~2s because by then the size
-    // is either real or the map is not on screen at all.
-    const settle = [];
-    let attempts = 0;
-    const measure = () => {
-      map.invalidateSize();
-      const size = map.getSize();
-      attempts += 1;
-      if ((size.x === 0 || size.y === 0) && attempts < 10) {
-        settle.push(setTimeout(measure, 200));
-      }
-    };
-    settle.push(setTimeout(measure, 0));
-    const clearSettle = () => settle.forEach(clearTimeout);
-
-    if (typeof ResizeObserver === "undefined") return clearSettle;
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      // Coalesced: a drag-resized panel fires this continuously and invalidateSize does
-      // real layout work each time.
-      clearTimeout(frame);
-      // NOT `debounceMoveend: true`. That option suppresses the `moveend` this emits, and
-      // `moveend` is what makes the graph and queue layers refetch. A map that re-measures
-      // silently keeps drawing the pins it loaded for the OLD viewport — which looks like
-      // an empty map rather than a stale one, and is worse for being invisible.
-      frame = setTimeout(() => map.invalidateSize(), 60);
-    });
-    observer.observe(container);
-    return () => {
-      clearSettle();
-      clearTimeout(frame);
-      observer.disconnect();
-    };
-  }, [map]);
-
-  return null;
-}
-
-// Lifts the Leaflet map out to the shell so the furniture can be rendered as a SIBLING of
-// the map rather than a child of it. Rendered inside the container, every control would sit
-// in Leaflet's own pane: a click on "+" would also pan the map underneath it, and each
-// button would need `L.DomEvent.disableClickPropagation` to undo that. Outside, there is
-// nothing to undo — and the furniture can also sit above `.map-stage::after`, the full-bleed
-// vignette at z-index 500 that paints over every child of the stage.
-function ExposeMap({ onMap, onZoom }) {
-  const map = useMap();
-
-  useEffect(() => {
-    onMap(map);
-    onZoom(map.getZoom());
-    return () => onMap(null);
-  }, [map, onMap, onZoom]);
-
-  // Leaflet does not re-render React when the zoom changes, so the zoom buttons would keep
-  // whatever affordance they had on mount. The zoom NUMBER is lifted rather than the map,
-  // because setting state to the same map object changes nothing and would not re-render.
-  useMapEvents({ zoomend: () => onZoom(map.getZoom()) });
-
-  return null;
-}
-
-// Keeps the container's ground class in step with the chosen basemap.
-//
-// It cannot be done with `className` on <MapContainer>: react-leaflet writes that once, when
-// Leaflet builds the container, and never again. Switching from dark to light left the class
-// saying `map-vector-dark` while every other piece of state — the stored preference, the
-// menu label, the pressed option — already said light, so the ground behind the tiles and
-// the dimming on the raster stand-in stayed dark under a daylight map.
-function BasemapGround({ layerId, vector }) {
-  const map = useMap();
-
-  useEffect(() => {
-    const container = map.getContainer();
-    const ours = [...container.classList].filter((name) => name.startsWith("map-vector"));
-    container.classList.remove(...ours);
-    if (vector) container.classList.add("map-vector", `map-vector-${layerId}`);
-    return () => {
-      container.classList.remove("map-vector", `map-vector-${layerId}`);
-    };
-  }, [map, layerId, vector]);
-
-  return null;
-}
-
-function FlyToUser({ position, radius }) {
-  const map = useMap();
-
-  useEffect(() => {
-    moveMap(map, position, zoomForRadius(radius));
-  }, [map, position, radius]);
-
-  return null;
-}
 
 const GEOLOCATION_ERRORS = {
   1: {
@@ -1676,6 +1297,39 @@ export default function SceneMapApp() {
     if (typeof window !== "undefined") setBasemapId(readStoredLayerId(window.localStorage));
   }, []);
   const basemap = useMemo(() => layerById(basemapId), [basemapId]);
+  // What the map reports as it moves, and the two different things that ride on it.
+  //
+  // The COUNT of what is on screen is published immediately; the FETCH is debounced. They
+  // are different costs — the fetch is a network request per gesture, the count is a filter
+  // over a list already in memory — and debouncing the count would leave the panel stating
+  // the previous viewport for 400 ms after every drag, which is the one moment a reader is
+  // actually looking at it.
+  const viewportTimer = useRef(null);
+  const onMapViewport = useCallback(({ bounds, center, zoom }) => {
+    setMapBounds(bounds);
+
+    clearTimeout(viewportTimer.current);
+    viewportTimer.current = setTimeout(() => {
+      // Distance from the centre to a corner, in metres, without asking the map: a map that
+      // has not been laid out reports a zero-size viewport, and `mapSearchRadiusKm` refuses
+      // a non-positive distance — correctly, since a search radius of nothing is not a
+      // question. That refusal is a THROW, and inside a timer it is uncaught: it once killed
+      // the whole update and left Los Angeles empty with three console errors and no other
+      // symptom. So the degenerate case is answered here, by waiting for the next move.
+      const metresPerDegreeLat = 111_320;
+      const dLat = (bounds.north - center.lat) * metresPerDegreeLat;
+      const dLng = (bounds.east - center.lng) * metresPerDegreeLat * Math.cos((center.lat * Math.PI) / 180);
+      const distanceToCorner = Math.hypot(dLat, dLng);
+      if (!Number.isFinite(distanceToCorner) || distanceToCorner <= 0) return;
+
+      refreshVisibleMap({
+        center: [Number(center.lat.toFixed(5)), Number(center.lng.toFixed(5))],
+        radiusKm: mapSearchRadiusKm(distanceToCorner),
+        zoom,
+      });
+    }, 400);
+  }, [refreshVisibleMap]);
+
   const chooseBasemap = useCallback((id) => {
     setBasemapId(layerById(id).id);
     if (typeof window !== "undefined") writeStoredLayerId(window.localStorage, id);
@@ -1819,6 +1473,36 @@ export default function SceneMapApp() {
     ),
     [libraryFilmIds, mineOnly, selectedFilms, sourceLocations],
   );
+
+  // Split once, here, rather than filtered twice in the JSX: a place located only to a city
+  // is an AREA and a place located to a doorway is a PIN, and they are different drawings of
+  // different claims.
+  const areaLocations = useMemo(
+    () => visibleLocations.filter((location) => location.display === "area"),
+    [visibleLocations],
+  );
+
+  // The searched work's places, as GeoJSON for the same pin layer the graph uses. One
+  // vocabulary, one renderer — this path used to draw an amber diamond while the graph drew
+  // circles, three shapes for one idea, which is the complaint [[map-pin]] exists to answer.
+  const searchedPlaceFeatures = useMemo(
+    () => visibleLocations
+      .filter((location) => location.display !== "area")
+      .map((location) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [location.position[1], location.position[0]] },
+        properties: {
+          key: location.id,
+          work_count: 1,
+          // Hollow is a claim about evidence, not a style: solid means somebody stated this
+          // place belongs to this work, hollow means only that an article mentions it.
+          checked: !location.isCandidate,
+          narrative: location.kind === "narrative",
+        },
+      })),
+    [visibleLocations],
+  );
+
 
   useEffect(() => {
     if (!mineOnly) return;
@@ -2809,128 +2493,69 @@ export default function SceneMapApp() {
             The dark class rides on the container so the CSS can filter the TILE PANE only.
             Passing `className` to <TileLayer> does not survive react-leaflet, and filtering
             the whole container would invert the pins and the route with the tiles. */}
-        <MapContainer
+        <MapCanvas
           center={mapCenter}
           zoom={opened?.zoom ?? 12}
           minZoom={3}
           maxZoom={19}
-          zoomControl={false}
+          basemap={basemap}
+          onViewport={onMapViewport}
+          onBackgroundClick={() => setActiveLocation(null)}
         >
           <ExposeMap onMap={setMapApi} onZoom={setMapZoom} />
-          <BasemapGround layerId={basemap.id} vector={Boolean(basemap.vector)} />
-          {/* Keyed by id so Leaflet replaces the layer instead of mutating the one it
-              has: without the key the attribution of the previous provider stays on
-              screen under the new provider's tiles, which is an attribution bug rather
-              than a cosmetic one. */}
-          {/* A vector layer needs WebGL, which can fail where raster tiles would not — a
-              blocked context, an old driver, a browser with it switched off. So the raster
-              is drawn UNDERNEATH until the vector style reports itself painted, and a
-              machine that cannot render vector keeps a working map instead of a blank one.
-              One extra tile fetch buys that. */}
-          {basemap.vector && !vectorReady && (
-            <TileLayer
-              key={`${basemap.id}-fallback`}
-              attribution={basemap.attribution}
-              url={VECTOR_FALLBACK_URL}
-              maxZoom={basemap.maxZoom}
-              className="basemap-fallback"
-            />
-          )}
-          {basemap.vector ? (
-            <VectorBasemap
-              key={basemap.id}
-              style={basemap.vector}
-              attribution={basemap.attribution}
-              onReady={markVectorReady}
-            />
-          ) : (
-            <TileLayer
-              key={basemap.id}
-              attribution={basemap.attribution}
-              url={basemap.url}
-              maxZoom={basemap.maxZoom}
-            />
-          )}
-          <InvalidateOnResize />
-          <DismissOnMapClick onDismiss={() => setActiveLocation(null)} />
-          <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
-          <FitRoute positions={routePositions} />
-          <FlyToUser position={userPosition} radius={nearbyRadius} />
-          <RefreshLocationsOnViewport onViewportChange={refreshVisibleMap} onBoundsChange={setMapBounds} />
+
+          {/* The camera. Panning never changes the zoom — the owner's rule, and absolute:
+              clicking a pin used to fly the map and zoom out, moving the thing being clicked
+              out from under the cursor. A route is the one exception, because a route you
+              cannot see all of is not a route you can follow. */}
+          <PanTo position={activeLocation?.position ?? mapCenter} />
+          <FitPositions positions={routePositions} />
+          {userPosition && <FlyTo position={userPosition} zoom={zoomForRadius(nearbyRadius)} />}
+
           {userPosition && (
             <>
-              <Circle
-                center={userPosition}
-                radius={nearbyRadius}
-                pathOptions={{ color: "#f7b733", fillOpacity: 0.06, opacity: 0.5, weight: 1.5 }}
+              <AreaLayer
+                id="nearby-radius"
+                areas={[{ id: "nearby", position: userPosition, radiusMeters: nearbyRadius }]}
               />
-              <Marker icon={userIcon} position={userPosition}>
-                <Popup>{userIsDemo ? DEMO_LOCATION.label : "You are here"}</Popup>
-              </Marker>
+              <MapMarker
+                position={userPosition}
+                className="user-dot"
+                title={userIsDemo ? DEMO_LOCATION.label : "You are here"}
+              />
             </>
           )}
-          {/* A place the source located only to an island, a county or a city is drawn
-              as the area it is. The owner's rule: "we do not include the whole island
-              as a point, but as an area where the exact place is not known" — a dot on
-              Istanbul's centre invents a doorway that no source ever claimed. */}
-          {visibleLocations.filter((location) => location.display === "area").map((location) => (
-            <Circle
-              key={`area-${location.id}`}
-              center={location.position}
-              radius={areaRadiusMeters(location.precision)}
-              pathOptions={{
-                color: "#f7b733",
-                weight: activeLocation?.id === location.id ? 2 : 1,
-                opacity: 0.55,
-                fillOpacity: activeLocation?.id === location.id ? 0.12 : 0.06,
-                dashArray: "6 6",
-              }}
-              eventHandlers={{ click: () => setActiveLocation(location) }}
-            >
-              <Popup>
-                <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
-                <strong>{location.film}</strong>
-                <br />
-                {location.place}
-                <br />
-                <em>Somewhere in here — the source names the area, not a spot</em>
-              </Popup>
-            </Circle>
-          ))}
-          {visibleLocations.filter((location) => location.display !== "area").map((location) => (
-            <Marker
-              key={location.id}
-              position={location.position}
-              icon={makeMarkerIcon(
-                activeLocation?.id === location.id,
-                nearby?.nearest?.location.id === location.id,
-                location.kind,
-                location.isCandidate,
-              )}
-              eventHandlers={{
-                click: () => setActiveLocation(location),
-              }}
-            >
-              <Popup>
-                <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
-                <strong>{location.film}</strong>
-                <br />
-                {location.place}
-                {location.isCandidate && (
-                  <>
-                    <br />
-                    <em>Unverified mention</em>
-                  </>
-                )}
-              </Popup>
-            </Marker>
-          ))}
+
+          {/* A place the source located only to an island, a county or a city is drawn as the
+              area it is. The owner's rule: "we do not include the whole island as a point, but
+              as an area where the exact place is not known" — a dot on Istanbul's centre
+              invents a doorway that no source ever claimed. */}
+          <AreaLayer
+            id="place-areas"
+            areas={areaLocations.map((location) => ({
+              id: location.id,
+              position: location.position,
+              radiusMeters: areaRadiusMeters(location.precision),
+              active: activeLocation?.id === location.id,
+            }))}
+          />
+
+          <PinLayer
+            id="searched-places"
+            features={searchedPlaceFeatures}
+            selectedKey={activeLocation?.id ?? null}
+            onSelect={(properties) => {
+              const location = visibleLocations.find((candidate) => candidate.id === properties.key);
+              if (location) setActiveLocation(location);
+            }}
+          />
+
           {graphLayerOn && (
             <GraphLayer
               kinds={graphKinds.length ? graphKinds : null}
               workId={graphWorkId || null}
               onCandidatesInView={setCandidatesDrawn}
-            showCandidates={candidatesOn}
+              showCandidates={candidatesOn}
               showStudioLots={studioLotsOn}
               isMine={candidateIsMine}
               onSummary={setGraphSummary}
@@ -2940,23 +2565,20 @@ export default function SceneMapApp() {
               onSelect={NOTHING_ON_SELECT}
             />
           )}
-          {routePositions.length > 1 && (
-            <Polyline
-              positions={routePositions}
-              pathOptions={{
-                color: "#f7b733",
-                dashArray: routeResult?.source === "fallback" ? "8 10" : undefined,
-                opacity: routeResult?.source === "fallback" ? 0.7 : 0.95,
-                weight: 5,
-              }}
-            />
-          )}
+
+          {/* Solid: how you get there. The story trail beside it is dashed, because it is how
+              the STORY moves, and walking in plot order is the wrong instruction. */}
+          <RouteLine
+            positions={routePositions}
+            dashed={routeResult?.source === "fallback"}
+          />
+
           <StoryTrail
             stops={trailStopList}
             nextStopId={nextStopId}
             onSelect={(stop) => setMapCenter(stop.position)}
           />
-        </MapContainer>
+        </MapCanvas>
 
         {/* Over the map, not inside the panel: a control you need while walking must
             not live in a sheet you have to open first. */}

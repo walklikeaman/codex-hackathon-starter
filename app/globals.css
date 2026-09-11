@@ -80,7 +80,7 @@ img {
 }
 
 .map-stage,
-.leaflet-container {
+.map-canvas-surface {
   position: absolute;
   inset: 0;
   min-height: 100vh;
@@ -100,19 +100,20 @@ img {
     radial-gradient(circle at 74% 35%, rgba(247, 183, 51, 0.14), transparent 28%);
 }
 
-.leaflet-popup-content-wrapper,
-.leaflet-popup-tip {
+/* MapLibre's popup, styled where Leaflet's used to be. Same job, different class names. */
+.maplibregl-popup-content,
+.maplibregl-popup-tip {
   background: #111414;
   color: var(--text);
   border: 1px solid var(--line);
 }
 
-.leaflet-control-attribution {
+.maplibregl-ctrl-attrib {
   background: rgba(8, 9, 9, 0.62) !important;
   color: #9da6a4 !important;
 }
 
-.leaflet-control-attribution a {
+.maplibregl-ctrl-attrib a {
   color: #d6b15a !important;
 }
 
@@ -3067,8 +3068,7 @@ figcaption a {
 
 /* Map fly-overs are motion; someone who asked for less should not get swooped. */
 @media (prefers-reduced-motion: reduce) {
-  .leaflet-fade-anim .leaflet-tile,
-  .leaflet-zoom-anim .leaflet-zoom-animated { transition: none !important; }
+  .maplibregl-canvas { transition: none !important; }
 }
 
 /* The one control that trades spoiler safety for completeness. Sits with the walk
@@ -3697,11 +3697,8 @@ figcaption a {
    blue. */
 /* The vector basemap paints into its own canvas under the pins. The container needs a dark
    ground beneath it so the first frame is not a white flash before the style loads. */
-/* The ground the vector style is drawn over, and it has to match the style or the edges and
-   the first half-second of every pan are the wrong colour. */
 .map-vector { background: #0c0c0c; }
 .map-vector-light { background: #eaeaea; }
-.map-vector .leaflet-tile-pane { filter: none; }
 
 /* The raster stand-in shown until the vector style reports itself painted. It is dimmed to
    sit under a dark style; under the light one that dimming is exactly backwards, so the
@@ -3834,7 +3831,6 @@ figcaption a {
 
 /* MapLibre renders into a canvas inside a Leaflet pane. Leaflet owns the interaction, so
    the canvas must never intercept a click meant for a pin. */
-.map-vector .leaflet-gl-layer canvas { pointer-events: none; }
 
 /* ---------------------------------------------------------------------------------------
    ONE pin.
