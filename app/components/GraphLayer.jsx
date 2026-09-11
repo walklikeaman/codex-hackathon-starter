@@ -1,11 +1,11 @@
 "use client";
 
 import L from "leaflet";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CircleMarker, Marker, Popup, Tooltip, useMap, useMapEvents } from "react-leaflet";
 
 import { workPath } from "../lib/work-url.mjs";
-import { pinHtml, pinSize } from "../lib/map-pin.mjs";
+import { pinHtml, pinIconKey, pinSize } from "../lib/map-pin.mjs";
 
 import {
   candidateClusterStyle,
@@ -24,7 +24,7 @@ const REFRESH_DEBOUNCE_MS = 300;
 // than as DOM markers. Thousands of pins as DOM nodes stall the browser; one canvas
 // stays smooth, and the database does the clustering so the client never holds the
 // whole set. Below z12 the endpoint returns cluster bubbles instead of places.
-export default function GraphLayer({
+function GraphLayer({
   workId = null,
   kinds = null,
   selectedPlaceId = null,
@@ -44,6 +44,33 @@ export default function GraphLayer({
   const map = useMap();
   // One shared canvas for every marker in this layer.
   const renderer = useMemo(() => L.canvas({ padding: 0.5 }), []);
+  // Icons are shared between pins that look alike, and this is why.
+  //
+  // A fresh `L.divIcon` per marker per render is a CHANGED `icon` prop, so react-leaflet
+  // called `setIcon` on every marker — and `setIcon` replaces the marker's DOM element.
+  // Every state change in the app, however unrelated, rebuilt every pin on the map:
+  // opening the layers menu with 598 pins drawn blocked the main thread for 220 ms, while
+  // the same click with 10 pins drawn cost 45 ms. Nothing about the pins had changed.
+  //
+  // Sharing is safe because `DivIcon.createIcon()` builds a new element per marker; the
+  // icon object is the recipe, not the pin. A ref rather than state — filling the cache
+  // must never schedule a render, or it would cause the work it exists to avoid.
+  const iconCache = useRef(new Map());
+  const iconFor = useCallback((options) => {
+    const key = pinIconKey(options);
+    const cached = iconCache.current.get(key);
+    if (cached) return cached;
+
+    const size = pinSize(options.filmCount);
+    const icon = L.divIcon({
+      className: "",
+      html: pinHtml(options),
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+    });
+    iconCache.current.set(key, icon);
+    return icon;
+  }, []);
   const [data, setData] = useState({ features: [], candidates: [], clustered: false, fictional: [] });
   // Which point's popup is open. Without it a reader cannot tell WHICH pin they hit — the
   // popup appears near a cluster of pins and every one of them still looks the same, which
@@ -224,17 +251,11 @@ export default function GraphLayer({
         // 2,024 Los Angeles points carry more than one film and the busiest carries 96.
         const pointKey = `${lat},${lng}`;
         const isOpen = openPoint === pointKey;
-        const size = pinSize(props.work_count);
-        const icon = L.divIcon({
-          className: "",
-          html: pinHtml({
-            filmCount: props.work_count,
-            checked: props.status === "verified",
-            depicts_elsewhere: props.depicts_elsewhere,
-            selected: isOpen,
-          }),
-          iconSize: [size, size],
-          iconAnchor: [size / 2, size / 2],
+        const icon = iconFor({
+          filmCount: props.work_count,
+          checked: props.status === "verified",
+          depicts_elsewhere: props.depicts_elsewhere,
+          selected: isOpen,
         });
 
         return (
@@ -292,3 +313,17 @@ export default function GraphLayer({
     </>
   );
 }
+
+// Memoised, and this is the measurement it exists for.
+//
+// Every state change in the parent — opening the layers menu, opening the legend — re-ran
+// this component and with it the whole marker list: 1,008 <Marker> elements, each with a
+// <Popup> holding a list of films. React had to build and diff all of it to discover that
+// none of it had changed. One click on the layers button blocked the main thread for
+// **250 ms** with 1,008 pins drawn, and **45 ms** with 10 — the difference was the pins,
+// and nothing about the pins was what the click changed.
+//
+// So the props are all referentially stable at the call site — `onSelect` is a module
+// constant, the two `on…` props are setState functions, `isMine` is a useMemo — and a
+// parent render that changes none of them now skips this subtree entirely.
+export default memo(GraphLayer);

@@ -2,15 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  MAX_PIN,
-  MIN_PIN,
-  PIN_KIND,
-  PIN_LEGEND,
-  pinClasses,
-  pinHtml,
-  pinKind,
-  pinLabel,
-  pinSize,
+  MAX_PIN, MIN_PIN, pinClasses, pinHtml, pinIconKey, pinKind, pinLabel, pinSize, PIN_KIND, PIN_LEGEND,
 } from "../app/lib/map-pin.mjs";
 
 // The map grew three pin systems from three code paths — an amber diamond, a filled circle,
@@ -85,4 +77,45 @@ test("the legend explains in sentences, not nouns", () => {
     assert.match(row.text, /[.!]$/);
   }
   assert.ok(PIN_LEGEND.some((r) => /number/i.test(r.text)), "the number is explained");
+});
+
+// The icon cache rests on this: two pins with the same key are visually identical, so they
+// may share one L.divIcon. If the key ever collides for pins that should look different,
+// the map draws the wrong pin — so these tests are about what MUST differ.
+test("pins that look the same share a key", () => {
+  assert.equal(
+    pinIconKey({ filmCount: 1, checked: false }),
+    pinIconKey({ filmCount: 1, checked: false }),
+  );
+});
+
+test("checked and unchecked never share a key — that distinction is evidence", () => {
+  assert.notEqual(
+    pinIconKey({ filmCount: 1, checked: true }),
+    pinIconKey({ filmCount: 1, checked: false }),
+  );
+});
+
+test("a studio lot never shares a key with an ordinary place", () => {
+  assert.notEqual(
+    pinIconKey({ filmCount: 1, checked: true, depicts_elsewhere: true }),
+    pinIconKey({ filmCount: 1, checked: true }),
+  );
+});
+
+test("a selected pin never shares a key with the same pin unselected", () => {
+  assert.notEqual(
+    pinIconKey({ filmCount: 3, checked: true, selected: true }),
+    pinIconKey({ filmCount: 3, checked: true }),
+  );
+});
+
+test("different counts differ, because the number is drawn on the pin", () => {
+  assert.notEqual(pinIconKey({ filmCount: 2 }), pinIconKey({ filmCount: 3 }));
+});
+
+// Above 999 every pin reads "999+" and every pin is the maximum size, so they genuinely
+// are the same pin and SHOULD share — this is the one case where collapsing is correct.
+test("two pins past the cap are the same pin and share a key", () => {
+  assert.equal(pinIconKey({ filmCount: 1200 }), pinIconKey({ filmCount: 5000 }));
 });

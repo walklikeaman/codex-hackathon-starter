@@ -84,6 +84,22 @@ export function pinHtml(options = {}) {
   return `<span class="${pinClasses(options)}"><span class="map-pin-body">${label}</span></span>`;
 }
 
+// Two pins that look the same may SHARE one icon object, and this is the key that says so.
+//
+// Why it matters, measured: `GraphLayer` built a fresh `L.divIcon` for every marker on
+// every render. A new icon object is a changed `icon` prop, so react-leaflet called
+// `marker.setIcon()` on all of them, and `setIcon` replaces the marker's DOM element. The
+// cost was not the pins being on screen — it was rebuilding all of them whenever ANY state
+// in the app changed. Opening the layers menu with 598 pins drawn blocked the main thread
+// for 220 ms; with 10 pins drawn, 45 ms. Nothing about the pins had changed either time.
+//
+// Sharing is safe because `DivIcon.createIcon()` builds a NEW element per marker — the icon
+// object is a recipe, not the thing on the map. So the key has to cover exactly what the
+// recipe reads: the html (which is the label plus the classes) and the size.
+export function pinIconKey(options = {}) {
+  return `${pinSize(options.filmCount)}|${pinClasses(options)}|${pinLabel(options.filmCount)}`;
+}
+
 // What the legend says. Written as sentences rather than labels because a legend of nouns
 // — "Exact", "Approximate", "Studio" — is what the reader could not decode.
 export const PIN_LEGEND = Object.freeze([
