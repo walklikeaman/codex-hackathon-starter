@@ -7,6 +7,54 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-11] decision | Fandom's "only two wikis" was the parser's shape, not Fandom's content
+
+**Object**: `app/lib/fandom-source.mjs`, `scripts/ingest-fandom.mjs`
+**Scenario**: decision · **Outcome**: ✅ lists read as well as tables; prose named as the
+real bottleneck and left for a pass that can afford it
+**Code changes**: this commit
+
+Owner's request: read everything on Fandom, not just Bond and LOTR — any work, film or book
+or cartoon, anything tied to a place.
+
+**First the measurement, because it overturned the premise.** 48 pages across six wikis,
+11.09: 26 carry a filming-location section, but only **4** keep it as a wikitext table —
+which is all `parseLocationTable` could read. The July note recording "harrypotter 0,
+marvelcinematicuniverse 0" was measuring tables, and both wikis do carry the content.
+
+Ten more pages looked like lists and twelve were prose. But **most of the "lists" are a
+single bullet wrapping a whole paragraph** — Skyfall's is 800 characters about road
+closures, Driftmark's is a paragraph naming St Michael's Mount inside it. Taking those would
+hand a geocoder a paragraph.
+
+So the list parser reads only what is genuinely a list, and refuses on three grounds: over
+120 characters, a predicate verb, or a full stop after a real word. That last test had to be
+rewritten — the first version refused "Keash Mountain, Ballymote, Co. Sligo" because ". S"
+looked like a sentence, and place names are full of abbreviations. The word before the stop
+must be four letters or more, which keeps Co., St., Mt. and Rd.
+
+**A list is only read under a heading that says the places are real.** A table is safe
+because a column header says which side is which; a list has no such marker, and on a fan
+wiki a bare "Locations" means Tatooine and Winterfell. Same refusal the table parser already
+makes when it cannot identify a shooting column. Rows from a list come back unpaired, because
+"Istanbul, Turkey – Pinewood Studios" could be read either way round.
+
+**Measured gain, stated plainly: 6 pages → 9, and 56 rows → 62 on the same sample.** Modest.
+The honest finding is the other one: **the bulk of Fandom's location content is prose**, and
+prose costs a model call per page — the thing this project has avoided everywhere
+(`tools/scraperai`: the model runs once per page type, not once per page).
+
+**On reading all of Fandom.** The wiki index (`api/v1/Wikis/List`) is behind a Cloudflare
+challenge and answers 403; getting past it would be bot-detection evasion and was not
+attempted. Per-wiki `api.php` is open and is what this uses. Scale, measured the same day:
+Star Wars alone holds 228,668 articles, Doctor Who 111,233, Disney 56,638 — about 494,000
+across six wikis, roughly four days of continuous fetching at the crawler's own 0.7s pacing.
+Fandom has on the order of 250,000 communities. Enumerating them is not the shape of the
+answer; asking each wiki's search for the pages that carry filming locations is one request
+per wiki instead of one per article.
+
+---
+
 ## [2026-09-11] decision | The services become a registry, so a third one is a row
 
 **Object**: `app/lib/media-sources.mjs` (new), `media-library.mjs`, `cloud-library.mjs`,

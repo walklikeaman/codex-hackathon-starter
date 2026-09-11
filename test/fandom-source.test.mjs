@@ -8,6 +8,9 @@ import {
   fandomSentence,
   licenceAllows,
   locationSection,
+  namesAPlaceInAList,
+  parseLocationList,
+  parseLocationRows,
   matchWork,
   namesAPlace,
   pageTitleToWorkTitle,
@@ -85,7 +88,7 @@ test("the section with the table wins over the one that merely mentions filming"
   // The Bond pages carry a prose `===Filming===` before `==Locations==`. Taking the first
   // match read three paragraphs about a script and returned nothing for the page with the
   // best table on the wiki.
-  const section = locationSection(BOND);
+  const section = locationSection(BOND).text;
   assert.ok(section.includes("{|"), "the chosen section holds the table");
   assert.equal(/marked a first time/.test(section), false, "and not the prose one");
 });
@@ -94,7 +97,7 @@ test("a nested matching heading closes its parent instead of replacing it", () =
   // "== Locations" holds the table and "=== Shooting locations" sits underneath holding
   // prose. Overwriting lost the table on every page shaped that way.
   const nested = `==Locations==\n{| class=wikitable\n|-\n! Location !! Real/shooting Location\n|-\n| Bond Street | Somewhere\n|}\n===Shooting locations===\nSome prose about the shoot.\n`;
-  assert.ok(locationSection(nested).includes("{|"));
+  assert.ok(locationSection(nested).text.includes("{|"));
 });
 
 test("a page with no such section answers null", () => {
@@ -127,7 +130,7 @@ test("a region belongs to one side and the header says which", () => {
 // ---------- the tables ----------
 
 test("the Bond table reads its three columns the right way round", () => {
-  const rows = parseLocationTable(locationSection(BOND));
+  const rows = parseLocationTable(locationSection(BOND).text);
   const sis = rows.find((r) => r.story?.startsWith("SIS Building"));
   assert.equal(sis.real, "Somerset House in the Strand, London WC2");
   assert.equal(sis.storyRegion, "UK");
@@ -137,7 +140,7 @@ test("the Bond table reads its three columns the right way round", () => {
 test("a rowspan carries down instead of shifting every later column left", () => {
   // The country cell spans three rows, so the next two arrive with fewer cells. Without
   // the grid the story location slides into the real column.
-  const rows = parseLocationTable(locationSection(BOND));
+  const rows = parseLocationTable(locationSection(BOND).text);
   const oxford = rows.find((r) => r.story === "Oxford University");
   const sis = rows.find((r) => r.story?.startsWith("SIS Building"));
   assert.equal(oxford.storyRegion, "UK");
@@ -145,13 +148,13 @@ test("a rowspan carries down instead of shifting every later column left", () =>
 });
 
 test("a <br> inside a cell is two places, not one", () => {
-  const rows = parseLocationTable(locationSection(BOND));
+  const rows = parseLocationTable(locationSection(BOND).text);
   const oxford = rows.filter((r) => r.story === "Oxford University").map((r) => r.real);
   assert.deepEqual(oxford, ["Brasenose College of Oxford", "Holywell Street in front of New College"]);
 });
 
 test("a row whose licence we could not read still records that it could not", () => {
-  const rows = parseLocationTable(locationSection(LOTR));
+  const rows = parseLocationTable(locationSection(LOTR).text);
   const row = toSubmission(rows[0], { work: { id: "w", title: "F" }, wiki: "lotr", page: "P", revid: 1 });
   // Never null — the column refuses it, and "unknown" is an honest answer where a blank
   // would read as "no restrictions".
@@ -162,13 +165,13 @@ test("the citation the fan left is carried on the row", () => {
   // This is what answers the original objection to this source: the independent source is
   // already in the row rather than left for a reviewer to go and find. Measured: 3 refs
   // across 70 Bond rows, so it is the exception — but it is the valuable exception.
-  const rows = parseLocationTable(locationSection(BOND));
+  const rows = parseLocationTable(locationSection(BOND).text);
   const bazaar = rows.find((r) => r.story === "Terrorist Arms Bazaar");
   assert.ok(bazaar.references.some((u) => u.includes("movie-locations.com")));
 });
 
 test("the LOTR table puts its real region in the real column's side", () => {
-  const rows = parseLocationTable(locationSection(LOTR));
+  const rows = parseLocationTable(locationSection(LOTR).text);
   assert.equal(rows.length, 2);
   assert.deepEqual(rows[0], {
     real: "Matamata", story: "Hobbiton", region: "Waikato", storyRegion: null, references: [],
@@ -181,7 +184,7 @@ test("two bullet lists side by side are not pairs", () => {
   // Skyfall lists seven in-film locations beside one shooting location, in no order.
   // Zipping them produced "Istanbul, Turkey was filmed at Pinewood Studios", which nobody
   // claimed. The real place is kept; the pairing is what would be invented.
-  const rows = parseLocationTable(locationSection(SKYFALL));
+  const rows = parseLocationTable(locationSection(SKYFALL).text);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].real, "Pinewood Studios — London");
   assert.equal(rows[0].story, null, "no pairing is asserted");
@@ -189,7 +192,7 @@ test("two bullet lists side by side are not pairs", () => {
 
 test("a split on ';' must not cut an HTML entity in half", () => {
   // "&mdash;" became "Pinewood Studios &mdash" before entities were decoded first.
-  const rows = parseLocationTable(locationSection(SKYFALL));
+  const rows = parseLocationTable(locationSection(SKYFALL).text);
   assert.equal(/&mdash/.test(rows[0].real), false);
 });
 
@@ -206,7 +209,7 @@ test("a cell that names nothing is not a place", () => {
 });
 
 test("'Same' never becomes a pin, because it would inherit the row above's address", () => {
-  const rows = parseLocationTable(locationSection(BOND));
+  const rows = parseLocationTable(locationSection(BOND).text);
   assert.equal(rows.some((r) => /^same/i.test(r.real)), false);
   assert.equal(rows.some((r) => r.story === "M's convoy"), false, "the row is dropped entirely");
 });
@@ -215,7 +218,7 @@ test("a table with no identifiable real column yields nothing at all", () => {
   // The guardrail. A table we cannot find the shooting location in is one whose cells we
   // would be guessing at, and a guess here says somebody filmed where they did not.
   const opaque = `==Locations==\n{| class=wikitable\n|-\n! A !! B !! C\n|-\n| one | two | three\n|}\n`;
-  assert.deepEqual(parseLocationTable(locationSection(opaque)), []);
+  assert.deepEqual(parseLocationTable(locationSection(opaque).text), []);
 });
 
 // ---------- licence ----------
@@ -242,7 +245,7 @@ test("no licence at all is not permission", () => {
 // ---------- the row that reaches the queue ----------
 
 test("a submission says who claimed it, at which revision", () => {
-  const rows = parseLocationTable(locationSection(BOND));
+  const rows = parseLocationTable(locationSection(BOND).text);
   const sis = rows.find((r) => r.story?.startsWith("SIS Building"));
   const row = toSubmission(sis, {
     work: { id: "w1", title: "Tomorrow Never Dies" },
@@ -266,7 +269,7 @@ test("a submission says who claimed it, at which revision", () => {
 test("a submission carries no coordinate, because Fandom has none", () => {
   // The same rule movie-locations is ingested under: a point invented during an import is
   // a guess buried where nobody looks.
-  const rows = parseLocationTable(locationSection(LOTR));
+  const rows = parseLocationTable(locationSection(LOTR).text);
   const row = toSubmission(rows[0], { work: { id: "w2", title: "The Fellowship of the Ring" }, wiki: "lotr", page: "X", revid: 1 });
   assert.equal(row.lat, null);
   assert.equal(row.lng, null);
@@ -275,7 +278,7 @@ test("a submission carries no coordinate, because Fandom has none", () => {
 test("the story's country never becomes the real place's area hint", () => {
   // The row reading "Russia" has its shooting location at an altiport in France. Handing
   // "Russia" to a geocoder as the area would send it to the wrong country.
-  const rows = parseLocationTable(locationSection(BOND));
+  const rows = parseLocationTable(locationSection(BOND).text);
   const bazaar = rows.find((r) => r.story === "Terrorist Arms Bazaar");
   const row = toSubmission(bazaar, { work: { id: "w1", title: "Tomorrow Never Dies" }, wiki: "jamesbond", page: "X", revid: 1 });
   assert.equal(row.area_hint, null);
@@ -283,7 +286,7 @@ test("the story's country never becomes the real place's area hint", () => {
 });
 
 test("a real-side region does become the area hint", () => {
-  const rows = parseLocationTable(locationSection(LOTR));
+  const rows = parseLocationTable(locationSection(LOTR).text);
   const row = toSubmission(rows[0], { work: { id: "w2", title: "F" }, wiki: "lotr", page: "X", revid: 1 });
   assert.equal(row.area_hint, "Waikato");
 });
@@ -293,7 +296,7 @@ test("identity is left to the database, not invented here", () => {
   // (work_id, place_key). Sending our own value fails outright — "cannot insert a
   // non-DEFAULT value into column place_key" — and inventing a second notion of identity
   // beside the one the table enforces is how a re-run starts duplicating.
-  const rows = parseLocationTable(locationSection(LOTR));
+  const rows = parseLocationTable(locationSection(LOTR).text);
   const row = toSubmission(rows[0], { work: { id: "w2", title: "F" }, wiki: "lotr", page: "The Fellowship", revid: 1 });
   assert.equal("place_key" in row, false);
   assert.equal(row.place_name, "Matamata");
@@ -332,4 +335,84 @@ test("the sentence never claims a pairing it was not given", () => {
     { workTitle: "Skyfall", wiki: "jamesbond", page: "Skyfall (film)" },
   );
   assert.match(unpaired, /^Skyfall was filmed at Pinewood Studios/);
+});
+
+
+// ---------- the list, and the paragraph wearing a bullet ----------
+
+// Verbatim from lotr/Halifirien (film), 11.09 — the shape a list parser can actually read,
+// junk links and all.
+const HALIFIRIEN = `==Filming Locations==
+*Keash Mountain, Ballymote, Co. Sligo, Republic of Ireland, Ireland
+*Carrowkeel Mountain, Co. Sligo, Republic of Ireland, Ireland
+*[http://www.imdb.com/title/tt1467334/ Halifirien on IMDB]
+*[http://www.youtube.com/user/HalifirienTheMovie Halifirien on Youtube]
+`;
+
+// Verbatim from jamesbond/Skyfall, shortened. One bullet, one paragraph.
+const SKYFALL_PROSE = `==Filming==
+*Shooting began in and around London, with scenes shot in Southwark and Whitehall, the National Gallery and Smithfield meat markets. The Vauxhall Bridge was closed to traffic for filming.
+`;
+
+test("a clean list under a filming heading yields its places", () => {
+  const rows = parseLocationRows(locationSection(HALIFIRIEN));
+  assert.deepEqual(rows.map((row) => row.real), [
+    "Keash Mountain, Ballymote, Co. Sligo, Republic of Ireland, Ireland",
+    "Carrowkeel Mountain, Co. Sligo, Republic of Ireland, Ireland",
+  ]);
+  // Unpaired, and deliberately: a list says nothing about which half is the story.
+  assert.ok(rows.every((row) => row.story === null));
+});
+
+test("a bullet holding a paragraph is not a place", () => {
+  // This is the common case, not the edge — taking it would hand a geocoder 180 characters
+  // of prose about road closures.
+  assert.deepEqual(parseLocationRows(locationSection(SKYFALL_PROSE)), []);
+});
+
+test("a bare Locations heading is refused, because on a fan wiki it means Tatooine", () => {
+  // The whole safety of reading a list. A table has a column header saying which side is
+  // real; a list has only the heading, and "Locations" on a fan wiki is in-universe.
+  const inUniverse = `==Locations==
+*Tatooine
+*Hoth
+`;
+  assert.deepEqual(parseLocationList(locationSection(inUniverse).text, { title: "Locations" }), []);
+  // The same list under a heading that claims real places is read.
+  assert.equal(parseLocationList("*Hashima Island, Japan", { title: "Filming locations" }).length, 1);
+});
+
+test("a sentence is refused however short, and a place with a full stop is kept", () => {
+  assert.equal(namesAPlaceInAList("St. Michael's Mount, Cornwall"), true);
+  assert.equal(namesAPlaceInAList("The bridge was closed for filming"), false);
+  assert.equal(namesAPlaceInAList("Filming began here. Crowds gathered nearby"), false);
+  assert.equal(namesAPlaceInAList("[http://www.imdb.com/title/tt1467334/ Halifirien on IMDB]"), false);
+  // The refusals the table parser already makes still apply.
+  assert.equal(namesAPlaceInAList("Same as above"), false);
+  assert.equal(namesAPlaceInAList("TBA"), false);
+});
+
+test("a table still wins over a list on a page that keeps both", () => {
+  // The table carries the pairing, which is the part a list cannot give and the part this
+  // source is worth having for.
+  const both = `==Filming locations==
+{| class="wikitable"
+! In-Film Location !! Shooting Location
+|-
+| MI6 Headquarters || Somerset House
+|}
+*Hashima Island, Japan
+`;
+  const rows = parseLocationRows(locationSection(both));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].real, "Somerset House");
+  assert.equal(rows[0].story, "MI6 Headquarters");
+});
+
+test("a nested bullet is a qualifier on its parent, not a second place", () => {
+  const nested = `==Filming locations==
+*Somerset House, London
+**used for the MI6 exterior
+`;
+  assert.deepEqual(parseLocationRows(locationSection(nested)).map((r) => r.real), ["Somerset House, London"]);
 });

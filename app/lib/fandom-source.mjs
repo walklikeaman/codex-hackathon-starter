@@ -23,7 +23,14 @@
 //   breakingbad               0
 //   twinpeaks                 0
 //
-// So this is **hundreds of rows, not thousands**, concentrated on two wikis. It is worth
+// **Re-measured 11.09, and the zeros above were this parser's, not Fandom's.** Across 48
+// pages on six wikis, 26 carry a filming section — but only 4 keep it as a TABLE, which is
+// all the parser could read. Ten look like lists and twelve are prose; and of the ten, most
+// are a single bullet holding an entire paragraph. Lists are read now (`parseLocationList`)
+// under a heading that says the places are real; prose is not, because prose needs a model
+// per page and that is a different pass with a different cost.
+//
+// So this is **hundreds of rows, not thousands**, concentrated on a few wikis. It is worth
 // having because of WHAT it is rather than how much: a table mapping the place in the
 // STORY to the place the camera stood — "SIS Building, MI6 Headquarters" → "Somerset
 // House in the Strand" — which is the `narrative_location` ↔ filming pair we hold almost
@@ -87,13 +94,16 @@ export function locationSection(wikitext) {
   if (open) found.push({ ...open, text: lines.slice(open.start).join("\n") });
   if (!found.length) return null;
 
-  // A section with a table beats one without; among those, the more specific heading wins,
-  // so a bare "Filming" never shadows "Filming locations".
-  const rank = (s) => (s.text.includes("{|") ? 0 : 10)
+  // A section with a table beats one without, and one with a list beats plain prose;
+  // among equals the more specific heading wins, so a bare "Filming" never shadows
+  // "Filming locations".
+  const rank = (s) => (s.text.includes("{|") ? 0 : (/^\s*\*/m.test(s.text) ? 5 : 10))
     + (/locations?$/i.test(s.title) ? 0 : 1)
     + (/^production$/i.test(s.title) ? 2 : 0);
   found.sort((a, b) => rank(a) - rank(b));
-  return found[0].text;
+  // The TITLE comes back with the text, because a list can only be read when the heading
+  // says the places in it are real ones — see `parseLocationList`.
+  return { title: found[0].title, text: found[0].text };
 }
 
 // ---------- what each column means ----------
@@ -353,6 +363,86 @@ export function parseLocationTable(sectionText) {
     for (const real of reals) rows.push({ real, story, region, storyRegion, references });
   }
   return rows;
+}
+
+// ---------- the list ----------
+
+// A heading that promises the places under it are REAL ones.
+//
+// This is the whole safety of reading a list. A table is safe because a column header says
+// which side is which; a bare list has no such marker, so the heading is the only thing
+// that can say it. **On a fan wiki "Locations" overwhelmingly means in-universe places** —
+// the Star Wars wiki's locations are Tatooine and Hoth, Game of Thrones' are Winterfell —
+// and a map that a reader walks cannot hold them. So "Filming locations" is read and a
+// bare "Locations" is refused, which is the same rule the table parser already follows
+// when it cannot identify a shooting column.
+const REAL_PLACES_HEADING = /film(ing|ed)|shoot(ing)?|on location/i;
+
+// A bullet holding a PARAGRAPH is not a list item, and this is the common case rather than
+// the edge. Measured 11.09 on the sections that a leading "*" made look like lists:
+//
+//   jamesbond / Skyfall            one bullet, 800+ characters of prose about road closures
+//   gameofthrones / Driftmark      one bullet, a paragraph naming St Michael's Mount inside it
+//   lotr / Halifirien              five bullets, one place each — the shape this can read
+//
+// Taking the first two as place names would hand a geocoder an entire paragraph. Prose
+// like that is readable, but only by a model, and that is a different pass with a
+// different cost — not something to fake here by taking the first 60 characters.
+const MAX_PLACE_LENGTH = 120;
+
+export function namesAPlaceInAList(value) {
+  const text = String(value ?? "").trim();
+  if (!namesAPlace(text)) return false;
+  if (text.length > MAX_PLACE_LENGTH) return false;
+  // A sentence, not a name: "Shooting began in and around London, with scenes shot in…".
+  //
+  // **The full stop alone cannot decide it**, and the first attempt got this wrong: place
+  // names are full of abbreviations, and "Keash Mountain, Ballymote, Co. Sligo" was refused
+  // because ". S" looked like the start of a sentence. So the word BEFORE the stop has to
+  // be a real word — four letters or more — which keeps Co., St., Mt. and Rd. and still
+  // catches "…closed for filming. Photos taken by residents…".
+  if (/\b[A-Za-z]{4,}[.!?]\s+[A-Z]/.test(text)) return false;
+  // And a predicate, because a long clause can run on without a full stop at all.
+  if (/\b(was|were|is|are|been|began|begun|shot|filmed|took|taken|used|doubles?|doubled|serves?|stood|built|closed|reported|features?)\b/i.test(text)) return false;
+  // A bare external link — "[http://imdb.com/… Halifirien on IMDB]" sits in the middle of
+  // the Halifirien list and names no place at all.
+  if (/^(https?:\/\/|\[https?:)/i.test(text)) return false;
+  if (/\bon (imdb|youtube|facebook|twitter)\b/i.test(text)) return false;
+  return true;
+}
+
+// Real-world places from a bullet list, or nothing.
+//
+// Every row comes back unpaired — `story` is null — and that is deliberate. A table says
+// which column is the story and which is the shoot; a list says nothing, and an item like
+// "Istanbul, Turkey – Pinewood Studios" could be read either way round. The table parser
+// already refuses to invent a pairing when it cannot be sure ("two lists side by side are
+// not pairs"); this is the same refusal, and the real location is still worth having
+// without it.
+export function parseLocationList(sectionText, { title = "" } = {}) {
+  if (!REAL_PLACES_HEADING.test(String(title ?? ""))) return [];
+  const text = String(sectionText ?? "");
+  // Top-level bullets only. A nested "**" is a qualifier on its parent, not a second place.
+  const items = text.split("\n").filter((line) => /^\*(?!\*)/.test(line));
+
+  const rows = [];
+  for (const item of items) {
+    const raw = item.replace(/^\*\s*/, "");
+    for (const value of cellValues(raw)) {
+      if (!namesAPlaceInAList(value)) continue;
+      rows.push({ real: value, story: null, region: null, storyRegion: null, references: cellReferences(raw) });
+    }
+  }
+  return rows;
+}
+
+// The rows a section yields, whichever shape it keeps them in. The table is tried first
+// because it carries the pairing, which is the part worth the most and the part a list
+// cannot give.
+export function parseLocationRows(section) {
+  const { title = "", text = "" } = typeof section === "string" ? { text: section } : (section ?? {});
+  const table = parseLocationTable(text);
+  return table.length ? table : parseLocationList(text, { title });
 }
 
 // ---------- what a row becomes ----------
