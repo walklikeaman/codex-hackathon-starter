@@ -41,6 +41,9 @@ export default function VectorMap({
   theme = DEFAULT_THEME,
   maptilerKey = null,
   onStatus,
+  // Draw the basemap and NOTHING of ours. If a bare map renders and ours does not, the
+  // fault is in our layers; if neither renders, it is the map itself in this app.
+  bare = false,
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -52,6 +55,9 @@ export default function VectorMap({
   const [ready, setReady] = useState(false);
   const [drawn, setDrawn] = useState(0);
   const [provider, setProvider] = useState(null);
+  // What the map is actually doing, shown on the page. A black rectangle and "Loading the
+  // map…" is not a diagnosis — it is the absence of one, and it cost two rounds of guessing.
+  const [diag, setDiag] = useState({ built: false, load: false, styledata: 0, sourcedata: 0, error: null });
 
   // Kept in a ref as well as in state: the fetch callback must not be rebuilt every time the
   // count changes, or every viewport change would tear down and rebuild its own listeners.
@@ -122,13 +128,16 @@ export default function VectorMap({
       });
       mapRef.current = map;
       setProvider(chain[0].provider);
+      setDiag((d) => ({ ...d, built: true }));
 
       map.on("error", (event) => {
         // ALWAYS say what happened. Registering an `error` listener REPLACES MapLibre's own
         // logging, so a handler that returns quietly makes the library silent — which is how
         // a black map with no console output was debugged for an hour. Whatever else this
         // does, it reports first.
-        console.error("maplibre:", event?.error?.status ?? "", event?.error?.message ?? event?.error, event?.sourceId ?? "");
+        const described = `${event?.error?.status ?? ""} ${event?.error?.message ?? event?.error ?? "?"}`.trim();
+        console.error("maplibre:", described, event?.sourceId ?? "");
+        setDiag((d) => ({ ...d, error: described.slice(0, 120) }));
 
         // Only a failure of the STYLE itself is worth falling back for. A single missing
         // tile is not: swapping the whole basemap because one tile 404ed would flicker the
@@ -156,6 +165,7 @@ export default function VectorMap({
       // mid-swap is caught and left for the next `styledata`.
       const ensureLayers = () => {
         if (cancelled) return;
+        if (bare) { portedRef.current = true; setReady(true); return; }
 
         try {
           if (!map.getSource(SOURCE_ID)) {
@@ -170,8 +180,11 @@ export default function VectorMap({
               layout: pinLabelLayout(), paint: pinLabelPaint(),
             });
           }
-        } catch {
-          // The style is being replaced under us. `styledata` fires again when it settles.
+        } catch (error) {
+          // The style is being replaced under us; `styledata` fires again when it settles.
+          // But SAY so — a silent catch is how the previous fault stayed invisible.
+          console.error("maplibre layers:", error?.message ?? error);
+          setDiag((d) => ({ ...d, error: `layers: ${error?.message ?? error}`.slice(0, 120) }));
           return;
         }
 
@@ -191,7 +204,9 @@ export default function VectorMap({
       //
       // So `styledata` is for RE-attaching after a deliberate style swap only, and it is
       // gated on having got through `load` once already.
-      map.once("load", ensureLayers);
+      map.on("styledata", () => setDiag((d) => ({ ...d, styledata: d.styledata + 1 })));
+      map.on("sourcedata", () => setDiag((d) => ({ ...d, sourcedata: d.sourcedata + 1 })));
+      map.once("load", () => { setDiag((d) => ({ ...d, load: true })); ensureLayers(); });
       map.on("styledata", () => {
         if (portedRef.current) ensureLayers();
       });
@@ -226,7 +241,9 @@ export default function VectorMap({
     <div className="vector-map">
       <div ref={containerRef} className="vector-map-canvas" />
       <p className="vector-map-status" role="status">
-        {ready ? `${drawn} places drawn · ${provider}` : "Loading the map…"}
+        {ready
+          ? `${drawn} places drawn · ${provider}`
+          : `built:${diag.built ? "y" : "n"} load:${diag.load ? "y" : "n"} styledata:${diag.styledata} sourcedata:${diag.sourcedata}${diag.error ? ` · ${diag.error}` : ""}`}
       </p>
     </div>
   );

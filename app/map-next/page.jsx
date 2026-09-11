@@ -13,10 +13,14 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function MapNextPage() {
+export default async function MapNextPage({ searchParams }) {
+  // `?bare=1` draws the basemap and none of our layers, to tell a broken layer apart from a
+  // broken map.
+  const params = await searchParams;
+
   return (
     <main className="vector-map-page">
-      <VectorMap maptilerKey={process.env.NEXT_PUBLIC_MAPTILER_KEY ?? null} />
+      <VectorMap maptilerKey={process.env.NEXT_PUBLIC_MAPTILER_KEY ?? null} bare={params?.bare === "1"} />
     </main>
   );
 }
