@@ -17,16 +17,47 @@
 // worker from a different version of the library than the one in the bundle is a bug nobody
 // would think to look for.
 
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
 
-const source = path.join(path.dirname(require.resolve("maplibre-gl/package.json")), "dist", "maplibre-gl-worker.mjs");
-const destination = path.join(process.cwd(), "public", "maplibre-gl-worker.mjs");
+const dist = path.join(path.dirname(require.resolve("maplibre-gl/package.json")), "dist");
+const publicDir = path.join(process.cwd(), "public");
 
-mkdirSync(path.dirname(destination), { recursive: true });
-copyFileSync(source, destination);
+// The worker is not one file. It begins `import … from "./maplibre-gl-shared.mjs"`, and
+// copying only the worker leaves that import 404 — so the worker loads, dies on its first
+// import, and says nothing. The map then looks exactly as it did with no worker at all:
+// style loaded, sources ready, workers alive, and **zero tiles ever requested**.
+//
+// So the worker's own relative imports are read out of it and copied too, rather than
+// listing the filenames here. A future version that splits out another chunk would
+// otherwise reintroduce this silently, and it took a long time to find once.
+function siblingImports(file) {
+  const code = readFileSync(file, "utf8");
+  const found = new Set();
+  for (const match of code.matchAll(/from\s*["'](\.\/[^"']+)["']/g)) found.add(match[1].slice(2));
+  return [...found];
+}
 
-console.log(`maplibre worker → ${path.relative(process.cwd(), destination)}`);
+mkdirSync(publicDir, { recursive: true });
+
+const entry = "maplibre-gl-worker.mjs";
+const copied = [];
+const queue = [entry];
+const seen = new Set();
+
+while (queue.length) {
+  const name = queue.shift();
+  if (seen.has(name)) continue;
+  seen.add(name);
+
+  const from = path.join(dist, name);
+  copyFileSync(from, path.join(publicDir, name));
+  copied.push(name);
+  // Transitive: a chunk may pull in another.
+  for (const sibling of siblingImports(from)) queue.push(sibling);
+}
+
+console.log(`maplibre worker → public/: ${copied.join(", ")}`);
