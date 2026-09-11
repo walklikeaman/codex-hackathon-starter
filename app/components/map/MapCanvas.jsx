@@ -174,8 +174,21 @@ export default function MapCanvas({
   // layers. Children re-add themselves when `styleEpoch` changes, which is what the key on
   // the provider below is for.
   const [epoch, setEpoch] = useState(0);
+  const drawnBasemap = useRef(basemap?.id ?? null);
+
   useEffect(() => {
     if (!map) return undefined;
+
+    // **Only swap the style when it is actually a different one.**
+    //
+    // This effect used to call `setStyle` unconditionally the moment the map appeared —
+    // including on first load, where the style being set was the style already loaded.
+    // `setStyle` tears down every layer, so the children remounted and tried to re-add
+    // theirs into a style that was still being replaced. `addSource` threw, the catch
+    // swallowed it, and nothing retried: the map drew a basemap and **not one pin**, with
+    // no error anywhere. It raced, so it worked some of the time, which is worse.
+    if (drawnBasemap.current === basemap.id) return undefined;
+    drawnBasemap.current = basemap.id;
 
     map.setStyle(styleFor(basemap));
     const onStyle = () => {
@@ -210,6 +223,8 @@ export function claimClick(event) {
 // is being replaced. This does both safely and removes what it added.
 export function useGeoJsonLayer({ id, data, layers }) {
   const map = useMapCanvas();
+  // Bumped when an add failed, so the effect runs again once the style settles.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!map) return undefined;
@@ -222,9 +237,16 @@ export function useGeoJsonLayer({ id, data, layers }) {
         if (!map.getLayer(layer.id)) map.addLayer({ ...layer, source: id });
       }
     } catch (error) {
-      // The style is being replaced under us; the provider remounts on the new one.
+      // The style was being replaced under us. Retry when it settles rather than giving up
+      // for ever: these deps are [map, id], so without a retry this layer is never added
+      // again and the map silently draws nothing.
       console.error("map layer:", error?.message ?? error);
-      return undefined;
+      const retry = () => {
+        map.off("idle", retry);
+        setAttempt((value) => value + 1);
+      };
+      map.on("idle", retry);
+      return () => map.off("idle", retry);
     }
 
     return () => {
@@ -235,7 +257,7 @@ export function useGeoJsonLayer({ id, data, layers }) {
     };
     // `layers` is a literal built in the caller's render; its identity is not meaningful.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, id]);
+  }, [map, id, attempt]);
 
   useEffect(() => {
     if (!map) return;

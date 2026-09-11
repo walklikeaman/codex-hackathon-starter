@@ -123,6 +123,10 @@ function GraphLayer({
   // Passing a matcher keeps the library out of this component entirely — it never sees the
   // titles, only the answer.
   isMine = null,
+  // Which coordinates have earned a name on the pin, keyed "lat,lng". Scarce by design —
+  // see [[notable-here]]. Passed in rather than computed here because the panel and the map
+  // must name the SAME places; two rankings would disagree and look like a bug.
+  placeLabels = null,
 }) {
   const map = useMapCanvas();
   const [data, setData] = useState({ features: [], candidates: [], clustered: false, fictional: [] });
@@ -270,6 +274,7 @@ function GraphLayer({
           a polygon this client already holds. */}
       <PinLayer
         id="graph-candidates"
+        placeLabels={placeLabels}
         features={candidatePins}
         selectedKey={openPoint?.kind === "candidate" ? openPoint.key : null}
         onSelect={(properties) => {

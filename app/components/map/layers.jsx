@@ -36,7 +36,7 @@ function collection(features) {
 
 // The places. One source, two layers: a circle carrying the vocabulary from `map-pin.mjs`,
 // and a label carrying the count for the points that stack several films.
-export function PinLayer({ id = "places", features, onSelect, selectedKey = null }) {
+export function PinLayer({ id = "places", features, onSelect, selectedKey = null, placeLabels = null }) {
   const map = useMapCanvas();
 
   const data = useMemo(() => collection(
@@ -46,13 +46,21 @@ export function PinLayer({ id = "places", features, onSelect, selectedKey = null
       const key = `${feature.geometry.coordinates[1]},${feature.geometry.coordinates[0]}`;
       return {
         ...shaped,
-        properties: { ...shaped.properties, selected: key === selectedKey, key },
+        properties: {
+          ...shaped.properties,
+          selected: key === selectedKey,
+          key,
+          // The name of the best-known work at this point, for the few places that earned
+          // one. Empty for everything else, and MapLibre draws no label for an empty string.
+          placeLabel: placeLabels?.get(key) ?? "",
+        },
       };
     }),
-  ), [features, selectedKey]);
+  ), [features, selectedKey, placeLabels]);
 
   const circleId = `${id}-circles`;
   const labelId = `${id}-labels`;
+  const nameId = `${id}-names`;
 
   useGeoJsonLayer({
     id,
@@ -60,6 +68,31 @@ export function PinLayer({ id = "places", features, onSelect, selectedKey = null
     layers: [
       { id: circleId, type: "circle", paint: pinCirclePaint() },
       { id: labelId, type: "symbol", layout: pinLabelLayout(), paint: pinLabelPaint() },
+      {
+        id: nameId,
+        type: "symbol",
+        layout: {
+          "text-field": ["get", "placeLabel"],
+          "text-size": 11,
+          "text-font": ["Noto Sans Bold"],
+          // Below the pin, so it never lands on the count the pin already carries.
+          "text-offset": [0, 1.4],
+          "text-anchor": "top",
+          // These MAY collide, unlike the counts — a name that overlaps another name is
+          // unreadable, and MapLibre dropping one is the right answer. The ranking decided
+          // which names are worth drawing; the renderer decides which ones fit.
+          "text-allow-overlap": false,
+          "text-optional": true,
+          "text-max-width": 9,
+        },
+        paint: {
+          "text-color": "#f7e2b0",
+          // A halo, because the name is drawn over streets and buildings rather than over
+          // a pin. Without it the text is legible on dark ground and invisible on light.
+          "text-halo-color": "rgba(8, 8, 10, 0.9)",
+          "text-halo-width": 1.4,
+        },
+      },
     ],
   });
 
@@ -72,7 +105,7 @@ export function PinLayer({ id = "places", features, onSelect, selectedKey = null
     if (!map) return undefined;
 
     const pick = (event) => {
-      const hit = map.queryRenderedFeatures(event.point, { layers: [circleId, labelId] })[0];
+      const hit = map.queryRenderedFeatures(event.point, { layers: [circleId, labelId, nameId] })[0];
       if (!hit) return;
       // Tell the map's own background handler to stand down: this click was answered.
       claimClick(event);
@@ -82,19 +115,19 @@ export function PinLayer({ id = "places", features, onSelect, selectedKey = null
     const leave = () => { map.getCanvas().style.cursor = ""; };
 
     map.on("click", pick);
-    for (const layer of [circleId, labelId]) {
+    for (const layer of [circleId, labelId, nameId]) {
       map.on("mouseenter", layer, enter);
       map.on("mouseleave", layer, leave);
     }
 
     return () => {
       map.off("click", pick);
-      for (const layer of [circleId, labelId]) {
+      for (const layer of [circleId, labelId, nameId]) {
         map.off("mouseenter", layer, enter);
         map.off("mouseleave", layer, leave);
       }
     };
-  }, [map, circleId, labelId]);
+  }, [map, circleId, labelId, nameId]);
 
   return null;
 }
