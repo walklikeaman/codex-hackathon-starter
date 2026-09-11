@@ -94,13 +94,54 @@ export const SUPPORTED_LANGUAGES = Object.freeze(Object.keys(SECTION_RANK_BY_LAN
 // run. Three covers English plus the work's own language plus one more.
 export const MAX_LANGUAGES_PER_WORK = 3;
 
+// **The edition in the work's own language is the one that names its own places**, and
+// until now nothing asked for it. `languagesForWork` has taken a `preferred` argument since
+// it was written — the comment above it even explains why that edition goes second — and
+// the caller never passed one, so the parameter was dead and a French film's French article
+// was read only if it happened to fall into the arbitrary remainder.
+//
+// Wikidata answers it directly. **P364 is the original language of the work**, verified
+// 12.09 against the live API: Der Untergang carries Q188, Q7737 and Q9067 — German, Russian
+// and Hungarian — so a work can have several and all of them count, in the order stated.
+// P495 (country of origin) is the fallback for the many works that have no P364.
+const LANGUAGE_BY_WIKIDATA_ID = Object.freeze({
+  Q1860: "en", Q150: "fr", Q188: "de", Q7737: "ru",
+  Q1321: "es", Q652: "it", Q5287: "ja", Q809: "pl",
+});
+
+// Only where the country implies ONE of the editions we can read. A multilingual country
+// says nothing useful here: Switzerland and Belgium are deliberately absent rather than
+// guessed at, and both are real cases in a film catalogue.
+const LANGUAGE_BY_COUNTRY_ID = Object.freeze({
+  Q30: "en", Q145: "en", Q408: "en", Q16: "en",   // US, UK, Australia, Canada
+  Q142: "fr", Q183: "de", Q40: "de", Q159: "ru",  // France, Germany, Austria, Russia
+  Q29: "es", Q96: "es", Q414: "es",               // Spain, Mexico, Argentina
+  Q38: "it", Q17: "ja", Q36: "pl",                // Italy, Japan, Poland
+});
+
+function claimIds(entity, property) {
+  return (entity?.claims?.[property] ?? [])
+    .map((statement) => statement?.mainsnak?.datavalue?.value?.id)
+    .filter((id) => typeof id === "string");
+}
+
+// The editions this work is most likely to describe in its own terms, best first. An empty
+// list is an ordinary answer — most works give no usable signal, and English leads anyway.
+export function preferredLanguages(entity) {
+  const fromLanguage = claimIds(entity, "P364").map((id) => LANGUAGE_BY_WIKIDATA_ID[id]);
+  const fromCountry = claimIds(entity, "P495").map((id) => LANGUAGE_BY_COUNTRY_ID[id]);
+  return [...new Set([...fromLanguage, ...fromCountry].filter(Boolean))];
+}
+
 export function buildEntitiesUrl(qids, languages = SUPPORTED_LANGUAGES) {
   const ids = [...new Set(qids ?? [])].filter((id) => /^Q[1-9]\d*$/.test(id));
   if (ids.length === 0 || ids.length > 50) return null; // the API's own batch ceiling
   const url = new URL("https://www.wikidata.org/w/api.php");
   url.searchParams.set("action", "wbgetentities");
   url.searchParams.set("ids", ids.join("|"));
-  url.searchParams.set("props", "sitelinks/urls");
+  // `claims` as well as the sitelinks: P364 and P495 are what say which edition is the
+  // work's own, and without them `preferredLanguages` has nothing to read.
+  url.searchParams.set("props", "sitelinks/urls|claims");
   url.searchParams.set("sitefilter", languages.map((code) => `${code}wiki`).join("|"));
   url.searchParams.set("format", "json");
   url.searchParams.set("formatversion", "2");
@@ -123,12 +164,20 @@ export function articleTitleFromEntity(entity, language = "en") {
 // lose the English article to the cap.
 export function languagesForWork(entity, { preferred = null, limit = MAX_LANGUAGES_PER_WORK } = {}) {
   const available = SUPPORTED_LANGUAGES.filter((code) => articleTitleFromEntity(entity, code));
+  // A work can be in more than one language — Der Untergang is German, Russian and
+  // Hungarian — so this takes a list. A single code still works, and no argument at all
+  // falls back to what the entity itself says.
+  const wanted = (Array.isArray(preferred) ? preferred : [preferred].filter(Boolean));
+  const home = (wanted.length ? wanted : preferredLanguages(entity)).filter((code) => code !== "en");
+
   const ordered = [
     ...available.filter((code) => code === "en"),
-    ...available.filter((code) => code === preferred && code !== "en"),
-    ...available.filter((code) => code !== "en" && code !== preferred),
+    // In the order the work states them, not in the order SUPPORTED_LANGUAGES happens to
+    // list them: a German-Russian co-production should read German before Russian.
+    ...home.filter((code) => available.includes(code)),
+    ...available.filter((code) => code !== "en" && !home.includes(code)),
   ];
-  return ordered.slice(0, Math.max(1, limit));
+  return [...new Set(ordered)].slice(0, Math.max(1, limit));
 }
 
 export function buildTocUrl(title, language = "en") {

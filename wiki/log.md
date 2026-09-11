@@ -7,6 +7,46 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-12] fix | The edition in the work's own language was never read
+
+**Object**: `app/lib/wikipedia-source.mjs`
+**Scenario**: fix · **Outcome**: ✅ Lost in Translation now reads the Japanese article;
+before, it could not have
+**Code changes**: this commit
+
+Owner's rule: when reading Wikipedia, read several languages — the editions carry different
+content. The multi-language pass already existed. What did not work was choosing WHICH.
+
+`languagesForWork(entity, { preferred })` has taken that argument since it was written, and
+the comment above it explains why the work's own edition goes second — English first as the
+best-covered, then the language the work is actually in. **The caller never passed it.** The
+parameter was dead, and after English the order was simply whatever `SUPPORTED_LANGUAGES`
+happened to list: en, fr, de, ru, es, it, ja, pl.
+
+With a cap of three editions per work, that means **`ja` and `pl` were never reached at
+all** — and Lost in Translation, a film set and shot entirely in Tokyo, was read in French
+and German while its Japanese article went untouched.
+
+Wikidata answers it directly. **P364 is the original language of the work**, verified
+against the live API: Der Untergang carries Q188, Q7737, Q9067 — German, Russian, Hungarian —
+so a work can have several, and they are read in the order the work states them, not in the
+order our list happens to. P495 (country of origin) is the fallback for works with no P364.
+
+Two things deliberately refused. A multilingual country implies nothing: Switzerland and
+Belgium are absent from the country map rather than guessed at, and both are real cases in a
+film catalogue. And a work with no usable signal is an ordinary answer — English leads
+anyway.
+
+**The bug that hid this one.** `buildEntitiesUrl` asked Wikidata for `props=sitelinks/urls`
+and nothing else, so even a caller that passed `preferred` would have had no claims to
+compute it from. Dead parameter, absent data: each made the other invisible.
+
+Measured after, on four works from the queue: Lost in Translation → **en, ja, fr**;
+Harry Potter, You Only Live Twice, The Wicker Man → en, fr, de, which is correct for all
+three.
+
+---
+
 ## [2026-09-12] incident | The prose pass ran, and three of its four failures were ours
 
 **Object**: `app/lib/model-client.mjs`, `app/lib/wikipedia-extract.mjs`,
