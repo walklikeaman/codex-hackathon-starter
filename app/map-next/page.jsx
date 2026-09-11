@@ -20,7 +20,7 @@ export default async function MapNextPage({ searchParams }) {
 
   return (
     <main className="vector-map-page">
-      <VectorMap maptilerKey={process.env.NEXT_PUBLIC_MAPTILER_KEY ?? null} bare={params?.bare === "1"} />
+      <VectorMap bare={params?.bare === "1"} />
     </main>
   );
 }
