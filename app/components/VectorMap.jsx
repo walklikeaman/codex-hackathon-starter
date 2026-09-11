@@ -140,6 +140,9 @@ export default function VectorMap({
         attributionControl: { compact: false },
       });
       mapRef.current = map;
+      // This route exists to be diagnosed, so it hands the map out. `/map-next` is noindex,
+      // unlinked, and disappears when the migration lands.
+      if (typeof window !== "undefined") window.__glorymap = map;
       setProvider(chain[0].provider);
       setDiag((d) => ({ ...d, built: true }));
 

@@ -56,4 +56,7 @@ HANDOVER.md
 
 # A real Letterboxd export for local testing. Personal, and this repo is public.
 public/demo-library.json
+# Copied from the installed maplibre-gl by scripts/copy-maplibre-worker.mjs before dev and
+# build, so the worker can never be a different version from the bundle that spawns it.
 public/maplibre-gl-worker.mjs
+public/maplibre-gl-shared.mjs
