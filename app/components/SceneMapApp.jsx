@@ -1291,6 +1291,8 @@ export default function SceneMapApp() {
   // number the rest of the component reads, rather than a second copy of it.
   const [mapApi, setMapApi] = useState(null);
   const [layersOpen, setLayersOpen] = useState(false);
+  // Closed by default: the console answers an operator's questions, not a visitor's.
+  const [layersConsoleOpen, setLayersConsoleOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const zoom = useMemo(() => zoomAffordance(mapZoom), [mapZoom]);
   useEffect(() => {
@@ -2617,30 +2619,157 @@ export default function SceneMapApp() {
         {/* The clapperboard that sat here said "films" beside a heading that already
             says it, and ate the width the city name wanted — "Stories on the map · Los
             Angeles" wrapped to three lines because of it. The word is the brand. */}
-        <div className="brand-row">
-          <div>
-            <p className="eyebrow">GloryMap</p>
-            <h1>Stories on the map · {cityName}</h1>
+        {/* The place is the question, so the field for it is the first thing.
+
+            What was here was a brand row — the eyebrow "GloryMap" and the heading "Stories
+            on the map · Los Angeles" — above a 1,220 px layers console, with the search box
+            1,377 px further down. Every job a visitor has was below the fold, which is the
+            measured form of "чёрт ногу сломит". The heading also said the city, which the
+            map already shows and the search field now owns. */}
+        <div className="ask-row">
+        {/* One box for both kinds of answer (#145). It replaced a city field and a title
+            field that sat next to each other, each hitting a different service and
+            neither able to suggest the other's kind. */}
+        <SearchBox
+          onChange={setWorkQuery}
+          onLookupPlace={lookUpPlace}
+          onPickCity={goToCity}
+          onPickWork={(suggestion) => {
+            // A grounded work is already in the graph: show it on the map instead of
+            // re-searching Wikidata for something we have.
+            setWorkQuery(suggestion.title);
+            setGraphLayerOn(true);
+            setGraphWorkId(suggestion.work_id);
+            if (suggestion.kind && suggestion.kind !== workKind) changeWorkKind(suggestion.kind);
+          }}
+          onSubmit={searchWork}
+          value={workQuery}
+        >
+          <select
+            aria-label="Work type"
+            value={workKind}
+            onChange={(event) => changeWorkKind(event.target.value)}
+          >
+            <option value="film">Film</option>
+            <option value="series">Series</option>
+            <option value="book">Book</option>
+          </select>
+        </SearchBox>
+        {locationsStatus && <p className="location-search-status" role="status">{locationsStatus}</p>}
+
+        <div className="place-controls">
+          <button className="use-location-button" type="button" onClick={useCurrentLocation}>
+            <LocateFixed size={16} />
+            Use my location
+          </button>
+          {/* The directory shipped with a way back to the map and no way in from it. The
+              map answers "what is here"; the directory answers "what have you got", which
+              is the question nobody could ask while the only way in was to know a title
+              already. */}
+          <a className="use-location-button" href="/directory">
+            <List size={16} />
+            Browse everything
+          </a>
+        </div>
+        {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
+
+        <div className="nearby-card" aria-label="Nearby locations">
+          <div className="nearby-actions">
+            <button
+              className="ghost-button nearby-cta"
+              disabled={nearbyStatus === "locating"}
+              onClick={locateMe}
+              type="button"
+            >
+              <Crosshair size={17} />
+              {nearbyStatus === "locating" ? "Locating..." : "What's nearby?"}
+            </button>
+            {(nearbyStatus === "denied" ||
+              nearbyStatus === "unavailable" ||
+              nearbyStatus === "timeout") && (
+              <button className="ghost-button" onClick={useDemoLocation} type="button">
+                Use demo location
+              </button>
+            )}
           </div>
-          {/* Opening the library must not require an account. The library already
-              lives in localStorage under a guest key, so guest use was always the
-              intent — there was simply no door to it: this button signed you into
-              Google instead, which meant an anonymous visitor could neither import a
-              list nor filter the map by one. Signing in belongs INSIDE the panel,
-              where it does what it actually does: sync across devices. */}
+
+          {nearbyMessage && (
+            <p className="nearby-status" role="status">{nearbyMessage}</p>
+          )}
+
+          {userPosition && (
+            <>
+              <div className="radius-chips" role="group" aria-label="Search radius">
+                {RADIUS_OPTIONS_METERS.map((radius) => (
+                  <button
+                    aria-pressed={nearbyRadius === radius}
+                    className={`radius-chip${nearbyRadius === radius ? " is-selected" : ""}`}
+                    key={radius}
+                    onClick={() => setNearbyRadius(radius)}
+                    type="button"
+                  >
+                    {formatDistanceMeters(radius)}
+                  </button>
+                ))}
+              </div>
+
+              {nearby?.nearest ? (
+                <button
+                  className="nearby-result"
+                  onClick={() => setActiveLocation(nearby.nearest.location)}
+                  type="button"
+                >
+                  <MapPin size={17} aria-hidden="true" />
+                  <span>
+                    <strong>{nearby.nearest.location.place}</strong>
+                    <small>
+                      {nearby.nearest.location.film} ·{" "}
+                      {formatDistanceMeters(nearby.nearest.distanceMeters)} away
+                      {nearby.nearest.distanceMeters > nearbyRadius
+                        ? " · outside radius"
+                        : ""}
+                    </small>
+                  </span>
+                </button>
+              ) : (
+                <p className="nearby-status" role="status">
+                  No screen or story locations loaded for this city yet.
+                </p>
+              )}
+
+              <p className="nearby-count">
+                {nearby?.inRadius.length ?? 0} location{(nearby?.inRadius.length ?? 0) === 1 ? "" : "s"} within{" "}
+                {formatDistanceMeters(nearbyRadius)}
+                {userIsDemo ? ` · ${DEMO_LOCATION.label}` : ""}
+              </p>
+            </>
+          )}
+        </div>
           <button
             className={`account-button${accountUser ? "" : " is-login"}`}
             type="button"
             onClick={() => setAccountOpen(true)}
           >
-            {/* Signed in, the avatar says WHOSE library this is and earns its place.
-                Signed out, a film icon beside the words "My movies" was decoration in the
-                one row with no width to spare. */}
             {accountUser ? <User size={18} /> : null}
             {library.length > 0 ? `My movies · ${library.length}` : "My movies"}
           </button>
         </div>
 
+
+        {/* The layers console, behind a disclosure and closed by default.
+
+            It was 45% of the panel — 1,220 px of 2,715 — and it was the FIRST thing a
+            first-time visitor met, answering none of the questions they arrived with. It is
+            an operator's console, and operators can open it. What stays visible is the one
+            line that says what the map is currently drawing. */}
+        <details className="layers-console" open={layersConsoleOpen} onToggle={(event) => setLayersConsoleOpen(event.currentTarget.open)}>
+          <summary className="layers-console-summary">
+            <Layers size={15} aria-hidden="true" />
+            <span>What the map is drawing</span>
+            <span className="layers-console-count">
+              {graphSummary?.candidateCount ? `${graphSummary.candidateCount} unchecked` : "layers"}
+            </span>
+          </summary>
         <section className="graph-layer-panel" aria-label="Grounded places layer">
           {/* The work list follows the kind filter, so it can only ever offer works
               that actually have a place to fly to under the current filter. */}
@@ -2691,39 +2820,11 @@ export default function SceneMapApp() {
                     );
                   })}
                 </div>
-
-                {graphWorks.some((work) => work.poster_thumb_url) && (
-                  <ul className="work-posters" aria-label="Works with cover art">
-                    {graphWorks.filter((work) => work.poster_thumb_url).slice(0, 12).map((work) => (
-                      <li className="cover-cell" key={work.work_id}>
-                        <button
-                          type="button"
-                          aria-pressed={graphWorkId === work.work_id}
-                          className={`cover-tile${graphWorkId === work.work_id ? " is-on" : ""}`}
-                          title={`${work.title} · ${work.place_count} places`}
-                          onClick={() =>
-                            setGraphWorkId((current) => (current === work.work_id ? "" : work.work_id))
-                          }
-                        >
-                          <img alt="" loading="lazy" src={work.poster_thumb_url} />
-                          <span className="cover-caption">{work.title}</span>
-                        </button>
-                        {/* These are the works we know MOST about — the profile has to
-                            be reachable from here, not only from the live chips. */}
-                        <button
-                          aria-label={`About ${work.title}`}
-                          className="film-chip-open cover-open"
-                          onClick={() => setProfileFilm({
-                            workId: work.work_id, title: work.title, kind: work.kind,
-                          })}
-                          type="button"
-                        >
-                          <Info size={14} />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                {/* The cover strip was 442 px tall and 24 targets, and in a Los Angeles
+                    view it showed Skyfall, Notting Hill, Roman Holiday and The Third Man —
+                    the London demo set, in a city they have nothing to do with. A panel that
+                    offers films from somewhere else is not a browsing aid, it is a claim that
+                    the map does not know where it is. */}
 
                 <label className="work-filter">
                   <span className="visually-hidden">Show one work</span>
@@ -2899,125 +3000,8 @@ export default function SceneMapApp() {
             </>
           )}
         </section>
+        </details>
 
-        {/* One box for both kinds of answer (#145). It replaced a city field and a title
-            field that sat next to each other, each hitting a different service and
-            neither able to suggest the other's kind. */}
-        <SearchBox
-          onChange={setWorkQuery}
-          onLookupPlace={lookUpPlace}
-          onPickCity={goToCity}
-          onPickWork={(suggestion) => {
-            // A grounded work is already in the graph: show it on the map instead of
-            // re-searching Wikidata for something we have.
-            setWorkQuery(suggestion.title);
-            setGraphLayerOn(true);
-            setGraphWorkId(suggestion.work_id);
-            if (suggestion.kind && suggestion.kind !== workKind) changeWorkKind(suggestion.kind);
-          }}
-          onSubmit={searchWork}
-          value={workQuery}
-        >
-          <select
-            aria-label="Work type"
-            value={workKind}
-            onChange={(event) => changeWorkKind(event.target.value)}
-          >
-            <option value="film">Film</option>
-            <option value="series">Series</option>
-            <option value="book">Book</option>
-          </select>
-        </SearchBox>
-        {locationsStatus && <p className="location-search-status" role="status">{locationsStatus}</p>}
-
-        <div className="place-controls">
-          <button className="use-location-button" type="button" onClick={useCurrentLocation}>
-            <LocateFixed size={16} />
-            Use my location
-          </button>
-          {/* The directory shipped with a way back to the map and no way in from it. The
-              map answers "what is here"; the directory answers "what have you got", which
-              is the question nobody could ask while the only way in was to know a title
-              already. */}
-          <a className="use-location-button" href="/directory">
-            <List size={16} />
-            Browse everything
-          </a>
-        </div>
-        {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
-
-        <div className="nearby-card" aria-label="Nearby locations">
-          <div className="nearby-actions">
-            <button
-              className="ghost-button nearby-cta"
-              disabled={nearbyStatus === "locating"}
-              onClick={locateMe}
-              type="button"
-            >
-              <Crosshair size={17} />
-              {nearbyStatus === "locating" ? "Locating..." : "What's nearby?"}
-            </button>
-            {(nearbyStatus === "denied" ||
-              nearbyStatus === "unavailable" ||
-              nearbyStatus === "timeout") && (
-              <button className="ghost-button" onClick={useDemoLocation} type="button">
-                Use demo location
-              </button>
-            )}
-          </div>
-
-          {nearbyMessage && (
-            <p className="nearby-status" role="status">{nearbyMessage}</p>
-          )}
-
-          {userPosition && (
-            <>
-              <div className="radius-chips" role="group" aria-label="Search radius">
-                {RADIUS_OPTIONS_METERS.map((radius) => (
-                  <button
-                    aria-pressed={nearbyRadius === radius}
-                    className={`radius-chip${nearbyRadius === radius ? " is-selected" : ""}`}
-                    key={radius}
-                    onClick={() => setNearbyRadius(radius)}
-                    type="button"
-                  >
-                    {formatDistanceMeters(radius)}
-                  </button>
-                ))}
-              </div>
-
-              {nearby?.nearest ? (
-                <button
-                  className="nearby-result"
-                  onClick={() => setActiveLocation(nearby.nearest.location)}
-                  type="button"
-                >
-                  <MapPin size={17} aria-hidden="true" />
-                  <span>
-                    <strong>{nearby.nearest.location.place}</strong>
-                    <small>
-                      {nearby.nearest.location.film} ·{" "}
-                      {formatDistanceMeters(nearby.nearest.distanceMeters)} away
-                      {nearby.nearest.distanceMeters > nearbyRadius
-                        ? " · outside radius"
-                        : ""}
-                    </small>
-                  </span>
-                </button>
-              ) : (
-                <p className="nearby-status" role="status">
-                  No screen or story locations loaded for this city yet.
-                </p>
-              )}
-
-              <p className="nearby-count">
-                {nearby?.inRadius.length ?? 0} location{(nearby?.inRadius.length ?? 0) === 1 ? "" : "s"} within{" "}
-                {formatDistanceMeters(nearbyRadius)}
-                {userIsDemo ? ` · ${DEMO_LOCATION.label}` : ""}
-              </p>
-            </>
-          )}
-        </div>
 
         {/* The map's own answer to "show me only what I have seen".
             This filter already existed and was correct, and it lived inside the
@@ -3029,40 +3013,9 @@ export default function SceneMapApp() {
             could not tell whether the map was showing his films or every film we hold, and
             nothing on screen answered it. It is stated when there is a list AND when there
             is not, because "no list yet" is the more confusing of the two silences. */}
-        <div className={`mine-filter${mineOnly ? " is-on" : ""}`}>
-          {library.length > 0 ? (
-            <>
-              <label className="mine-toggle">
-                <input
-                  type="checkbox"
-                  checked={mineOnly}
-                  onChange={(event) => setMineOnly(event.target.checked)}
-                />
-                <Film size={15} aria-hidden="true" />
-                <span>Only my films</span>
-              </label>
-              <small>
-                {mineOnly
-                  // What is ON THE MAP, not what is in the chip strip. Those are different
-                  // sets — the chips are works somebody searched for, the pins are what the
-                  // viewport holds — and the note used to count the chips while the reader
-                  // was looking at the pins. It read "0 of 5 here are on your list" beside a
-                  // panel saying "23 films in view", which is the header contradicting the
-                  // thing it heads all over again.
-                  ? `Showing only your films — ${filmsHere.length} of your ${library.length} are in this view`
-                  : `Your list is loaded: ${library.length} films. The map is showing everything.`}
-              </small>
-            </>
-          ) : (
-            <small className="mine-empty">
-              No list loaded — the map is showing every film we hold.{" "}
-              <button type="button" className="mine-import" onClick={() => setAccountOpen(true)}>
-                Import your Letterboxd export
-              </button>{" "}
-              to filter by your own films and ratings.
-            </small>
-          )}
-        </div>
+        {/* "Only my films" lives ON THE MAP now, and only there. It was in both places,
+            which is not a fix — it is an admission that neither location was right. The map
+            is where the filter's effect is visible, so that is where the switch belongs. */}
 
         {/* Order and bar, beside the list they act on. Sorting lives here rather than in
             the queue panel because it orders THESE chips — a control far from the thing
@@ -3297,55 +3250,12 @@ export default function SceneMapApp() {
           )}
         </section>
 
-        <div className="ai-tour-card">
-          <div className="ai-tour-heading">
-            <span className="ai-tour-icon" aria-hidden="true">
-              <Sparkles size={17} />
-            </span>
-            <div>
-              <p className="eyebrow">AI guide</p>
-              <strong>Tour by work</strong>
-            </div>
-          </div>
-          <div className="ai-tour-controls">
-            <label>
-              <span className="sr-only">Work for the AI tour</span>
-              <select
-                value={tourFilmId}
-                onChange={(event) => {
-                  setTourFilmId(event.target.value);
-                  setAiTour(null);
-                  setAiTourError("");
-                }}
-                disabled={aiTourStatus === "loading" || mapFilms.length === 0}
-              >
-                {mapFilms.map((film) => (
-                  <option key={film.id} value={film.id}>{film.title}</option>
-                ))}
-              </select>
-            </label>
-            <button
-              className="ai-tour-button"
-              type="button"
-              onClick={buildAiTour}
-              disabled={aiTourStatus === "loading" || !tourFilmId}
-            >
-              {aiTourStatus === "loading" ? (
-                <LoaderCircle className="loading-icon" size={17} />
-              ) : (
-                <Sparkles size={17} />
-              )}
-              {aiTourStatus === "loading" ? "Building..." : "Create tour"}
-            </button>
-          </div>
-          {aiTourError && <p className="ai-tour-error" role="alert">{aiTourError}</p>}
-          {aiTour && (
-            <div className="ai-tour-ready" aria-live="polite">
-              <strong>{aiTour.title}</strong>
-              <span>{aiTour.intro}</span>
-            </div>
-          )}
-        </div>
+        {/* "Tour by work" was removed. There were THREE ways to build a walk — by time,
+            by work, and by hand — at 2,024 px, 2,202 px and 2,529 px, with no guidance on
+            which to use and the manual one disabled without explanation. The route is the
+            product; splitting it three ways made the primary outcome the least legible
+            thing on the surface. One generator, by time and place, and the manual route
+            card below it. */}
 
         <div className="location-list" aria-label="Map locations">
           <div className="section-row">
