@@ -35,10 +35,44 @@ export function isSortMode(mode) {
 export const RATING_STEPS = Object.freeze([3, 3.5, 4, 4.5, 5]);
 export const NO_MINIMUM = 0;
 
-// IMDb is out of ten, so its steps are its own. Half points above 6, because below that
-// almost nothing in the catalogue survives the filter and the choice stops being useful:
-// of the 1,642 Los Angeles works, 1,519 carry a rating and only 355 reach 7.5.
+// IMDb is out of ten, and the useful range is narrower than the scale. Measured over the
+// works with a Los Angeles row, 11.09:
+//
+//   5.0 → 1,397    7.0 →  622    8.5 →  44
+//   6.0 → 1,139    7.5 →  355    9.0 →   5
+//   6.5 →   888    8.0 →  160
+//
+// **Below 5 it is barely a filter and above 9 there is nothing left** — five films in the
+// whole city. So the slider runs 5 to 9, in tenths, which is the precision IMDb publishes.
+// A fixed list of half-points was the first shape and it was too coarse: "somewhere around
+// eight" is a real request and 7.5 / 8.0 is not a fine enough answer to it.
+export const IMDB_MIN = 5;
+export const IMDB_MAX = 9;
+export const IMDB_STEP = 0.1;
+
+// Kept for the tests and for anything that wants sensible presets rather than a range.
 export const IMDB_STEPS = Object.freeze([6, 6.5, 7, 7.5, 8, 8.5]);
+
+// A slider reports a string and a float, and 7.300000000000001 is what you get from
+// stepping by 0.1. Rounded to one decimal so the filter compares — and the label prints —
+// the number the reader actually chose.
+export function clampImdb(value) {
+  const score = Number(value);
+  if (!Number.isFinite(score) || score <= NO_MINIMUM) return NO_MINIMUM;
+  return Math.round(Math.min(IMDB_MAX, Math.max(IMDB_MIN, score)) * 10) / 10;
+}
+
+// Letterboxd's own scale, for the reader's ratings: half-stars from 0.5 to 5.
+export const STAR_MIN = 0.5;
+export const STAR_MAX = 5;
+export const STAR_STEP = 0.5;
+
+export function clampStars(value) {
+  const stars = Number(value);
+  if (!Number.isFinite(stars) || stars <= NO_MINIMUM) return NO_MINIMUM;
+  // Snapped to a half-star, because there is no such rating as 3.7.
+  return Math.round(Math.min(STAR_MAX, Math.max(STAR_MIN, stars)) * 2) / 2;
+}
 
 export function imdbLabel(score) {
   if (!Number.isFinite(score)) return null;

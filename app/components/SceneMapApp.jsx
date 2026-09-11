@@ -85,10 +85,15 @@ import {
 } from "../lib/films-in-view.mjs";
 import {
   DEFAULT_SORT,
-  IMDB_STEPS,
+  IMDB_MAX,
+  IMDB_MIN,
+  IMDB_STEP,
   NO_MINIMUM,
-  RATING_STEPS,
   SORT,
+  STAR_MAX,
+  STAR_STEP,
+  clampImdb,
+  clampStars,
   imdbLabel,
   impliesLibraryOnly,
   passesImdbFilter,
@@ -3246,32 +3251,52 @@ export default function SceneMapApp() {
           {/* Two bars, not one. "Films I rated 4★ AND the world rated 7.5" is a real
               question and neither answers it alone. The reader's own needs a library;
               IMDb's works for anybody. */}
+          {/* Sliders, not fixed steps. "Somewhere around eight" is a real request and a
+              list of half-points is not a fine enough answer to it — IMDb publishes tenths
+              and the filter can compare them. The star bar stays in halves, because
+              Letterboxd has no finer rating to give.
+
+              **Zero is the OFF position, to the left of the range**, so the control reads
+              as one line from "everything" to "only the best" instead of needing a
+              separate Any. `clampImdb` keeps 0 out of the clamp for exactly this. */}
           {library.length > 0 && (
-            <label className="list-control">
-              <span>Mine</span>
-              <select
-                value={String(minRating)}
-                onChange={(event) => setMinRating(Number(event.target.value))}
-              >
-                <option value={String(NO_MINIMUM)}>Any</option>
-                {RATING_STEPS.map((step) => (
-                  <option key={step} value={String(step)}>{ratingLabel(step)} and up</option>
-                ))}
-              </select>
+            <label className="list-control is-slider">
+              <span>
+                Mine
+                <strong>{minRating > NO_MINIMUM ? `${ratingLabel(minRating)}+` : "Any"}</strong>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={STAR_MAX}
+                step={STAR_STEP}
+                value={minRating}
+                aria-label="Minimum rating you gave"
+                onChange={(event) => setMinRating(clampStars(event.target.value))}
+              />
             </label>
           )}
 
-          <label className="list-control">
-            <span>IMDb</span>
-            <select
-              value={String(minImdb)}
-              onChange={(event) => setMinImdb(Number(event.target.value))}
-            >
-              <option value={String(NO_MINIMUM)}>Any</option>
-              {IMDB_STEPS.map((step) => (
-                <option key={step} value={String(step)}>{imdbLabel(step)}+</option>
-              ))}
-            </select>
+          <label className="list-control is-slider">
+            <span>
+              IMDb
+              <strong>{minImdb > NO_MINIMUM ? `${imdbLabel(minImdb)}+` : "Any"}</strong>
+            </span>
+            <input
+              type="range"
+              // The step below the range is the off position; the range itself starts at
+              // IMDB_MIN. 1,397 of the rated Los Angeles films clear 5.0 and five clear 9.0,
+              // so outside that the slider would be travel with nothing at the end of it.
+              min={IMDB_MIN - IMDB_STEP}
+              max={IMDB_MAX}
+              step={IMDB_STEP}
+              value={minImdb > NO_MINIMUM ? minImdb : IMDB_MIN - IMDB_STEP}
+              aria-label="Minimum IMDb rating"
+              onChange={(event) => {
+                const raw = Number(event.target.value);
+                setMinImdb(raw < IMDB_MIN ? NO_MINIMUM : clampImdb(raw));
+              }}
+            />
           </label>
 
           <small className="list-control-note">
