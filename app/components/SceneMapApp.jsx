@@ -58,7 +58,7 @@ import { normalizePlaceName } from "../lib/place-dedup.mjs";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
 import { libraryImportSummary, matchLibrary } from "../lib/library-match.mjs";
 import {
-  DEFAULT_LAYER_ID, MAP_LAYERS, layerById, readStoredLayerId, writeStoredLayerId,
+  DEFAULT_LAYER_ID, MAP_LAYERS, layerById, mapLayers, readStoredLayerId, writeStoredLayerId,
 } from "../lib/map-layers.mjs";
 import { activeLayerLabel, zoomAffordance } from "../lib/map-controls.mjs";
 import { externalPlaceLinks } from "../lib/place-links.mjs";
@@ -1299,7 +1299,14 @@ export default function SceneMapApp() {
   useEffect(() => {
     if (typeof window !== "undefined") setBasemapId(readStoredLayerId(window.localStorage));
   }, []);
-  const basemap = useMemo(() => layerById(basemapId), [basemapId]);
+  // The layers this deployment actually draws. With a MapTiler key the two vector styles
+  // come from MapTiler; with none they stay OpenFreeMap, which is what a fresh clone gets.
+  // `NEXT_PUBLIC_` is inlined at build time, so this is a constant in the browser.
+  const layers = useMemo(() => mapLayers(process.env.NEXT_PUBLIC_MAPTILER_KEY), []);
+  const basemap = useMemo(
+    () => layers.find((layer) => layer.id === basemapId) ?? layerById(basemapId),
+    [layers, basemapId],
+  );
   // What the map reports as it moves, and the two different things that ride on it.
   //
   // The COUNT of what is on screen is published immediately; the FETCH is debounced. They
@@ -2412,7 +2419,7 @@ export default function SceneMapApp() {
             </button>
             {layersOpen && (
               <div className="map-layers-menu" role="group" aria-label="Base map">
-                {MAP_LAYERS.map((layer) => (
+                {layers.map((layer) => (
                   <button
                     key={layer.id}
                     type="button"

@@ -68,6 +68,8 @@
 //
 // Satellite stays raster because imagery IS raster. There is nothing about a photograph to
 // draw sharper.
+import { ATTRIBUTION, basemapFor, isUsableKey, THEMES } from "./map-styles.mjs";
+
 export const MAP_LAYERS = Object.freeze([
   {
     id: "dark",
@@ -138,4 +140,29 @@ export function writeStoredLayerId(storage, id) {
   } catch {
     // A browser with storage disabled still gets to switch layers, it just forgets.
   }
+}
+
+// The layers a given configuration actually draws.
+//
+// **This is the wiring that was missing.** `map-styles.mjs` was written to choose between
+// MapTiler and OpenFreeMap, the key was obtained and its origins configured — and nothing
+// imported the module. The app kept drawing OpenFreeMap while a paid-for MapTiler key sat
+// in the environment doing nothing, which also meant its style editor, the whole reason
+// MapTiler was chosen, was unreachable.
+//
+// A key is not required and never becomes required: with none, this returns exactly what
+// `MAP_LAYERS` already was. Somebody cloning this repository gets a working map.
+export function mapLayers(key) {
+  if (!isUsableKey(key)) return MAP_LAYERS;
+
+  const themed = { dark: basemapFor(THEMES.dark, key), light: basemapFor(THEMES.light, key) };
+
+  return Object.freeze(MAP_LAYERS.map((layer) => {
+    const swap = themed[layer.id];
+    if (!swap) return layer;
+    // Attribution follows the provider that actually served the tiles, not the layer it was
+    // written for. Crediting OpenFreeMap for a MapTiler style is the same class of mistake
+    // as a place carrying the wrong source.
+    return Object.freeze({ ...layer, vector: swap.url, attribution: ATTRIBUTION.maptiler });
+  }));
 }

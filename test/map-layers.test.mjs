@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DEFAULT_LAYER_ID,
   MAP_LAYERS,
+  mapLayers,
   layerById,
   readStoredLayerId,
   writeStoredLayerId,
@@ -151,4 +152,37 @@ test("no raster street layer survives — Light is the street map now", () => {
 test("satellite is the only raster layer left", () => {
   const raster = MAP_LAYERS.filter((layer) => layer.url);
   assert.deepEqual(raster.map((layer) => layer.id), ["satellite"]);
+});
+
+// The wiring that was missing: map-styles.mjs chose between providers and nothing imported
+// it, so a configured MapTiler key drew OpenFreeMap anyway.
+test("with a key the vector layers come from MapTiler", () => {
+  const layers = mapLayers("abc123");
+  const dark = layers.find((layer) => layer.id === "dark");
+  const light = layers.find((layer) => layer.id === "light");
+  assert.match(dark.vector, /api\.maptiler\.com/);
+  assert.match(light.vector, /api\.maptiler\.com/);
+  assert.notEqual(dark.vector, light.vector);
+});
+
+// Credit follows whoever served the tiles, not the layer the entry was written for.
+test("a MapTiler layer is credited to MapTiler", () => {
+  const dark = mapLayers("abc123").find((layer) => layer.id === "dark");
+  assert.match(dark.attribution, /MapTiler/);
+  assert.match(dark.attribution, /OpenStreetMap/);
+  assert.doesNotMatch(dark.attribution, /OpenFreeMap/);
+});
+
+// A key is never required. Somebody cloning this repository gets a working map.
+test("with no key the layers are exactly what they were", () => {
+  assert.equal(mapLayers(null), MAP_LAYERS);
+  assert.equal(mapLayers(""), MAP_LAYERS);
+  assert.equal(mapLayers("https://api.maptiler.com/?key=abc"), MAP_LAYERS);
+});
+
+// Satellite is Esri's and has nothing to do with the basemap provider.
+test("satellite is untouched by the key", () => {
+  const withKey = mapLayers("abc123").find((layer) => layer.id === "satellite");
+  const without = MAP_LAYERS.find((layer) => layer.id === "satellite");
+  assert.deepEqual(withKey, without);
 });
