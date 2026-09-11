@@ -7,6 +7,44 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-11] decision | The services become a registry, so a third one is a row
+
+**Object**: `app/lib/media-sources.mjs` (new), `media-library.mjs`, `cloud-library.mjs`,
+`content-graph.mjs`, `SceneMapApp.jsx`
+**Scenario**: decision · **Outcome**: ✅ one list of services, and a test that fails if a
+gate keeps its own
+**Code changes**: this commit
+
+Owner's requirement: *"сервис должен быть готов к разного рода оценкам"* — by default a
+ten-point rating, and anything else converted into it. The conversion already worked; what
+was not true was "ready".
+
+**The pair of services was written out independently in seven places**: the CSV parser's
+allow-list, the cloud normaliser's filter, the scale table, the legacy migration's
+letterboxd-or-imdb guess, the file input's `accept`, the ZIP check, and the two connector
+cards. Adding a third meant finding all seven, and missing one does not throw — it puts a
+whole library on the wrong scale, which is precisely the failure the previous commit existed
+to prevent.
+
+Now one registry, each service declaring its scale, label, blurb, accepted files and whether
+it hands you an archive. The connector cards render from it. The migration reads each row's
+scale from the sources it carries (`storedScale`) rather than asking whether it is
+Letterboxd, and when the sources disagree it assumes the row is already converted —
+under-converting leaves a number too low, which is wrong but in range and fixed by
+re-importing, where doubling a 9 gives an 18 that is off the scale and unrecoverable.
+
+**The database was already built for this.** `user_library_items.source` has a check
+constraint naming letterboxd, imdb, trakt, kinopoisk, goodreads, openlibrary, lastfm and
+manual. The schema anticipated the general case a year before the client did.
+
+The server-side import converts too now. What it cannot do is record the scale —
+`user_library_items` has no column for it — so rows written before today are indistinguishable
+from rows written after. Survivable only because nothing reads that table; a reader arriving
+there needs a `rating_scale` column and a backfill first. Not done here: adding a column to
+production is not this change's business.
+
+---
+
 ## [2026-09-11] decision | One rating scale in the library, and it is out of ten
 
 **Object**: `app/lib/media-library.mjs`, `app/lib/library-view.mjs`,

@@ -124,7 +124,7 @@ test("import upserts deduped works and this user's library rows", async () => {
 
   assert.deepEqual(writer.calls.works.map((w) => w.tmdb_id), ["509", "194"]);
   assert.deepEqual(writer.calls.library, [
-    { user_id: "user-42", work_id: "work-0", source: "letterboxd", rating: 4 },
+    { user_id: "user-42", work_id: "work-0", source: "letterboxd", rating: 8 },
     { user_id: "user-42", work_id: "work-1", source: "letterboxd", rating: null },
   ]);
 });
