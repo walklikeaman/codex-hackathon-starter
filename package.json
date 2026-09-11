@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@maplibre/maplibre-gl-leaflet": "^0.1.4",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@supabase/supabase-js": "^2.110.8",
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",

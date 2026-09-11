@@ -39,6 +39,59 @@ a reader with nothing imported saw the same interface as one whose import had fa
 
 **1,333 tests, all passing.**
 
+## [2026-09-11] update | The trip agent is a Claude agent, so the transport is MCP
+
+**Object**: `mcp/glorymap-server.mjs`, `scripts/seed-demo-library.mjs`,
+`app/components/SceneMapApp.jsx`
+**Scenario**: feature · **Outcome**: ✅ six tools an agent can call, and a real library in
+local dev
+**Code changes**: this commit
+
+[[trip-agent-bridge]] built `POST /api/trip/plan` on 10.09 and **deliberately did not guess
+the transport** — an MCP session, a third-party product, a custom GPT and something still
+being written want four different wrappers. The owner answered it on 11.09: it is a Claude
+agent. **The guess that was avoided cost nothing, and the answer took one sentence.**
+
+Six tools — `places_near`, `places_along_route`, `film_places`, `place_details`,
+`search_titles`, `plan_day` — and they **call the deployed API rather than the database**.
+Every honesty rule lives in those routes, and a server that re-derived them would drift
+invisibly: an agent cannot see that the pin it was handed should have been hollow. Read-only,
+no credential, nothing the site does not already show — which also keeps it clear of #191.
+
+**The caveat travels as words, because an agent has no pin to look at.** `status`,
+`said_by`, `source_url` and `studio_lot` on every row, and a `note` on every response. In
+Los Angeles the graph holds one verified place against 5,266 queue rows, so this is not a
+corner case.
+
+**One rule is looser here than in the graph, deliberately.** `namesMatch` refuses "Frolic
+Room" against "Frolic Room, Hollywood Boulevard, Hollywood" — it allows one extra word, and
+that is right where it is used, merging INTO the graph, where a wrong merge is a false claim.
+Here it is a list handed to an agent and nothing is written, so `sameSpotName` adds a
+prefix-within-150 m rule. Measured on the first real call: **six stops along Hollywood
+Boulevard were four places** — Frolic Room went from two entries of one film to one of two,
+Grauman's Chinese Theatre from 21 + 2 to 22. El Capitan Theatre and "El Capitan Theater"
+stay separate, and should: matching across a spelling difference is the fuzzy comparison
+this project refuses.
+
+**And a real library in local dev**, so the owner can test "only my films" without importing
+2,422 rows every time. Two guards: it never runs when `NODE_ENV` is production, and it never
+overwrites a list somebody imported. `public/demo-library.json` is **gitignored** — a watch
+history is personal and this repository is public — and the script uses the same parser the
+browser importer does, because a demo built by another code path tests something no reader
+runs.
+
+Verified: a cleared browser seeds 2,422 films by itself, the map shows **72 pins / 63 films**
+and **21 pins / 23 films** with the switch on, and the note agrees with the panel.
+
+**Two bugs of my own on the way.** The seeding effect went in above the `useState` that
+declares `library` and killed the component with *"Cannot access 'library' before
+initialization"* — the file already carries a comment about that exact hazard from a
+previous occurrence. And the filter note counted the CHIPS while the reader was looking at
+the PINS: *"0 of 5 here are on your list"* beside a panel reading *"23 films in view"*, which
+is the header contradicting the thing it heads for the third time in this codebase.
+
+**1,333 tests, all passing.**
+
 ## [2026-09-11] ingest | 5,495 IMDb ratings, two rating filters, and a Russian label on an English page
 
 **Object**: `scripts/ingest-imdb-ratings.mjs`, `app/lib/library-view.mjs`,
