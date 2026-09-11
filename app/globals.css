@@ -3116,44 +3116,170 @@ figcaption a {
   font-weight: 500;
 }
 
-/* Bottom-centre, and that position is the whole of what took two attempts.
+/* The furniture, down the right edge where every map puts it.
    `.map-stage` is `inset: 0` with the panels laid OVER it, and `.map-stage::after` is a
-   full-bleed gradient at z-index 500 that paints after every child — so top-left put the
-   switch behind the search panel and z-index 500 put it under the vignette. Between the
-   two panels, above the attribution, is the one strip of map that is always visible. */
-.basemap-switch {
+   full-bleed gradient at z-index 500 that paints after every child — so anything here has
+   to clear 500 or the vignette greys it out. That fact cost two attempts when the basemap
+   strip lived at the bottom, and it is why every rule below carries z-index 600. */
+.map-furniture {
   position: absolute;
+  top: 1.1rem;
+  right: 1.1rem;
+  z-index: 600;
+  display: grid;
+  gap: 0.5rem;
+  justify-items: end;
+}
+
+.map-furniture-group {
+  display: grid;
+  border-radius: 12px;
+  overflow: visible;
+  background: rgba(12, 12, 16, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  backdrop-filter: blur(8px);
+}
+
+.map-control {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  padding: 0;
+}
+
+.map-control:hover:not(:disabled) { color: #fff; background: rgba(255, 255, 255, 0.09); }
+.map-control.is-on { color: var(--accent, #f0a83c); }
+
+/* A control at its limit says so. Half-opacity plus `cursor: default` is the difference
+   between a button that is finished and a map that looks broken. */
+.map-control:disabled { opacity: 0.32; cursor: default; }
+
+.map-furniture-group .map-control + .map-control {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.map-layers { position: relative; }
+
+.map-layers-menu {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 0.5rem);
+  display: grid;
+  gap: 2px;
+  padding: 4px;
+  width: max-content;
+  border-radius: 12px;
+  background: rgba(12, 12, 16, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  backdrop-filter: blur(10px);
+}
+
+.map-layers-option {
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  font: inherit;
+  padding: 0.4rem 0.7rem;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.map-layers-option strong { font-size: 0.82rem; font-weight: 600; }
+.map-layers-option small { font-size: 0.7rem; opacity: 0.62; }
+.map-layers-option:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+
+.map-layers-option.is-active {
+  background: var(--accent, #f0a83c);
+  color: #14110b;
+}
+
+.map-layers-option.is-active small { opacity: 0.75; }
+
+/* Bottom-right, under the zoom stack: the legend is consulted once and then stops being
+   needed, so collapsed is its resting state and it never holds a corner of the map open. */
+.map-key {
+  position: absolute;
+  right: 1.1rem;
   bottom: 2.4rem;
+  z-index: 600;
+  display: grid;
+  justify-items: end;
+  gap: 0.4rem;
+  max-width: min(19rem, calc(100% - 2.2rem));
+}
+
+.map-key-toggle {
+  width: auto;
+  height: 32px;
+  gap: 0.4rem;
+  grid-auto-flow: column;
+  padding: 0 0.7rem;
+  font: inherit;
+  font-size: 0.76rem;
+  border-radius: 999px;
+  background: rgba(12, 12, 16, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  backdrop-filter: blur(8px);
+}
+
+.map-key .pin-legend {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 12px;
+  background: rgba(12, 12, 16, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  backdrop-filter: blur(10px);
+  font-size: 0.74rem;
+}
+
+/* Top-left of the map, clear of the panel handle. It answers the one question the reader
+   could not find an answer to — "show me only mine" — without opening anything. */
+.map-mine {
+  position: absolute;
+  top: 1.1rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 600;
   display: flex;
-  gap: 2px;
-  padding: 2px;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.85rem;
   border-radius: 999px;
-  background: rgba(12, 12, 16, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(8px);
-}
-
-.basemap-option {
-  border: 0;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.66);
   font: inherit;
-  font-size: 0.78rem;
-  padding: 0.35rem 0.8rem;
-  border-radius: 999px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(12, 12, 16, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  backdrop-filter: blur(8px);
   cursor: pointer;
 }
 
-.basemap-option:hover { color: #fff; }
+.map-mine:hover { color: #fff; }
 
-.basemap-option.is-active {
+.map-mine.is-on {
   background: var(--accent, #f0a83c);
+  border-color: transparent;
   color: #14110b;
   font-weight: 600;
 }
+
+.map-mine-count {
+  font-variant-numeric: tabular-nums;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 0.72rem;
+}
+
+.map-mine.is-on .map-mine-count { background: rgba(0, 0, 0, 0.17); }
 
 .external-place-links {
   display: grid;
