@@ -1,3 +1,5 @@
+import { RATING_SCALE } from "./media-library.mjs";
+
 const TABLE_NAME = "user_media_libraries";
 const MAX_LIBRARY_SIZE = 10000;
 
@@ -26,6 +28,9 @@ export function normalizeCloudLibrary(value) {
       title,
       year: optionalNumber(movie.year),
       rating: optionalNumber(movie.rating),
+      // Which scale that number is on. Dropped here, a synced library would come back
+      // looking legacy and be doubled on the next read ([[personal-library]]).
+      ratingScale: movie.ratingScale === RATING_SCALE ? RATING_SCALE : null,
       watchedDate: optionalString(movie.watchedDate, 100),
       url: optionalString(movie.url, 2000),
       imdbId: /^tt\d+$/.test(movie.imdbId || "") ? movie.imdbId : null,

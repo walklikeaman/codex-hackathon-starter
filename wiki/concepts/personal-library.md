@@ -9,6 +9,7 @@ The user's "My movies": import, storage, map filtering. Implementation:
 - Import: **Letterboxd ZIP** (watched.csv + ratings.csv, archive ≤25 MB, CSV
   ≤10 MB) and **Letterboxd/IMDb CSV** (a custom parser: quotes, CRLF, BOM,
   header aliases for both services).
+- **Every rating is stored out of ten**, converted at the parser — see below.
 - Everything is parsed **in the browser**; the library lives in localStorage
   (`scenemap-library`), nothing goes to the server. A real export: 2422
   films imported, of which 3 films / 6 locations were found in the London data.
@@ -18,6 +19,39 @@ The user's "My movies": import, storage, map filtering. Implementation:
 - After import, the "library on map" filter is auto-enabled.
 - **No account is needed for any of it.** Import, storage and the map filter are all
   client-side; signing in adds cloud sync across devices and nothing else.
+
+## One scale, and why the conversion happens at the edge
+
+Letterboxd rates in half-stars 0.5–5; IMDb rates in whole numbers 1–10. **They are the same
+opinion said twice** — 4.5★ and 9/10 are one judgement — and the library merges rows from
+both services into a single row (`sources: ["letterboxd", "imdb"]`).
+
+Held raw, that is a silent corruption of every comparison:
+
+- a "rated 4 and up" bar passes an IMDb 4, which is a film the reader *disliked*;
+- a sort puts a 5 meaning best-possible beside a 5 meaning mediocre;
+- and nothing downstream of the merge can tell the two apart any more.
+
+So `parseMediaCsv` converts **once, on the way in**, and the library holds one number
+meaning one thing (`RATING_SCALE = 10`, `toTenPoint`). Ten is the scale kept because it is
+the finer of the two: every half-star is a whole number out of ten and nothing is lost,
+where halving IMDb would round 7 and 8 onto the same 3.5★.
+
+### The migration is keyed on a marker, never on the value
+
+Every reader already has a half-star library in localStorage and in
+`user_media_libraries`, and `upgradeLibraryScale` runs on **every** read — `readStoredLibrary`,
+`mergeLibraries`, and the cloud load.
+
+A migration that doubled "any Letterboxd row scoring 5 or less" would therefore walk a
+genuine 0.5★ to 1, then to 2, then to 4. The row carries `ratingScale` instead, so a second
+pass is a no-op. `normalizeCloudLibrary` keeps the field through a sync round trip for the
+same reason: dropped there, a synced library would come back looking legacy and be doubled.
+
+**Still on the five-point scale**: `app/lib/connectors/letterboxd-rss.mjs`, which reads
+`letterboxd:memberRating` raw. It writes server-side library rows and never reaches the
+client library the map filters read, so the scales cannot meet today — but wiring that
+connector into the panel means converting first.
 
 ## The feature existed for weeks and could not be reached
 
@@ -55,6 +89,7 @@ Measured 10.09.2026 against production, this is not a design choice:
 | `work_ratings` | **32 rows across 12 works**, out of 7,063 |
 | works with a Los Angeles row | 1,642 — of which **one** carries a rating |
 | a real Letterboxd export | **2,407 ratings for 2,422 films** |
+| a real IMDb ratings export | **2,798 ratings for 2,798 titles** — it lists only what you scored |
 
 **So "sort by rating" can only mean the reader's own.** Ordering by a public score would
 sort 1,641 of the 1,642 Los Angeles films by a field that is null. The rating was already
@@ -72,7 +107,8 @@ Four rules worth keeping:
 
 - **Unrated is null, never zero.** Watched-and-never-scored is not the same as bad. Sorted
   as a 0 it would sit below a film the reader actively disliked, which says something they
-  did not; it sinks below every rated film instead.
+  did not; it sinks below every rated film instead. An IMDb ratings export produces none of
+  these; a Letterboxd watched.csv produces one per unrated film.
 - **A minimum rating implies "my list only"**, because it cannot mean anything else — and
   without saying so it would silently drop every film not in the library, which is most of
   the map, and read as an outage. The control says it out loud.
@@ -127,6 +163,13 @@ the tolerance lives in the client rather than the data pretending to a precision
 ## Gotchas
 
 - A record from Letterboxd (no imdbId) and one from IMDb (with imdbId) will NOT merge into one.
+- The reader's bar runs the **whole** 1–10 scale while the public IMDb bar is narrowed to
+  5–9. That is the off position, not an inconsistency: zero sits one step left of the range,
+  and stepping by one, one step below 1 is exactly 0. Starting the bar at 6 would put the
+  off position on 5 — a real rating the reader could then not ask for.
+- An IMDb export is more than films: of 2,798 rows, 2,585 are Movie and the rest are TV
+  Series, Shorts, TV Episodes and Music Videos. They are imported as-is and simply fail to
+  match anything in the catalogue.
 - A ZIP with a nested folder isn't recognized — watched.csv is looked for strictly at the root.
 - The year "matches" if it's missing on at least one side — false matches
   of same-titled films are possible.

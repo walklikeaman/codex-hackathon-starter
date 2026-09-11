@@ -2,9 +2,9 @@
 //
 // **The rating we have is the reader's own.** Measured 10.09.2026 against production:
 // `work_ratings` holds **32 rows across 12 works** out of 7,063, and of the 1,642 works
-// with a Los Angeles row exactly **one** carries a rating. A real Letterboxd export holds
-// 2,407 ratings for 2,422 films. So "sort by rating" can only mean one thing here, and
-// pretending otherwise would sort 1,641 films by a field that is null.
+// with a Los Angeles row exactly **one** carries a rating. A real IMDb ratings export
+// holds 2,798, every one of them scored. So "sort by rating" can only mean one thing here,
+// and pretending otherwise would sort 1,641 films by a field that is null.
 //
 // That has a consequence worth stating plainly: **this is all decided in the browser.**
 // The library lives in localStorage and never reaches the server ([[personal-library]]),
@@ -30,9 +30,6 @@ export function isSortMode(mode) {
   return Object.values(SORT).includes(mode);
 }
 
-// Letterboxd rates in half-stars. These are the only thresholds offered, because a
-// free-number input invites 3.7 and there is no such rating.
-export const RATING_STEPS = Object.freeze([3, 3.5, 4, 4.5, 5]);
 export const NO_MINIMUM = 0;
 
 // IMDb is out of ten, and the useful range is narrower than the scale. Measured over the
@@ -62,16 +59,44 @@ export function clampImdb(value) {
   return Math.round(Math.min(IMDB_MAX, Math.max(IMDB_MIN, score)) * 10) / 10;
 }
 
-// Letterboxd's own scale, for the reader's ratings: half-stars from 0.5 to 5.
-export const STAR_MIN = 0.5;
-export const STAR_MAX = 5;
-export const STAR_STEP = 0.5;
+// The reader's own rating, on the same ten points the public score uses. The library
+// normalises every service to that scale on import ([[personal-library]],
+// `RATING_SCALE`), so this bar means one thing whether the list came from IMDb or
+// Letterboxd.
+//
+// **Whole numbers, because IMDb has no halves.** Measured on a real IMDb ratings export of
+// 2,798 titles, every one of them scored — the export lists only what you rated, so unlike
+// a Letterboxd list there is no watched-and-unrated tail:
+//
+//   1 →   10     5 →  283     9 →  44
+//   2 →    6     6 →  985    10 →   9
+//   3 →   19     7 → 1079
+//   4 →   57     8 →  306
+//
+// and read as a filter, "this and up":
+//
+//   5 → 96.7%    7 → 51.4%    9 →  1.9%
+//   6 → 86.6%    8 → 12.8%   10 →  0.3%
+//
+// The range is the WHOLE scale rather than the narrowed 5–9 the public bar uses, and the
+// reason is the off position. Zero sits one step to the left of the range, so the control
+// reads as one line from "everything" to "only the best" — and one step below 1 is exactly
+// 0. Starting at 6 would put the off position on 5, which is a real rating a reader could
+// not then ask for. It costs little: 1 through 4 is 92 of 2,798 films, a bar almost
+// nobody will set, and it is the honest shape of a ten-point scale.
+export const MINE_MIN = 1;
+export const MINE_MAX = 10;
+export const MINE_STEP = 1;
 
-export function clampStars(value) {
-  const stars = Number(value);
-  if (!Number.isFinite(stars) || stars <= NO_MINIMUM) return NO_MINIMUM;
-  // Snapped to a half-star, because there is no such rating as 3.7.
-  return Math.round(Math.min(STAR_MAX, Math.max(STAR_MIN, stars)) * 2) / 2;
+// Kept for the tests and for anything that wants sensible presets rather than a range:
+// the thresholds that actually divide this list.
+export const MINE_STEPS = Object.freeze([6, 7, 8, 9, 10]);
+
+export function clampMine(value) {
+  const score = Number(value);
+  if (!Number.isFinite(score) || score <= NO_MINIMUM) return NO_MINIMUM;
+  // Snapped to a whole point, because there is no such IMDb rating as 7.5.
+  return Math.round(Math.min(MINE_MAX, Math.max(MINE_MIN, score)));
 }
 
 export function imdbLabel(score) {
@@ -94,9 +119,13 @@ export function passesImdbFilter(film, minImdb = NO_MINIMUM) {
 
 export function ratingLabel(rating) {
   if (!Number.isFinite(rating)) return null;
-  // "4★", "4.5★" — never "4.0★". A trailing zero reads as a precision Letterboxd does
-  // not have.
-  return `${Number(rating.toFixed(1))}★`;
+  // "7/10", not "7★". The denominator is the whole point of the change: a bare star next
+  // to a 7 reads as seven stars out of five. It also keeps the reader's bar visibly the
+  // same kind of number as the IMDb bar beside it, which is now true.
+  //
+  // Never "7.0/10" — a trailing zero claims a precision the scale does not have. A half
+  // survives the print if one ever arrives from a converted Letterboxd row.
+  return `${Number(rating.toFixed(1))}/${MINE_MAX}`;
 }
 
 // A minimum rating is a statement about films the reader has rated, so it can only ever
@@ -142,7 +171,8 @@ function placeCount(work) {
 
 // Sorted, and STABLE: every comparison falls through to the title, so a list does not
 // reshuffle itself when two films tie. Two of them tie constantly — 39.8% of works hold
-// exactly one place, and a 3.5★ rating is the single most common score in a real export.
+// exactly one place, and 7 is the single most common score in a real export — 1,079 of
+// 2,798 titles, with 6 a close second at 985.
 export function sortWorks(works, { by = DEFAULT_SORT, library = [] } = {}) {
   const list = Array.isArray(works) ? [...works] : [];
   const byTitle = (a, b) => String(a?.title ?? "").localeCompare(String(b?.title ?? ""));
@@ -167,7 +197,7 @@ export function sortWorks(works, { by = DEFAULT_SORT, library = [] } = {}) {
 }
 
 // What the control says it is doing, so the order on screen is never a mystery. It names
-// the tie-breaker too: a reader who sorts by rating and sees two 4★ films in a row is
+// the tie-breaker too: a reader who sorts by rating and sees two 8/10 films in a row is
 // owed the reason one is above the other.
 export function sortLabel(by) {
   if (by === SORT.rating) return "Your rating, then how much we hold";

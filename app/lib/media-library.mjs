@@ -113,13 +113,64 @@ export function workIsInLibrary(work, library) {
   return libraryEntryFor(work, library) !== null;
 }
 
-// Letterboxd rates in half-stars, 0.5 to 5. A film in the library with no rating is
-// WATCHED AND UNRATED, which is not the same as bad — so it is null, never 0, and every
-// comparison below has to decide what to do with it rather than sorting it to the bottom
-// by accident. Measured on a real 2,422-film export: 2,407 rated, 15 not.
+// A film in the library with no rating is WATCHED AND UNRATED, which is not the same as
+// bad — so it is null, never 0, and every comparison below has to decide what to do with
+// it rather than sorting it to the bottom by accident. A Letterboxd export leaves 15 of
+// 2,422 films unrated; an IMDb ratings export leaves none, because it only lists the
+// titles you scored.
+//
+// The number is on the TEN-POINT scale whatever service it came from — see RATING_SCALE.
 export function libraryRating(work, library) {
   const rating = libraryEntryFor(work, library)?.rating;
   return Number.isFinite(rating) ? rating : null;
+}
+
+// **One scale, decided at the edge.** Letterboxd rates in half-stars 0.5–5 and IMDb in
+// whole numbers 1–10, and they are the same opinion said twice: 4.5★ and 9/10 are one
+// judgement. Holding both raw in one list makes every comparison a lie — a "rated 4 and
+// up" bar would pass an IMDb 4, which is a film the reader disliked, and sorting mixes a
+// 5 that means best-possible with a 5 that means mediocre. The merge already puts the two
+// services in one row (`sources: ["letterboxd", "imdb"]`), so there is nowhere later that
+// could tell them apart.
+//
+// So the conversion happens once, in the parser, and the library holds one number meaning
+// one thing. Ten is the scale kept because it is the finer of the two: every Letterboxd
+// half-star is a whole number out of ten and nothing is lost, where halving IMDb would
+// round 7 and 8 onto the same 3.5★.
+export const RATING_SCALE = 10;
+
+const SOURCE_SCALE = Object.freeze({ letterboxd: 5, imdb: 10 });
+
+export function toTenPoint(rating, source) {
+  if (!Number.isFinite(rating) || rating <= 0) return null;
+  const scale = SOURCE_SCALE[source] ?? RATING_SCALE;
+  return Math.round((rating * RATING_SCALE / scale) * 10) / 10;
+}
+
+// A library saved before the scale was settled carries raw Letterboxd half-stars, and
+// there is one in every reader's localStorage and in `user_media_libraries`. It is
+// upgraded on read.
+//
+// **The marker is what makes this safe to run twice**, and a heuristic would not be: a
+// migration that doubled "any Letterboxd row scoring 5 or less" would, run a second time,
+// turn a genuine 0.5★ into 1 and then into 2. `ratingScale` says whether the row has
+// already been converted, so a second pass is a no-op instead of a corruption.
+export function upgradeLibraryScale(library) {
+  if (!Array.isArray(library)) return [];
+  return library.map((movie) => {
+    if (!movie || typeof movie !== "object") return movie;
+    if (movie.ratingScale === RATING_SCALE) return movie;
+    // Sources is the only record of where the number came from, and it is persisted.
+    // A row with no source at all is left alone: guessing would be the corruption above.
+    const source = (movie.sources ?? []).includes("letterboxd") && !(movie.sources ?? []).includes("imdb")
+      ? "letterboxd"
+      : "imdb";
+    return {
+      ...movie,
+      rating: Number.isFinite(movie.rating) ? toTenPoint(movie.rating, source) : movie.rating ?? null,
+      ratingScale: RATING_SCALE,
+    };
+  });
 }
 
 export function parseMediaCsv(text, source) {
@@ -134,7 +185,9 @@ export function parseMediaCsv(text, source) {
     if (!title) return [];
 
     const imdbId = firstValue(record, ["const", "imdb id"]);
-    const rating = numberValue(firstValue(record, ["rating", "your rating"]));
+    // Converted to ten points here and nowhere else, so no caller ever has to ask which
+    // service a number came from.
+    const rating = toTenPoint(numberValue(firstValue(record, ["rating", "your rating"])), source);
     const year = numberValue(firstValue(record, ["year", "release year"]));
     const watchedDate = firstValue(record, ["watched date", "date rated", "date"]);
     const url = firstValue(record, ["letterboxd uri", "url"]);
@@ -144,6 +197,7 @@ export function parseMediaCsv(text, source) {
       title,
       year,
       rating,
+      ratingScale: RATING_SCALE,
       watchedDate,
       url,
       imdbId: imdbId && /^tt\d+$/.test(imdbId) ? imdbId : null,
@@ -156,15 +210,20 @@ export function parseMediaCsv(text, source) {
 }
 
 export function mergeLibraries(current, imported) {
-  const merged = new Map(current.map((movie) => [libraryKey(movie), movie]));
+  // Both sides are put on the ten-point scale BEFORE anything is compared or kept. The
+  // stored library is the one that can still be on half-stars, and this is the point where
+  // it meets a freshly parsed import — merging first and converting later would leave a
+  // row holding whichever of the two scales won.
+  const merged = new Map(upgradeLibraryScale(current).map((movie) => [libraryKey(movie), movie]));
 
-  for (const movie of imported) {
+  for (const movie of upgradeLibraryScale(imported)) {
     const key = libraryKey(movie);
     const previous = merged.get(key);
     merged.set(key, previous ? {
       ...previous,
       ...movie,
       rating: movie.rating ?? previous.rating,
+      ratingScale: RATING_SCALE,
       watchedDate: movie.watchedDate ?? previous.watchedDate,
       url: movie.url ?? previous.url,
       sources: [...new Set([...(previous.sources ?? []), ...movie.sources])],

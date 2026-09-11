@@ -7,6 +7,58 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-11] decision | One rating scale in the library, and it is out of ten
+
+**Object**: `app/lib/media-library.mjs`, `app/lib/library-view.mjs`,
+`app/lib/cloud-library.mjs`, `app/components/SceneMapApp.jsx`,
+`scripts/seed-demo-library.mjs`
+**Scenario**: decision · **Outcome**: ✅ 2,798 IMDb ratings seeded, half-stars converted
+rather than mixed
+**Code changes**: this commit
+
+The owner's list moved from Letterboxd to IMDb — the IMDb account is now an Amazon account,
+and the ratings export is the one thing that still comes straight from IMDb rather than
+through an Amazon data request. The new export is **2,798 titles, every one of them
+scored**: IMDb's ratings list holds only what you rated, so there is no watched-and-unrated
+tail like Letterboxd's 15 of 2,422.
+
+**The bug this would have introduced if the file were just dropped in.** Letterboxd rates
+0.5–5 and IMDb 1–10, and the library merges rows from both services into one
+(`sources: ["letterboxd", "imdb"]`). Held raw, 4.5★ and 9/10 — the same opinion — are two
+different numbers to every comparison: a "rated 4 and up" bar passes an IMDb 4, which is a
+film the reader disliked, and a sort puts a 5 meaning best-possible next to a 5 meaning
+mediocre. There is no later point that could tell them apart, because the merge has already
+happened.
+
+So the conversion is done **once, in the parser**, and the library holds one number meaning
+one thing. Ten is the scale kept because it is the finer of the two: every half-star is a
+whole number out of ten and nothing is lost, where halving IMDb would round 7 and 8 onto the
+same 3.5★.
+
+**The migration needed a marker, not a heuristic.** Every reader has a half-star library in
+localStorage and in `user_media_libraries`. A migration that doubled "any Letterboxd row of
+5 or less" would, run a second time, walk a genuine 0.5★ to 1 and then to 2 — and it runs on
+every read. `ratingScale` on the row says whether it has been converted, so the second pass
+is a no-op. Tested by upgrading three times and asserting the numbers do not move.
+
+**The reader's bar now runs the whole scale, where the public one is narrowed to 5–9.** Not
+inconsistency — the off position. Zero sits one step left of the range so the control reads
+as one line from "everything" to "only the best", and on a scale stepping by one, one step
+below 1 is exactly 0. Starting at 6 would put the off position on 5, a real rating the
+reader could then not ask for. Measured on the export, "this and up" gives 96.7% at 5,
+86.6% at 6, 51.4% at 7, 12.8% at 8, 1.9% at 9 and 0.3% at 10 — so 1 through 4 is 92 of 2,798
+films, a bar almost nobody sets, and the honest shape of a ten-point scale.
+
+The label is **"7/10", never "7★"** — a bare star beside a 7 reads as seven stars out of
+five.
+
+**Still on five**: `app/lib/connectors/letterboxd-rss.mjs` reads `letterboxd:memberRating`
+raw. It writes server-side library rows and never reaches the client library the filters
+read, so the two scales cannot meet today. If that connector is ever wired into the panel it
+must convert first.
+
+---
+
 ## [2026-09-11] fix | Two switches for one idea, and no way to tell if the library was loaded
 
 **Object**: `app/components/SceneMapApp.jsx`, `app/globals.css`

@@ -5,7 +5,7 @@ import { libraryEntryFor, libraryRating } from "../app/lib/media-library.mjs";
 import {
   DEFAULT_SORT,
   NO_MINIMUM,
-  RATING_STEPS,
+  MINE_STEPS,
   SORT,
   impliesLibraryOnly,
   isSortMode,
@@ -15,13 +15,14 @@ import {
   sortWorks,
 } from "../app/lib/library-view.mjs";
 
-// A slice of a real export: the two most common scores, an unrated film, and a 5★.
+// A slice of a real export, on the ten-point scale the library now holds: the two most
+// common scores (7 and 6, together 74% of 2,798 rated titles), an unrated film, and a 10.
 const LIBRARY = [
-  { title: "Forrest Gump", year: 1994, rating: 5 },
-  { title: "The Prestige", year: 2006, rating: 4.5 },
-  { title: "Blade Runner", year: null, rating: 4 },
-  { title: "Old School", year: 2003, rating: 3 },
-  { title: "Léon: The Professional", year: 1994, rating: 4 },
+  { title: "Forrest Gump", year: 1994, rating: 10 },
+  { title: "The Prestige", year: 2006, rating: 9 },
+  { title: "Blade Runner", year: null, rating: 8 },
+  { title: "Old School", year: 2003, rating: 6 },
+  { title: "Léon: The Professional", year: 1994, rating: 8 },
   { title: "Reality", year: 2023, rating: null },
 ];
 
@@ -33,8 +34,8 @@ test("one lookup answers both questions, so they cannot disagree", () => {
   // A sort ordering by one matched row while the filter tested another would be invisible
   // and wrong.
   const entry = libraryEntryFor(work("The Prestige"), LIBRARY);
-  assert.equal(entry.rating, 4.5);
-  assert.equal(libraryRating(work("The Prestige"), LIBRARY), 4.5);
+  assert.equal(entry.rating, 9);
+  assert.equal(libraryRating(work("The Prestige"), LIBRARY), 9);
   assert.equal(libraryEntryFor(work("Dune"), LIBRARY), null);
   assert.equal(libraryRating(work("Dune"), LIBRARY), null);
 });
@@ -42,7 +43,7 @@ test("one lookup answers both questions, so they cannot disagree", () => {
 test("an accented title still matches, because one normaliser is shared", () => {
   // "Léon" through NFKD without the accent strip becomes "leon" against "le on". A
   // library of 2,422 films once matched nothing it should have for exactly this.
-  assert.equal(libraryRating(work("Leon: The Professional"), LIBRARY), 4);
+  assert.equal(libraryRating(work("Leon: The Professional"), LIBRARY), 8);
 });
 
 test("watched and unrated is null, never zero", () => {
@@ -64,7 +65,7 @@ test("sorting by rating puts the best first", () => {
 test("an unrated film sinks below every rated one, including a film the reader disliked", () => {
   // Sorting "never scored" as a zero would put it underneath something actively disliked,
   // which says something the reader did not.
-  const disliked = [...LIBRARY, { title: "Cats", year: 2019, rating: 0.5 }];
+  const disliked = [...LIBRARY, { title: "Cats", year: 2019, rating: 1 }];
   const sorted = sortWorks([work("Reality"), work("Cats"), work("Old School")], {
     by: SORT.rating, library: disliked,
   });
@@ -77,13 +78,13 @@ test("a work that is not in the library at all sorts with the unrated", () => {
 });
 
 test("ties fall through to how much we hold, then to the title", () => {
-  // 3.5★ is the single most common score in a real export and 39.8% of works hold exactly
+  // 7 is the single most common score in a real export and 39.8% of works hold exactly
   // one place, so ties are the normal case, not the edge one. Without a final key the
   // list reshuffles itself between renders.
   const library = [
-    { title: "Alpha", year: null, rating: 4 },
-    { title: "Bravo", year: null, rating: 4 },
-    { title: "Charlie", year: null, rating: 4 },
+    { title: "Alpha", year: null, rating: 8 },
+    { title: "Bravo", year: null, rating: 8 },
+    { title: "Charlie", year: null, rating: 8 },
   ];
   const sorted = sortWorks(
     [work("Charlie", { place_count: 2 }), work("Alpha", { place_count: 2 }), work("Bravo", { place_count: 9 })],
@@ -128,15 +129,15 @@ test("only-mine keeps the library and drops the rest", () => {
 });
 
 test("a minimum rating keeps what clears the bar", () => {
-  const at4 = { library: LIBRARY, minRating: 4 };
-  assert.equal(passesLibraryFilter(work("Forrest Gump"), at4), true);
-  assert.equal(passesLibraryFilter(work("Blade Runner"), at4), true, "exactly at the bar clears it");
-  assert.equal(passesLibraryFilter(work("Old School"), at4), false);
+  const at8 = { library: LIBRARY, minRating: 8 };
+  assert.equal(passesLibraryFilter(work("Forrest Gump"), at8), true);
+  assert.equal(passesLibraryFilter(work("Blade Runner"), at8), true, "exactly at the bar clears it");
+  assert.equal(passesLibraryFilter(work("Old School"), at8), false);
 });
 
 test("an unrated film fails a minimum, and that is the intended reading", () => {
-  // "Show me my 4-star films" is not a request to also see the ones never scored.
-  assert.equal(passesLibraryFilter(work("Reality"), { library: LIBRARY, minRating: 4 }), false);
+  // "Show me my 8s" is not a request to also see the ones never scored.
+  assert.equal(passesLibraryFilter(work("Reality"), { library: LIBRARY, minRating: 8 }), false);
   assert.equal(passesLibraryFilter(work("Reality"), { library: LIBRARY, mineOnly: true }), true);
 });
 
@@ -144,24 +145,26 @@ test("a minimum rating implies only-mine, because it cannot mean anything else",
   // Without this the filter silently drops every film NOT in the library — which is most
   // of the map — and reads as an outage.
   assert.equal(impliesLibraryOnly(NO_MINIMUM), false);
-  assert.equal(impliesLibraryOnly(4), true);
-  assert.equal(passesLibraryFilter(work("Dune"), { library: LIBRARY, minRating: 4, mineOnly: false }), false);
+  assert.equal(impliesLibraryOnly(8), true);
+  assert.equal(passesLibraryFilter(work("Dune"), { library: LIBRARY, minRating: 8, mineOnly: false }), false);
 });
 
-test("the steps are half-stars, because there is no such rating as 3.7", () => {
-  assert.deepEqual(RATING_STEPS, [3, 3.5, 4, 4.5, 5]);
-  for (const step of RATING_STEPS) assert.equal(step * 2, Math.round(step * 2));
+test("the steps are whole points, because there is no such IMDb rating as 7.5", () => {
+  assert.deepEqual(MINE_STEPS, [6, 7, 8, 9, 10]);
+  for (const step of MINE_STEPS) assert.equal(step, Math.round(step));
 });
 
-test("a whole-number rating is not printed with a trailing zero", () => {
-  // "4.0★" reads as a precision Letterboxd does not have.
-  assert.equal(ratingLabel(4), "4★");
-  assert.equal(ratingLabel(4.5), "4.5★");
+test("the reader's rating is printed out of ten, not as stars", () => {
+  // "7★" reads as seven stars out of five. The denominator is the whole point.
+  assert.equal(ratingLabel(7), "7/10");
+  assert.equal(ratingLabel(10), "10/10");
+  // Never "7.0/10" — a trailing zero claims a precision the scale does not have.
+  assert.equal(ratingLabel(7.5), "7.5/10");
   assert.equal(ratingLabel(null), null);
 });
 
 test("the control names its tie-breaker", () => {
-  // A reader who sorts by rating and sees two 4★ films in a row is owed the reason one is
+  // A reader who sorts by rating and sees two 8/10 films in a row is owed the reason one is
   // above the other.
   assert.match(sortLabel(SORT.rating), /then how much we hold/);
   assert.equal(sortLabel(SORT.title), "A–Z");
@@ -178,8 +181,8 @@ test("a premiere and its release are one film", async () => {
   // premiered at Sundance in January 1992 and Letterboxd dates it 1991. Neither side is
   // wrong, and a strict match would drop both from the reader's list.
   const library = [
-    { title: "Kingsman: The Secret Service", year: 2014, rating: 4 },
-    { title: "Reservoir Dogs", year: 1991, rating: 4.5 },
+    { title: "Kingsman: The Secret Service", year: 2014, rating: 8 },
+    { title: "Reservoir Dogs", year: 1991, rating: 9 },
   ];
   assert.ok(libraryEntryFor({ title: "Kingsman: The Secret Service", year: 2015 }, library));
   assert.ok(libraryEntryFor({ title: "Reservoir Dogs", year: 1992 }, library));
@@ -222,7 +225,7 @@ test("the sort follows the year, so two same-titled films keep their own scores"
 
 test("the two rating filters are independent, and both can be on", async () => {
   const { passesImdbFilter } = await import("../app/lib/library-view.mjs");
-  // "Films I rated 4★ AND the world rated 7.5" is a real question and neither filter
+  // "Films I rated 8 AND the world rated 7.5" is a real question and neither filter
   // answers it alone.
   const film = { title: "Heat", year: 1995, imdb: 8.3 };
   assert.equal(passesImdbFilter(film, 7.5), true);
@@ -280,17 +283,20 @@ test("the slider cannot be dragged outside the range", async () => {
 });
 
 test("zero means Any, and is not clamped up to the minimum", async () => {
-  const { NO_MINIMUM, clampImdb, clampStars } = await import("../app/lib/library-view.mjs");
+  const { NO_MINIMUM, clampImdb, clampMine } = await import("../app/lib/library-view.mjs");
   // The one value below the range that has to survive: it is the off position, not a
-  // rating of five.
+  // rating of one.
   assert.equal(clampImdb(0), NO_MINIMUM);
-  assert.equal(clampStars(0), NO_MINIMUM);
+  assert.equal(clampMine(0), NO_MINIMUM);
   assert.equal(clampImdb(""), NO_MINIMUM);
 });
 
-test("stars snap to halves, because there is no such rating as 3.7", async () => {
-  const { clampStars } = await import("../app/lib/library-view.mjs");
-  assert.equal(clampStars(3.7), 3.5);
-  assert.equal(clampStars(3.8), 4);
-  assert.equal(clampStars(9), 5);
+test("the reader's bar snaps to whole points and spans the whole scale", async () => {
+  const { MINE_MAX, MINE_MIN, clampMine } = await import("../app/lib/library-view.mjs");
+  assert.equal(clampMine(7.4), 7);
+  assert.equal(clampMine(7.6), 8);
+  assert.equal(clampMine(99), MINE_MAX);
+  // Clamped UP to the bottom of the range, not down to the off position: 0 is the only
+  // value that means Any, and it is handled above.
+  assert.equal(clampMine(0.4), MINE_MIN);
 });
