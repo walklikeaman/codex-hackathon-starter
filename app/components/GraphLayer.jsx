@@ -147,15 +147,31 @@ function GraphLayer({
       if (!response.ok) return;
       const body = await response.json();
       setData({
-        features: body.features ?? [],
-        candidates: body.candidates ?? [],
-        clustered: Boolean(body.clustered),
-        fictional: body.fictional ?? [],
+        features: Array.isArray(body.features) ? body.features : [],
+        candidates: Array.isArray(body.candidates) ? body.candidates : [],
+        clustered: body.clustered === true,
+        fictional: Array.isArray(body.fictional) ? body.fictional : [],
+        truncated: body.truncated === true,
       });
+      // Every field here is read by the panel, and the panel says "undefined" for any one
+      // that goes missing. The MapLibre rewrite dropped four of them and changed what
+      // `count` meant, which put the literal string "undefined pins" on screen and made the
+      // toggle read 890 while the header 594 px below read 2,480.
       onSummary?.({
-        count: (body.features ?? []).length + (body.candidates ?? []).length,
-        clustered: Boolean(body.clustered),
+        // FEATURES only. Adding the candidates in makes this number disagree with the label
+        // it sits next to, which is the bug it caused.
+        count: body.features?.length ?? 0,
+        candidateCount: body.candidates?.length ?? 0,
+        clustered: body.clustered === true,
+        truncated: body.truncated === true,
+        // The viewport held more than one response can carry. Said out loud, because a map
+        // that draws 1,000 of 4,729 and looks complete is the silent truncation this project
+        // has already shipped once.
+        candidatesTruncated: body.candidates_truncated === true,
         fictional: body.fictional ?? [],
+        // Populated only when the viewport is empty, so the panel can say "nothing here"
+        // and offer somewhere to go.
+        nearest: body.nearest ?? [],
       });
     } catch (error) {
       if (error?.name !== "AbortError") console.error("graph layer failed", error);
