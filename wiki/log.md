@@ -7,6 +7,38 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-11] fix | Two switches for one idea, and no way to tell if the library was loaded
+
+**Object**: `app/components/SceneMapApp.jsx`, `app/globals.css`
+**Scenario**: fix · **Outcome**: ✅ one "only my films", and the map says which set it is
+showing
+**Code changes**: this commit
+
+The owner could not tell whether his own list was loaded or whether the map was showing
+every film we hold — *"не могу понять, подгружена ли моя база фильмов или нет"* — and
+nothing on screen answered it.
+
+**There were TWO "only my films" switches**, for one idea, in two different parts of the
+interface. `libraryMapOnly` narrowed the searched works and the chips; `candidatesMineOnly`
+narrowed the queue pins, from **three levels deep** — Grounded places → Unchecked candidates
+→ a checkbox. Turning one on left the other off, so the map was half-filtered and nothing
+said so. That is the whole reason the question could not be answered by looking.
+
+One switch now, `mineOnly`, driving every layer, and it sits at the top of the panel rather
+than inside it.
+
+**And the state is stated, in both directions.** A filter that silently narrows a map is
+what was being complained about, so the control says which set is on screen:
+
+  no list      "No list loaded — the map is showing every film we hold." + a way to import
+  loaded, off  "Your list is loaded: 2,422 films. The map is showing everything."
+  loaded, on   "2 of 5 here are on your list — the map is narrowed to them."
+
+The empty case is deliberate. "No list yet" was the more confusing of the two silences —
+a reader with nothing imported saw the same interface as one whose import had failed.
+
+**1,333 tests, all passing.**
+
 ## [2026-09-11] ingest | 5,495 IMDb ratings, two rating filters, and a Russian label on an English page
 
 **Object**: `scripts/ingest-imdb-ratings.mjs`, `app/lib/library-view.mjs`,

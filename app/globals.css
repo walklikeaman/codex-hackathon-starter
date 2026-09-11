@@ -3807,3 +3807,43 @@ figcaption a {
 /* The raster stand-in under a loading vector style. Dimmed so the swap is not a flash of a
    bright map, and so it reads as a backdrop rather than the real thing. */
 .basemap-fallback { filter: brightness(0.42) saturate(0.5); }
+
+/* Whether the reader's own list is loaded, stated before any other filter. The owner could
+   not tell whether the map was showing his films or every film we hold, and nothing on
+   screen answered it — the two switches that did exist were in different panels, one of
+   them three levels deep. */
+.mine-filter {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.4rem 0 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+/* On, the control says so in colour as well as in words: a filter that silently narrows a
+   map is the thing being complained about. */
+.mine-filter.is-on {
+  border-color: rgba(240, 168, 60, 0.45);
+  background: rgba(240, 168, 60, 0.08);
+}
+.mine-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.84rem;
+  color: rgba(236, 232, 225, 0.9);
+  cursor: pointer;
+}
+.mine-toggle input { accent-color: #f0a83c; }
+.mine-filter small { font-size: 0.72rem; color: rgba(236, 232, 225, 0.5); line-height: 1.4; }
+.mine-empty { color: rgba(236, 232, 225, 0.55); }
+.mine-import {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #f0a83c;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
