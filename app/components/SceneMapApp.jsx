@@ -75,6 +75,7 @@ import {
   filmsInView,
   filmsInViewLabel,
 } from "../lib/films-in-view.mjs";
+import { notableHere } from "../lib/notable-here.mjs";
 import {
   DEFAULT_SORT,
   IMDB_MAX,
@@ -1468,6 +1469,11 @@ export default function SceneMapApp() {
 
   const filmsHere = useMemo(() => filmsInView(candidatesDrawn), [candidatesDrawn]);
 
+  // What this part of the map is known for. The panel could say how MANY films were in view
+  // and never which ones mattered — "994 films · 2,480 places" is a quantity, and the
+  // question a visitor arrives with is "what is this place famous for".
+  const notable = useMemo(() => notableHere(filmsHere, { limit: 5 }), [filmsHere]);
+
   const visibleLocations = useMemo(
     () => sourceLocations.filter((location) =>
       selectedFilms.includes(location.filmId)
@@ -2755,6 +2761,30 @@ export default function SceneMapApp() {
           </button>
         </div>
 
+
+        {/* What this place is known for, above everything the reader would have to ask for.
+            Ranked by rating AND reach: the rating alone puts a 9.2 with 300 voters above
+            Forrest Gump, and the vote count alone ranks by how many watched rather than by
+            what is worth walking to. See [[notable-here]] for the arithmetic. */}
+        {notable.length > 0 && (
+          <section className="notable-here" aria-label="Best known here">
+            <h2>Known for</h2>
+            <ul>
+              {notable.map((film) => (
+                <li key={film.work_id ?? film.title}>
+                  {film.work_id
+                    ? <a href={workPath({ id: film.work_id, title: film.title })}>{film.title}</a>
+                    : <span>{film.title}</span>}
+                  {film.year ? <span className="notable-year">{film.year}</span> : null}
+                  <span className="notable-rating">{Number(film.imdb).toFixed(1)}</span>
+                  {/* A film seen only on a backlot is a different answer from one seen on
+                      the street, and it is said before anybody walks. */}
+                  {film.on_a_lot_only && <span className="notable-lot">studio lot</span>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* The layers console, behind a disclosure and closed by default.
 

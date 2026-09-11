@@ -4112,3 +4112,42 @@ figcaption a {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .layers-console .graph-layer-panel { border: 0; margin: 0; padding: 0.6rem 0.7rem; }
+
+/* What this place is known for — the first thing worth reading, and short enough that it
+   never competes with the map for the screen. */
+.notable-here { margin-top: 0.8rem; }
+.notable-here h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(247, 183, 51, 0.75);
+}
+.notable-here ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.notable-here li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+.notable-here li:hover { background: rgba(255, 255, 255, 0.06); }
+.notable-here a { color: #f3efe7; text-decoration: none; }
+.notable-here a:hover { text-decoration: underline; }
+.notable-year { font-size: 0.74rem; color: rgba(236, 232, 225, 0.45); }
+.notable-rating {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--accent, #f0a83c);
+}
+.notable-lot {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #b98cff;
+}

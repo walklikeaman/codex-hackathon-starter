@@ -46,6 +46,11 @@ export function filmsInView(features) {
           title: film.title ?? null,
           year: film.year ?? null,
           kind: film.kind ?? null,
+          // Carried through so the panel can rank what is worth seeing here. The same film
+          // arrives on many rows and every row states the same rating, so the first one
+          // wins rather than the last.
+          imdb: film.imdb ?? null,
+          imdb_votes: film.imdb_votes ?? null,
           places: [],
           // A film seen only on a backlot is a different answer from one seen on the
           // street, and the list says which before the reader walks anywhere.
