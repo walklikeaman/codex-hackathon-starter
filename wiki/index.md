@@ -83,3 +83,4 @@ Full rebuild on 22.07.2026 after reading through all the code; kept current sinc
 - `Context/brief-scenemap-design.md` — the original product brief
 - `.planning/codebase/` — 7 reference documents (ARCHITECTURE, CONCERNS…)
 - `wiki/log.md` — the chronicle of decisions (append-only, newest on top)
+- [[fandom-discovery]] — where to read Fandom, and what prose costs

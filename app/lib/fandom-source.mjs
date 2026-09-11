@@ -470,7 +470,34 @@ export function fandomSentence({ real, story, region, storyRegion }, { workTitle
 // a re-run updates rather than duplicates. One consequence worth knowing — two scenes of
 // one film shot at the same address are ONE row, and the later sentence wins.
 export function toSubmission(row, { work, wiki, page, revid, licence }) {
-  const name = String(row?.real ?? "").trim();
+  return fandomSubmission({
+    name: row?.real,
+    area: row?.region ?? null,
+    references: row?.references ?? [],
+    sentence: (nameForSentence) => fandomSentence(row, { workTitle: nameForSentence, wiki, page }),
+  }, { work, wiki, page, revid, licence });
+}
+
+// A place the model read out of prose, with the sentence it quoted to justify it.
+//
+// **The quote is the model's, verbatim, and it has already been checked against the page**
+// — `acceptExtraction` discards a location whose sentence does not appear in the source,
+// character for character. That gate is the reason a model is allowed near this at all,
+// and the sentence stored here is the same one a reader can find on the revision linked
+// beside it. Nothing is generated: a fluent sentence is not evidence that the sentence
+// exists, and this pipeline has shipped that failure once already.
+export function toProseSubmission(location, { work, wiki, page, revid, licence }) {
+  const sentence = String(location?.source_sentence ?? "").trim();
+  if (!sentence) return null;
+  return fandomSubmission({
+    name: location?.place_name,
+    area: location?.area_hint ?? null,
+    sentence: () => sentence,
+  }, { work, wiki, page, revid, licence });
+}
+
+function fandomSubmission({ name: rawName, area, sentence, references = [] }, { work, wiki, page, revid, licence }) {
+  const name = String(rawName ?? "").trim();
   if (!name || !work?.id) return null;
   // A cell that is a sentence rather than a name is left for the geocoder's own rule to
   // refuse; what is refused HERE is a cell that names nothing at all.
@@ -482,7 +509,7 @@ export function toSubmission(row, { work, wiki, page, revid, licence }) {
   return {
     work_id: work.id,
     place_name: name,
-    area_hint: row.region ?? null,
+    area_hint: area,
     source_kind: SOURCE,
     // NOT NULL on the table. It names what a reader is being sent to, and "the wiki page"
     // is the honest description — the link goes to one revision of one fan-written page.
@@ -498,7 +525,7 @@ export function toSubmission(row, { work, wiki, page, revid, licence }) {
     // requires it for this source exactly as it does for Wikipedia — a revision no query
     // can reach is not evidence the review process can use.
     source_revid: Number(revid) > 0 ? Number(revid) : null,
-    source_sentence: fandomSentence(row, { workTitle: work.title, wiki, page }),
+    source_sentence: sentence(work.title),
     status: "pending",
     // No coordinate. Fandom has none, and a point invented during an import is a guess
     // buried where nobody looks — the same rule movie-locations is ingested under.
@@ -508,8 +535,8 @@ export function toSubmission(row, { work, wiki, page, revid, licence }) {
     // sources the fan cited, without re-fetching the page.
     // The independent sources the fan cited, kept where a reviewer sees them without
     // re-fetching the page. The licence is NOT repeated here — it has its own column.
-    status_reason: row.references?.length
-      ? `cites: ${row.references.slice(0, 3).join(" ")}`
+    status_reason: references?.length
+      ? `cites: ${references.slice(0, 3).join(" ")}`
       : null,
   };
 }
