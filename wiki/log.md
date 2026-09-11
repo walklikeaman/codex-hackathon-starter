@@ -7,6 +7,75 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-11] update | One pin, a vector basemap, and a card you can close
+
+**Object**: `app/lib/map-pin.mjs`, `app/lib/map-layers.mjs`, `app/components/SceneMapApp.jsx`,
+`app/components/GraphLayer.jsx`
+**Scenario**: fix + feature · **Outcome**: ✅ one vocabulary, a sharp basemap, and the zoom
+left alone
+**Code changes**: this commit
+
+Five complaints from the owner, every one of them right.
+
+**"Слои выглядят ужасно, как будто очень не современная карта низкого разрешения."** It
+was, and the cause was not taste. CARTO's URL ended `{z}/{x}/{y}{r}.png`, and Leaflet
+expands `{r}` to `@2x` on a high-DPI screen — **we had been serving retina tiles without
+knowing it.** OSM's standard tileset has no @2x, so every tile arrived at 256 px and was
+stretched to 512. Inverting them for a dark theme made it worse: `invert()` on a bitmap
+muddies every colour it touches.
+
+The dark layer is now **vector**, from OpenFreeMap: free, **no key, no signup, no usage
+limit**, rendered on the client, so it is sharp at any zoom and any density by construction.
+Its `dark` style is a dark-matter descendant — background `rgb(12,12,12)` — which is the
+look CARTO had. `maplibre-gl` is ~800 kB and only this layer needs it, so it is imported
+lazily; a reader on satellite never downloads it. **A raster layer holds the ground
+underneath until the vector style reports itself painted**, because WebGL can fail where
+raster never would and a map with no backdrop is worse than a blurry one.
+
+**"Почему одни жёлтые ромбики, а другие кружочки? Не понимаешь, что это означает."** The
+map had grown **three pin systems from three code paths** — an amber diamond for a searched
+work's places, a filled circle for the graph, a hollow circle for the queue — three shapes
+for one idea. [[map-pin]] is now the only place that decides what a pin means, and what
+varies is what actually differs: **the number of films** (printed on it, and its size),
+**whether we checked it** (filled against outlined), **what kind of place** (amber, violet
+for a studio lot), and **whether it is selected** (a ring, which never changes the other
+three).
+
+The legend was replaced with it. The old one listed four nouns — "Filmed here /
+Approximate / Studio / Set here" — beside four dots that matched none of the three shapes
+on screen. It is sentences now, and there is a test that fails if any row shrinks back to a
+label.
+
+**"Просто цифру показывать на этой точке."** Done, and it needed the grouping shipped
+earlier: 566 of the 2,024 Los Angeles points carry more than one film. One film prints
+nothing — a "1" on every pin is noise, and the number exists to mark the points that hide
+something.
+
+**"Нажимаешь — карта отъезжает и отдаляется."** `RecenterOnSelection` flew to a hardcoded
+zoom 12 for a centre and 14 for a place, so clicking a pin at street level threw the reader
+back out to city level. **The zoom is the reader's.** It now pans only when the target is
+outside the middle 60% of the view, and never changes zoom; clicking a candidate pin moves
+the map not at all, since the pin is on screen by definition. The clicked pin also marks
+itself — "непонятно, на что ты нажал" was true, because the popup opened over a cluster
+where every pin still looked the same.
+
+**"Карточку убрать нельзя, крестика нет."** There was no way out of the location card: no
+close control, and clicking the map did not dismiss it. It has a cross now, Escape closes
+it, and a click on empty map does too — Leaflet fires `click` on the map only when nothing
+on it was hit, so it cannot dismiss the card out from under the thing that just opened it.
+
+**"Большая жёлтая зона — не понимаю, что это значит."** The dashed ring means the place is
+known only to the city or region — a dot on Istanbul's centre would invent a doorway no
+source ever claimed. It has always meant that and nothing ever said so; it is in the legend
+now.
+
+**1,329 tests, all passing** (10 new). Verified locally: 66 pins, **zero diamonds**, numbers
+on 12 of them, "107 films · 159 places in view" in the panel, and the popup on the busiest
+point reading "Former Ambassador Hotel · 60 films".
+
+**Paid the `next build` toll a third time.** Running it while `next dev` is up corrupts the
+shared `.next`; it is in [[handoff-local]], and three times in one session is not bad luck.
+
 ## [2026-09-11] update | One pin per place, and the films that were hidden under it
 
 **Object**: `supabase/migrations/20260910231448_one_pin_per_point_carries_its_films.sql`,

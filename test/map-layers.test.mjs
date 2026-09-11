@@ -22,7 +22,12 @@ test("every basemap carries the attribution its provider requires", () => {
   // with its source stripped.
   for (const layer of MAP_LAYERS) {
     assert.ok(layer.attribution && layer.attribution.length > 10, `${layer.id} has no attribution`);
-    assert.match(layer.url, /^https:\/\//, `${layer.id} is not served over https`);
+    // A layer is either raster (`url`) or vector (`vector`, a MapLibre style document),
+    // and exactly one of the two. Both are fetched, so both must be https.
+    const source = layer.url ?? layer.vector;
+    assert.ok(source, `${layer.id} has no tile source`);
+    assert.equal(Boolean(layer.url) !== Boolean(layer.vector), true, `${layer.id} is both raster and vector`);
+    assert.match(source, /^https:\/\//, `${layer.id} is not served over https`);
     assert.ok(layer.maxZoom >= 17, `${layer.id} stops zooming before a building is visible`);
   }
 });
@@ -32,8 +37,10 @@ test("no basemap pulls tiles from a provider that forbids it", () => {
   // MapKit token. The refusal is the same one the project already made about Reelstreets:
   // the terms forbid the act, whether or not anything is sold.
   for (const layer of MAP_LAYERS) {
-    assert.ok(!/google\.com|googleapis|gstatic/.test(layer.url), `${layer.id} uses Google tiles`);
-    assert.ok(!/apple\.com|mapkit/.test(layer.url), `${layer.id} uses Apple tiles`);
+    // Whichever kind the layer is — a vector style is fetched from a host too.
+    const source = layer.url ?? layer.vector ?? "";
+    assert.ok(!/google\.com|googleapis|gstatic/.test(source), `${layer.id} uses Google tiles`);
+    assert.ok(!/apple\.com|mapkit/.test(source), `${layer.id} uses Apple tiles`);
   }
 });
 

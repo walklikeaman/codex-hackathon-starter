@@ -108,7 +108,12 @@ import GraphLayer from "./GraphLayer";
 import SearchBox from "./SearchBox";
 import { ImageAttribution } from "./ImageAttribution";
 import { normalizeAttribution, requiredNotices } from "../lib/attribution.mjs";
-import { BADGE_STYLES } from "../lib/map-layer.mjs";
+import { PIN_LEGEND, pinHtml, pinSize } from "../lib/map-pin.mjs";
+
+// The ground under the vector style while it loads, and the map itself if WebGL fails.
+// OSM's own raster, dimmed by CSS rather than inverted — it is a stand-in for a second or
+// two, not a theme.
+const VECTOR_FALLBACK_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 import { RATING_LABELS } from "../lib/work-ratings.mjs";
 
 const londonCenter = [51.5094, -0.1183];
@@ -437,15 +442,35 @@ function moveMap(map, center, zoom) {
   map.flyTo(center, zoom, { duration: 0.8 });
 }
 
+// Moving to a selection must never change the ZOOM.
+//
+// It flew to a hardcoded 12 for a centre and 14 for a place, so clicking a pin at street
+// level threw the reader back out to city level — "карта отъезжает и отдаляется", and it
+// did, every time. The zoom is the reader's: they set it deliberately, and nothing here
+// has a better opinion about how close they want to be.
+//
+// And it only PANS when it has to. A pin you just clicked is on screen by definition;
+// sliding the map under the cursor moves the thing being pointed at. So a point already
+// comfortably in view is left exactly where it is.
+function panWithoutZooming(map, target) {
+  if (!isLatLng(target) || !mapHasSize(map)) return;
+  const point = L.latLng(target);
+  // The middle 60% of the viewport. A point near the edge is nudged in — its popup would
+  // otherwise open off-screen — and one already central is not touched.
+  const bounds = map.getBounds().pad(-0.2);
+  if (bounds.contains(point)) return;
+  map.panTo(point, { animate: true, duration: 0.4 });
+}
+
 function RecenterOnSelection({ center, position }) {
   const map = useMap();
 
   useEffect(() => {
-    moveMap(map, center, 12);
+    panWithoutZooming(map, center);
   }, [center, map]);
 
   useEffect(() => {
-    moveMap(map, position, 14);
+    panWithoutZooming(map, position);
   }, [map, position]);
 
   return null;
@@ -542,16 +567,30 @@ function RefreshLocationsOnViewport({ onViewportChange, onBoundsChange }) {
   return null;
 }
 
-// A candidate pin is drawn hollow, and that is a claim about evidence, not a style.
-// A solid pin here means somebody stated this place belongs to this work; a candidate
-// means only that the place's article mentions it. Two facts that different, sharing
-// one symbol, is the map telling a person something we have not verified.
+// The SAME pin the queue layer draws. There is no second vocabulary any more.
+//
+// This path drew an amber diamond while the graph and queue layers drew circles — three
+// shapes for one idea, from three code paths that never met. The owner's verdict was the
+// whole argument: "почему одни жёлтые ромбики, а другие кружочки? Не понимаешь, что это
+// означает." What a pin MEANS now lives in [[map-pin]] and nowhere else.
+//
+// A location on this path is one film's place, so it carries no count — the number is
+// reserved for points where several films are stacked, which is the thing it exists to
+// reveal.
 function makeMarkerIcon(selected, nearest, kind, candidate) {
+  const size = pinSize(1);
   return L.divIcon({
     className: "",
-    html: `<span class="scene-pin kind-${kind}${selected ? " is-selected" : ""}${nearest ? " is-nearest" : ""}${candidate ? " is-candidate" : ""}"><span></span></span>`,
-    iconSize: [34, 42],
-    iconAnchor: [17, 34],
+    html: pinHtml({
+      filmCount: 1,
+      // Hollow is a claim about evidence, not a style: solid means somebody stated this
+      // place belongs to this work, hollow means only that an article mentions it.
+      checked: !candidate,
+      narrative: kind === "narrative",
+      selected: selected || nearest,
+    }),
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
 }
 
@@ -585,6 +624,69 @@ const userIcon = L.divIcon({
 // This is the same family as the zero-sized-container bug in [[place-card]], where Leaflet
 // answered `getBounds()` on an unlaid-out map and the panel printed "No places in view"
 // over five pins.
+// The vector basemap, rendered by MapLibre inside the Leaflet map.
+//
+// `maplibre-gl` is ~800 kB and only this layer needs it, so it is imported **lazily** —
+// a reader who stays on satellite or street never downloads it. That is also why this is
+// a component rather than a branch inside <TileLayer>: the import has to happen after the
+// layer is chosen, not while the module is being evaluated.
+function VectorBasemap({ style, attribution, onReady }) {
+  const map = useMap();
+
+  useEffect(() => {
+    let layer = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [{ default: maplibregl }] = await Promise.all([
+          import("maplibre-gl"),
+          import("@maplibre/maplibre-gl-leaflet"),
+        ]);
+        if (cancelled) return;
+        // The plugin attaches itself to the Leaflet global as `L.maplibreGL`.
+        layer = L.maplibreGL({ style, attribution, maplibregl });
+        layer.addTo(map);
+        // Only once the style is actually painted. WebGL can fail on a machine or a
+        // browser that Leaflet raster never would — a blocked context, an old GPU
+        // driver — and a map with no backdrop at all is worse than a blurry one.
+        const gl = layer.getMaplibreMap?.();
+        if (gl?.once) gl.once("load", () => { if (!cancelled) onReady?.(); });
+        else onReady?.();
+      } catch (error) {
+        // A basemap that fails must not take the pins with it, and must not leave the map
+        // blank: `onReady` is never called, so the raster underneath stays visible.
+        console.error("Vector basemap failed to load", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (layer) map.removeLayer(layer);
+    };
+  }, [map, style, attribution, onReady]);
+
+  return null;
+}
+
+// Clicking the map itself puts the card away.
+//
+// Leaflet fires `click` on the map only when nothing on it was hit — a pin, a circle or a
+// popup swallows the event first — so this cannot dismiss the card out from under the
+// thing that just opened it. Escape does the same, because a reader who wants the map
+// clean should not have to hunt for a target.
+function DismissOnMapClick({ onDismiss }) {
+  useMapEvents({ click: () => onDismiss?.() });
+
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape") onDismiss?.(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onDismiss]);
+
+  return null;
+}
+
 function InvalidateOnResize() {
   const map = useMap();
 
@@ -912,6 +1014,10 @@ export default function SceneMapApp() {
   // film chips beside it: those are what somebody SEARCHED for, this is what the map is
   // showing, and it changes as the map moves.
   const [candidatesDrawn, setCandidatesDrawn] = useState([]);
+  // Whether the vector basemap has actually painted. Until it has, a raster layer holds
+  // the ground so a WebGL failure never leaves the map empty.
+  const [vectorReady, setVectorReady] = useState(false);
+  const markVectorReady = useCallback(() => setVectorReady(true), []);
   const [filmsViewMode, setFilmsViewMode] = useState(DEFAULT_VIEW_MODE);
   // How the film list is ordered, and the bar a film must clear to appear at all.
   //
@@ -2358,19 +2464,43 @@ export default function SceneMapApp() {
           minZoom={3}
           maxZoom={19}
           zoomControl={false}
-          className={basemap.filter ? "map-dark" : undefined}
+          className={basemap.vector ? "map-vector" : undefined}
         >
           {/* Keyed by id so Leaflet replaces the layer instead of mutating the one it
               has: without the key the attribution of the previous provider stays on
               screen under the new provider's tiles, which is an attribution bug rather
               than a cosmetic one. */}
-          <TileLayer
-            key={basemap.id}
-            attribution={basemap.attribution}
-            url={basemap.url}
-            maxZoom={basemap.maxZoom}
-          />
+          {/* A vector layer needs WebGL, which can fail where raster tiles would not — a
+              blocked context, an old driver, a browser with it switched off. So the raster
+              is drawn UNDERNEATH until the vector style reports itself painted, and a
+              machine that cannot render vector keeps a working map instead of a blank one.
+              One extra tile fetch buys that. */}
+          {basemap.vector && !vectorReady && (
+            <TileLayer
+              key={`${basemap.id}-fallback`}
+              attribution={basemap.attribution}
+              url={VECTOR_FALLBACK_URL}
+              maxZoom={basemap.maxZoom}
+              className="basemap-fallback"
+            />
+          )}
+          {basemap.vector ? (
+            <VectorBasemap
+              key={basemap.id}
+              style={basemap.vector}
+              attribution={basemap.attribution}
+              onReady={markVectorReady}
+            />
+          ) : (
+            <TileLayer
+              key={basemap.id}
+              attribution={basemap.attribution}
+              url={basemap.url}
+              maxZoom={basemap.maxZoom}
+            />
+          )}
           <InvalidateOnResize />
+          <DismissOnMapClick onDismiss={() => setActiveLocation(null)} />
           <RecenterOnSelection center={mapCenter} position={activeLocation?.position} />
           <FitRoute positions={routePositions} />
           <FlyToUser position={userPosition} radius={nearbyRadius} />
@@ -2452,10 +2582,10 @@ export default function SceneMapApp() {
               showStudioLots={studioLotsOn}
               isMine={candidateIsMine}
               onSummary={setGraphSummary}
-              onSelect={(feature) => {
-                const [lng, lat] = feature.geometry?.coordinates ?? [];
-                if (Number.isFinite(lat) && Number.isFinite(lng)) setMapCenter([lat, lng]);
-              }}
+              // Clicking a pin opens its popup and moves nothing. The pin is on screen —
+              // that is how it got clicked — and sliding the map out from under the cursor
+              // is the behaviour being complained about, not a nicety on top of it.
+              onSelect={() => {}}
             />
           )}
           {routePositions.length > 1 && (
@@ -2556,12 +2686,35 @@ export default function SceneMapApp() {
 
           {graphLayerOn && (
             <>
-              <ul className="graph-legend">
-                {["exact", "approximate", "studio", "narrative"].map((badge) => (
-                  <li key={badge} className={`legend-item badge-${badge}`}>
-                    <span aria-hidden="true" className="legend-dot" />
-                    <span className="legend-label">{BADGE_STYLES[badge].label}</span>
-                    <span className="legend-hint">{BADGE_STYLES[badge].hint}</span>
+              {/* The legend explains the ONE pin, in sentences. The old one listed four
+                  nouns — "Filmed here / Approximate / Studio / Set here" — beside four
+                  coloured dots that did not match the three different pin shapes actually
+                  on the map. A reader could not decode it, and said so. */}
+              <ul className="pin-legend">
+                {PIN_LEGEND.map((row) => (
+                  <li key={row.text}>
+                    {row.kind === "area" ? (
+                      <span aria-hidden="true" className="legend-area" />
+                    ) : row.kind === "count" ? (
+                      <span
+                        aria-hidden="true"
+                        // eslint-disable-next-line react/no-danger
+                        dangerouslySetInnerHTML={{ __html: pinHtml({ filmCount: 12, checked: false }) }}
+                      />
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        // eslint-disable-next-line react/no-danger
+                        dangerouslySetInnerHTML={{
+                          __html: pinHtml({
+                            filmCount: 1,
+                            checked: row.checked,
+                            depicts_elsewhere: row.kind === "studio",
+                          }),
+                        }}
+                      />
+                    )}
+                    <span>{row.text}</span>
                   </li>
                 ))}
               </ul>
@@ -3388,6 +3541,17 @@ export default function SceneMapApp() {
 
       {activeLocation && (
         <section className="location-sheet" aria-label="Location details">
+          {/* A way out. The card had none — no cross, and clicking the map did not dismiss
+              it — so a reader who wanted to look at the map itself could not get rid of it.
+              Escape closes it too, because that is what Escape is for. */}
+          <button
+            type="button"
+            className="sheet-close"
+            aria-label="Close this place"
+            onClick={() => setActiveLocation(null)}
+          >
+            ×
+          </button>
           <div className="sheet-media">
             {(() => {
               const heroSrc = activeFilmImage ?? activeLocation.now;

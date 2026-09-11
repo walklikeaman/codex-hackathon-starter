@@ -2,9 +2,10 @@
 
 import L from "leaflet";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CircleMarker, Popup, Tooltip, useMap, useMapEvents } from "react-leaflet";
+import { CircleMarker, Marker, Popup, Tooltip, useMap, useMapEvents } from "react-leaflet";
 
 import { workPath } from "../lib/work-url.mjs";
+import { pinHtml, pinSize } from "../lib/map-pin.mjs";
 
 import {
   candidateClusterStyle,
@@ -44,6 +45,10 @@ export default function GraphLayer({
   // One shared canvas for every marker in this layer.
   const renderer = useMemo(() => L.canvas({ padding: 0.5 }), []);
   const [data, setData] = useState({ features: [], candidates: [], clustered: false, fictional: [] });
+  // Which point's popup is open. Without it a reader cannot tell WHICH pin they hit — the
+  // popup appears near a cluster of pins and every one of them still looks the same, which
+  // is the "непонятно, на что ты нажал" complaint exactly.
+  const [openPoint, setOpenPoint] = useState(null);
   const requestRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -214,20 +219,38 @@ export default function GraphLayer({
           );
         }
 
+        // One shape for every place, with the count printed on it. Canvas circles could
+        // not hold text, and the count is the thing the reader most needs: 566 of the
+        // 2,024 Los Angeles points carry more than one film and the busiest carries 96.
+        const pointKey = `${lat},${lng}`;
+        const isOpen = openPoint === pointKey;
+        const size = pinSize(props.work_count);
+        const icon = L.divIcon({
+          className: "",
+          html: pinHtml({
+            filmCount: props.work_count,
+            checked: props.status === "verified",
+            depicts_elsewhere: props.depicts_elsewhere,
+            selected: isOpen,
+          }),
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2],
+        });
+
         return (
-          <CircleMarker
+          <Marker
             key={`candidate-${lat}-${lng}-${index}`}
-            center={[lat, lng]}
-            renderer={renderer}
-            pathOptions={candidateStyle(feature, { selected: false })}
-            eventHandlers={{ click: () => onSelect?.(feature) }}
+            position={[lat, lng]}
+            icon={icon}
+            // The marker is raised while its popup is open, so it is not buried under the
+            // neighbours it was picked out of.
+            zIndexOffset={isOpen ? 1000 : 0}
+            eventHandlers={{
+              click: () => onSelect?.(feature),
+              popupopen: () => setOpenPoint(pointKey),
+              popupclose: () => setOpenPoint((current) => (current === pointKey ? null : current)),
+            }}
           >
-            {/* The count on the pin, not only inside it. A point holding 96 films looks
-                like a point holding one until you click it, and the whole reason this
-                layer groups by coordinate is that 71% of the rows were hidden. */}
-            {props.work_count > 1 && (
-              <Tooltip direction="top" opacity={0.9}>{props.work_count}</Tooltip>
-            )}
             <Popup maxHeight={280}>
               <strong>{props.name}</strong>
               <br />
@@ -244,9 +267,9 @@ export default function GraphLayer({
                   <small>{props.area_hint}</small>
                 </>
               )}
-              {/* The films themselves. This is the answer to "what was shot here", and
-                  before the grouping it was unreachable — every film after the first was
-                  drawn underneath the pin you could see. */}
+              {/* The films themselves. Before the points were grouped this was
+                  unreachable — every film after the first was drawn underneath the pin
+                  you could see. */}
               <ul className="point-films">
                 {props.films.map((film) => (
                   <li key={`${film.work_id}-${film.place_name}`}>
@@ -257,15 +280,13 @@ export default function GraphLayer({
                   </li>
                 ))}
               </ul>
-              {/* Says so rather than printing its own cap as the number we hold — the
-                  silent truncation this project has already shipped once. */}
               {props.films_truncated && (
                 <small>Showing {props.films.length} of {props.work_count} — open the place to see them all.</small>
               )}
               <br />
               <small>{candidateSummary(props)}</small>
             </Popup>
-          </CircleMarker>
+          </Marker>
         );
       })}
     </>
