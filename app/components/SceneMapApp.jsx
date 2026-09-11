@@ -1355,6 +1355,33 @@ export default function SceneMapApp() {
     }, 400);
   }, [refreshVisibleMap]);
 
+  // A queue point, turned into the shape the sheet reads. The sheet was written for a
+  // searched work's location, which carries a film and a scene; a queue point carries a
+  // place and a LIST of films, so the best-known of them names the card and the rest stay
+  // in the card on the map where they were already listed.
+  const openPlaceFromFeature = useCallback((feature) => {
+    const props = feature?.properties ?? {};
+    const [lng, lat] = feature?.geometry?.coordinates ?? [];
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    const films = Array.isArray(props.films) ? props.films : [];
+    const lead = films[0] ?? {};
+
+    setActiveLocation({
+      id: `point-${lat},${lng}`,
+      film: lead.title ?? props.name ?? "This place",
+      kind: lead.kind === "series" ? "series" : "film",
+      scene: props.name ?? "Filming location",
+      place: props.name ?? null,
+      position: [lat, lng],
+      // Hollow means a source named it and nobody on our side has checked it. The sheet
+      // must not present a queue row as a fact.
+      isCandidate: props.status !== "verified",
+      display: "point",
+      now: null,
+    });
+  }, []);
+
   const chooseBasemap = useCallback((id) => {
     setBasemapId(layerById(id).id);
     if (typeof window !== "undefined") writeStoredLayerId(window.localStorage, id);
@@ -2612,6 +2639,10 @@ export default function SceneMapApp() {
               // that is how it got clicked — and sliding the map out from under the cursor
               // is the behaviour being complained about, not a nicety on top of it.
               onSelect={NOTHING_ON_SELECT}
+              // The card answers "what is this?" beside the pin. This is the way into
+              // everything else a place holds — the voice guide, the frames, the route —
+              // and it is a destination, not the default.
+              onOpenPlace={openPlaceFromFeature}
             />
           )}
 

@@ -112,6 +112,10 @@ function GraphLayer({
   kinds = null,
   selectedPlaceId = null,
   onSelect,
+  // Opens the full sheet for a place. Called from the card's own button rather than from
+  // the click, so a click answers "what is this?" without covering the map with everything
+  // a place can hold.
+  onOpenPlace,
   onSummary,
   onCandidatesInView,
   // The queue layer. Off by default: every caller written before it existed keeps drawing
@@ -253,7 +257,12 @@ function GraphLayer({
     map.flyTo({ center: coordinates, zoom: Math.min(map.getZoom() + 3, 17) });
   }, [map]);
 
-  const openProps = openPoint?.properties ?? null;
+  // `openPoint` is `{ feature, kind, key }` — the feature is INSIDE it. Reading
+  // `openPoint.properties` gave `undefined`, so `openProps` was null and the first
+  // `openProps.name` in the card threw. Every click on a queue pin took the whole map down
+  // to the error boundary, and it did it in production, because the popup is the only thing
+  // that reads this and nothing else does.
+  const openProps = openPoint?.feature?.properties ?? null;
 
   return (
     <>
@@ -328,6 +337,15 @@ function GraphLayer({
               )}
               <br />
               <small>{candidateSummary(openProps)}</small>
+              {onOpenPlace && (
+                <button
+                  type="button"
+                  className="popup-open-place"
+                  onClick={() => onOpenPlace(openPoint.feature)}
+                >
+                  Open this place
+                </button>
+              )}
             </>
           ) : (
             <>
