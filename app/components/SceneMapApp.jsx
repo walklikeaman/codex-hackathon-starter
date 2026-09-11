@@ -1012,7 +1012,13 @@ export default function SceneMapApp() {
   // tell the two apart at a glance; an empty map tells them nothing at all.
   const [candidatesOn, setCandidatesOn] = useState(true);
   const [studioLotsOn, setStudioLotsOn] = useState(true);
-  const [candidatesMineOnly, setCandidatesMineOnly] = useState(false);
+  // ONE "only my films" switch, for every layer.
+  //
+  // There were two — `libraryMapOnly` over the searched works and the chips, and
+  // `candidatesMineOnly` over the queue pins — in two different parts of the interface,
+  // three levels deep. The owner could not tell whether his library was loaded or whether
+  // the map was showing everything, which is exactly what two switches for one idea does.
+  const [mineOnly, setMineOnly] = useState(false);
   // What is on screen right now, and how the reader wants to read it. Separate from the
   // film chips beside it: those are what somebody SEARCHED for, this is what the map is
   // showing, and it changes as the map moves.
@@ -1181,7 +1187,7 @@ export default function SceneMapApp() {
   const [library, setLibrary] = useState(() => readStoredLibrary(GUEST_LIBRARY_KEY));
   const [libraryQuery, setLibraryQuery] = useState("");
   const [importMessage, setImportMessage] = useState("");
-  const [libraryMapOnly, setLibraryMapOnly] = useState(false);
+
   const [recreateLocation, setRecreateLocation] = useState(null);
 
   useEffect(() => {
@@ -1478,7 +1484,7 @@ export default function SceneMapApp() {
   // A minimum rating is a statement about films the reader has rated, so it can only
   // describe a subset of their list. Turning it on turns the list filter on with it,
   // rather than silently dropping every film that is not in the library.
-  const effectiveMineOnly = libraryMapOnly || impliesLibraryOnly(minRating);
+  const effectiveMineOnly = mineOnly || impliesLibraryOnly(minRating);
 
   const mapFilms = useMemo(() => {
     const kept = films.filter((film) => (
@@ -1561,7 +1567,7 @@ export default function SceneMapApp() {
   const candidateIsMine = useMemo(() => {
     const wantsRating = impliesLibraryOnly(minRating);
     const wantsImdb = Number(minImdb) > NO_MINIMUM;
-    const wantsLibrary = (candidatesMineOnly || wantsRating) && library.length > 0;
+    const wantsLibrary = (mineOnly || wantsRating) && library.length > 0;
     if (!wantsLibrary && !wantsImdb) return null;
 
     // The public bar applies with or without a library; the personal one cannot. Both are
@@ -1574,9 +1580,9 @@ export default function SceneMapApp() {
     // work with its own title and year.
     return (film) => passesImdbFilter(film, minImdb) && passesLibraryFilter(
       { title: film?.title ?? "", year: film?.year ?? null },
-      { library, mineOnly: candidatesMineOnly || wantsRating, minRating },
+      { library, mineOnly: mineOnly || wantsRating, minRating },
     );
-  }, [candidatesMineOnly, library, minRating, minImdb]);
+  }, [mineOnly, library, minRating, minImdb]);
 
   // The address bar follows the map, so whatever is on screen can be sent to somebody.
   // `replaceState`, never `pushState`: a map is dragged continuously and every nudge would
@@ -1601,17 +1607,17 @@ export default function SceneMapApp() {
   const visibleLocations = useMemo(
     () => sourceLocations.filter((location) =>
       selectedFilms.includes(location.filmId)
-        && (!libraryMapOnly || libraryFilmIds.has(location.filmId)),
+        && (!mineOnly || libraryFilmIds.has(location.filmId)),
     ),
-    [libraryFilmIds, libraryMapOnly, selectedFilms, sourceLocations],
+    [libraryFilmIds, mineOnly, selectedFilms, sourceLocations],
   );
 
   useEffect(() => {
-    if (!libraryMapOnly) return;
+    if (!mineOnly) return;
     if (!visibleLocations.some((location) => location.id === activeLocation?.id)) {
       setActiveLocation(visibleLocations[0] ?? null);
     }
-  }, [activeLocation?.id, libraryMapOnly, visibleLocations]);
+  }, [activeLocation?.id, mineOnly, visibleLocations]);
 
   // Places and films counted apart (#160). The panel used to say only how many rows it was
   // listing, so "we hold little here" and "you are zoomed too far out" looked identical.
@@ -1881,7 +1887,7 @@ export default function SceneMapApp() {
       const nextLibrary = mergeLibraries(library, imported);
       const inCity = films.filter((film) => workIsInLibrary(film, nextLibrary)).length;
       setLibrary(nextLibrary);
-      setLibraryMapOnly(true);
+      setMineOnly(true);
 
       // Against the CATALOGUE, not against the city in view. Comparing 2,422 titles with
       // the eleven films the map happened to be drawing in London is how this reported
@@ -1917,7 +1923,7 @@ export default function SceneMapApp() {
 
   function clearLibrary() {
     setLibrary([]);
-    setLibraryMapOnly(false);
+    setMineOnly(false);
     setImportMessage("Your local movie list was cleared.");
   }
 
@@ -2993,16 +2999,10 @@ export default function SceneMapApp() {
                       Studio lots and backlots
                     </label>
 
-                    {library.length > 0 && (
-                      <label className="candidate-switch">
-                        <input
-                          type="checkbox"
-                          checked={candidatesMineOnly}
-                          onChange={(event) => setCandidatesMineOnly(event.target.checked)}
-                        />
-                        Only films from my list ({library.length})
-                      </label>
-                    )}
+                    {/* "Only my films" used to live here as a SECOND switch, three levels
+                        deep, governing the pins while another one governed the chips. It is
+                        one switch now and it sits at the top of the panel, where a reader
+                        can see whether their list is loaded at all. */}
 
                     {graphSummary?.candidatesTruncated && (
                       <p className="graph-note">
@@ -3158,24 +3158,39 @@ export default function SceneMapApp() {
             filter on what the map shows belongs beside the map, next to the works
             it filters. It appears only once there is a list to filter by; an empty
             toggle is a question the visitor cannot answer. */}
-        {library.length > 0 && (
-          <div className="library-filter">
-            <button
-              type="button"
-              className={`library-filter-toggle${libraryMapOnly ? " is-on" : ""}`}
-              onClick={() => setLibraryMapOnly((current) => !current)}
-              aria-pressed={libraryMapOnly}
-            >
-              <Film size={15} aria-hidden="true" />
-              {libraryMapOnly ? "Only my list" : "All stories"}
-            </button>
-            <small>
-              {libraryMapOnly
-                ? `${libraryFilmIds.size} of ${films.length} ${films.length === 1 ? "story" : "stories"} here are on your list`
-                : `${library.length} in your list`}
+        {/* Whether the reader's own list is loaded, said before anything else — the owner
+            could not tell whether the map was showing his films or every film we hold, and
+            nothing on screen answered it. It is stated when there is a list AND when there
+            is not, because "no list yet" is the more confusing of the two silences. */}
+        <div className={`mine-filter${mineOnly ? " is-on" : ""}`}>
+          {library.length > 0 ? (
+            <>
+              <label className="mine-toggle">
+                <input
+                  type="checkbox"
+                  checked={mineOnly}
+                  onChange={(event) => setMineOnly(event.target.checked)}
+                />
+                <Film size={15} aria-hidden="true" />
+                <span>Only my films</span>
+              </label>
+              <small>
+                {mineOnly
+                  // What the filter is actually doing, in the two numbers that differ.
+                  ? `${libraryFilmIds.size} of ${films.length} here are on your list — the map is narrowed to them`
+                  : `Your list is loaded: ${library.length} films. The map is showing everything.`}
+              </small>
+            </>
+          ) : (
+            <small className="mine-empty">
+              No list loaded — the map is showing every film we hold.{" "}
+              <button type="button" className="mine-import" onClick={() => setAccountOpen(true)}>
+                Import your Letterboxd export
+              </button>{" "}
+              to filter by your own films and ratings.
             </small>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Order and bar, beside the list they act on. Sorting lives here rather than in
             the queue panel because it orders THESE chips — a control far from the thing
@@ -3993,12 +4008,12 @@ export default function SceneMapApp() {
               <span>{library.filter((movie) => movie.rating !== null).length} rated</span>
               <button
                 type="button"
-                className={libraryMapOnly ? "is-selected" : ""}
-                onClick={() => setLibraryMapOnly((current) => !current)}
+                className={mineOnly ? "is-selected" : ""}
+                onClick={() => setMineOnly((current) => !current)}
                 disabled={library.length === 0}
-                aria-pressed={libraryMapOnly}
+                aria-pressed={mineOnly}
               >
-                {libraryMapOnly ? `${libraryFilmIds.size} mapped on map` : "Show library on map"}
+                {mineOnly ? `${libraryFilmIds.size} mapped on map` : "Show library on map"}
               </button>
             </div>
 
