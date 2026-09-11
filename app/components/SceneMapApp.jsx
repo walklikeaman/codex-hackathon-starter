@@ -743,10 +743,18 @@ function VectorBasemap({ style, attribution, onReady }) {
 
     (async () => {
       try {
-        const [{ default: maplibregl }] = await Promise.all([
+        // `mod.default ?? mod`, not `{ default: … }` — and this line is why the map has
+        // been raster since the vector layer was written. Destructuring the default gave
+        // `undefined` here, so `L.maplibreGL({ maplibregl: undefined })` failed, the catch
+        // below logged it where nobody was looking, and the raster fallback underneath kept
+        // drawing. A vector layer that never renders does not look broken; it looks like the
+        // raster. That is what "низкое разрешение / не выглядит красивой" actually was: OSM's
+        // 256 px tiles upscaled, because the vector style behind them had never once drawn.
+        const [mod] = await Promise.all([
           import("maplibre-gl"),
           import("@maplibre/maplibre-gl-leaflet"),
         ]);
+        const maplibregl = mod.default ?? mod;
         if (cancelled) return;
 
         // The same worker fix the standalone MapLibre map needs (#202). MapLibre spawns its
