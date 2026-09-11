@@ -45,6 +45,24 @@ jobs die with it), and the MCP servers disconnected and reconnected several time
 **The rule this gives**: a step whose acceptance is *"the reader sees X"* is a local step.
 A step whose acceptance is *"the database returns X"* can be done from anywhere.
 
+## The browser pane can report a map of size zero
+
+Twice now the map has looked empty in the browser pane while being perfectly correct: the
+candidate layer draws nothing, the films panel is null, and only the searched-work pins
+survive. The cause is not the app. `window.innerWidth` and `innerHeight` both read **0** in
+a pane that is not painting, so `.leaflet-container` is 0x0 and the viewport query is
+degenerate — which the layer refuses, as it should.
+
+The fix is one call before reading anything:
+
+```
+resize_window { width: 1280, height: 900, tabId: ... }
+```
+
+With a real viewport the same page drew **1,008** pins. Reset with `preset: "desktop"` when
+finished. So: an empty map in the pane is a claim about the pane until `innerWidth` has been
+read and found non-zero.
+
 ## Running it locally
 
 ```bash
