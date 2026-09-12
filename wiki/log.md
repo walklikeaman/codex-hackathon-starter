@@ -7,6 +7,65 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-12] ingest | Fandom had produced no pins at all, and two halves of it were not talking
+
+**Object**: `scripts/ingest-fandom.mjs`, `scripts/geocode-submissions.mjs`,
+`app/lib/place-name-head.mjs`
+**Scenario**: ingest · **Outcome**: ✅ Fandom goes from 0 placed rows to 11; the ingest reads
+the pages Wikidata names; four wikis instead of two
+**Code changes**: this commit
+
+Asked what was next for Fandom, the measurement answered something nobody had asked:
+**every row it had ever produced was invisible.** 158 rows sat `pending` with no coordinate
+and 146 had never been through a geocoder at all. The ingest sets `lat: null` on purpose —
+*"a point invented during an import is a guess buried where nobody looks"* — and that is
+right, but the other half, a pass that asks a gazetteer, had never been run for this source.
+
+**All 242 wikis were probed.** Four yield rows — lotr 22, jamesbond 18, gameofthrones 8,
+ghostbusters 6 — and 230 give nothing. The number that explains it: **150 of the 234
+reachable wikis hold exactly one of our works.** They are wikis of single franchises,
+single series, even single distributors. `memory-alpha` and `jedipedia` refuse themselves on
+licence.
+
+**Adding ghostbusters then yielded zero, and that exposed the real gap.** Discovery asks
+Wikidata for the exact page of each work (P6262); the ingest asked the wiki's search engine
+for "filming location" and took what came back. Six rows to one pass and none to the other,
+on the same day, from the same wiki.
+
+Fixed — and the fix immediately exposed its own second half: the pages arrived and all four
+were dropped as *matching no work*. **The ingest was throwing away knowledge it already
+held**, re-deriving the work from the page title when the mapping had just told it. That is
+not only recall: "Ghostbusters (2016 Movie)" now attaches to the right film through its IMDb
+id, where a title match could have handed it to the 1984 one.
+
+**The work's own placed rows are an area the row never had to name.** Fandom's failure was
+`no_area_to_check_against` (58) and `area_unknown` (14) — intrinsic, because a Fandom table
+names the country the SCENE is set in, not where the camera was, and the ingest is right not
+to hand that to a geocoder. But those rows belong to 15 works and **all 15 already hold
+placed rows**, 217 points between them. Somerset House for Dr. No is checked against the
+twenty other London points that film already has.
+
+Allowed where `area_hint` is not: `near` must come from the request rather than from a
+model, and this comes from the catalogue. It is a sanity check, not a precision tool — a
+film shoots across continents, so a sibling says "somewhere this film was" and nothing
+narrower.
+
+One more gate had to move: `no_area_to_check_against` is returned by `splitPlacePhrase` and
+ended the row **before** the anchor could be reached. Those 58 were exactly the rows the
+anchor was built for.
+
+| | before | after |
+|---|---|---|
+| accepted | 1 of 158 (0.6%) | **12 of 237 (5.1%)** |
+| `no_area_to_check_against` | 58 | **0** |
+| `area_unknown` | 14 | **0** |
+| by sibling anchor | — | **10** |
+
+What remains is `head_unknown` at 193, and it is the source's own shape: Fandom names things
+like "Gary Rowe's house" and "CMGN Hamburg Printing Factory", which no gazetteer holds.
+
+---
+
 ## [2026-09-12] fix | A finished wiki is written before the next one is touched
 
 **Object**: `scripts/ingest-fandom.mjs`

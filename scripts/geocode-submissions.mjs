@@ -28,7 +28,7 @@ import { createGeocoder } from "../app/lib/geocode-client.mjs";
 import { WIKIDATA_LICENSE, cacheRow } from "../app/lib/geocode-wikidata.mjs";
 import { normalizePlaceName } from "../app/lib/place-dedup.mjs";
 import {
-  anchorsFrom, headIsInsideAnyCandidate, radiusForAreaIndex, splitPlacePhrase,
+  AREA_RADIUS_KM, anchorsFrom, headIsInsideAnyCandidate, radiusForAreaIndex, splitPlacePhrase,
 } from "../app/lib/place-name-head.mjs";
 
 const args = process.argv.slice(2);
@@ -50,7 +50,7 @@ const PAGE = 1000;
 
 async function readPage(offset, size) {
   const filters = [
-    "select=id,place_name,area_hint,source_kind",
+    "select=id,work_id,place_name,area_hint,source_kind",
     "status=eq.pending",
     "lat=is.null",
     kind ? `source_kind=eq.${kind}` : null,
@@ -187,9 +187,54 @@ const headPoints = headResult.answers;
 process.stderr.write("\n");
 
 const accepted = [];
-const tally = { accepted: 0, head_unknown: 0, area_unknown: 0, outside_area: 0 };
+// **The work's own placed rows are an area the row never had to name.**
+//
+// Measured on the 158 fandom rows, 12.09: 58 refused as `no_area_to_check_against` and 14
+// as `area_unknown` — the dominant failure, and intrinsic to the source. Fandom tables name
+// the place the SCENE is set in, not the country the camera was in, and the ingest is right
+// not to hand that to a geocoder.
+//
+// But those 158 rows belong to **15 works, and all 15 already hold placed rows** — 217
+// points between them. "Somerset House" for Dr. No can be checked against the twenty other
+// London points that film already has.
+//
+// This is allowed where a model's `area_hint` is not: `near` is documented as coming from
+// the request rather than from a model, and this comes from the catalogue, which is firmer
+// still. It is a sanity check rather than a precision tool — a film shoots across
+// continents, so a sibling says "somewhere this film was" and nothing narrower. At
+// AREA_RADIUS_KM it would still have caught Bognor in Ontario.
+async function readSiblings() {
+  const points = new Map();
+  for (let offset = 0; ; offset += PAGE) {
+    const filters = [
+      "select=work_id,lat,lng", "lat=not.is.null", `limit=${PAGE}`, `offset=${offset}`, "order=id.asc",
+    ].join("&");
+    const response = await fetch(`${url}/rest/v1/location_submissions?${filters}`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`sibling read failed: ${response.status}`);
+    const batch = await response.json();
+    for (const row of batch) {
+      if (!row.work_id) continue;
+      if (!points.has(row.work_id)) points.set(row.work_id, []);
+      points.get(row.work_id).push({ lat: Number(row.lat), lng: Number(row.lng) });
+    }
+    if (batch.length < PAGE) break;
+  }
+  return points;
+}
+
+const siblings = await readSiblings();
+console.error(`${siblings.size} works already hold a placed row`);
+
+const tally = { accepted: 0, head_unknown: 0, area_unknown: 0, outside_area: 0, outside_the_works_own_places: 0 };
 for (const entry of split) {
-  if (entry.refusal) {
+  // "No area to check against" is only fatal when there is nothing ELSE to check against.
+  // A row whose work already holds placed points has an area; it simply is not written in
+  // the row. Every other refusal — a head we cannot ask about at all — still ends it here.
+  const hasSiblings = (siblings.get(entry.row.work_id) ?? []).length > 0;
+  const rescuable = entry.refusal === "no_area_to_check_against" && entry.head && hasSiblings;
+  if (entry.refusal && !rescuable) {
     tally[entry.refusal] = (tally[entry.refusal] ?? 0) + 1;
     continue;
   }
@@ -201,15 +246,28 @@ for (const entry of split) {
   // candidates it refused to choose between (#149). `london` is a refusal here and a
   // perfectly good thing to sanity-check a London street against.
   const areaIndex = entry.areas.findIndex((name) => anchorsFrom(areaPoints.get(name)).length > 0);
-  if (areaIndex < 0) { tally.area_unknown += 1; continue; }
-  const anchors = anchorsFrom(areaPoints.get(entry.areas[areaIndex]));
+  // The row's own areas first — they are more specific than the film's whole footprint.
+  // The siblings are the fallback, not the preference.
+  const own = siblings.get(entry.row.work_id) ?? [];
+  if (areaIndex < 0 && own.length === 0) { tally.area_unknown += 1; continue; }
+  const usingSiblings = areaIndex < 0;
+  const anchors = usingSiblings ? own : anchorsFrom(areaPoints.get(entry.areas[areaIndex]));
   // How close the head must be depends on WHICH clause answered: an immediately
   // enclosing street demands metres, a district or county allows a hundred kilometres.
-  const verdict = headIsInsideAnyCandidate(head, anchors, radiusForAreaIndex(areaIndex));
-  if (!verdict.inside) { tally.outside_area += 1; continue; }
+  const verdict = headIsInsideAnyCandidate(
+    head, anchors, usingSiblings ? AREA_RADIUS_KM : radiusForAreaIndex(areaIndex),
+  );
+  if (!verdict.inside) {
+    tally[usingSiblings ? "outside_the_works_own_places" : "outside_area"] += 1;
+    continue;
+  }
   tally.accepted += 1;
+  if (usingSiblings) tally.anchored_on_a_sibling = (tally.anchored_on_a_sibling ?? 0) + 1;
   if (verdict.considered > 1) tally.anchored_among_homonyms = (tally.anchored_among_homonyms ?? 0) + 1;
-  accepted.push({ row: entry.row, head, entry, areaName: entry.areas[areaIndex], verdict });
+  accepted.push({
+    row: entry.row, head, entry, verdict, usingSiblings,
+    areaName: usingSiblings ? `${own.length} placed rows of the same work` : entry.areas[areaIndex],
+  });
 }
 
 console.log(`\n${kind ?? "all"}: ${rows.length} rows`);

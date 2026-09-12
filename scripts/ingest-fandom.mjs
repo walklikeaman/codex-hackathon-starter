@@ -27,6 +27,8 @@ import process from "node:process";
 import { createClient } from "@supabase/supabase-js";
 
 import { normalizeWorkTitle } from "../app/lib/content-graph.mjs";
+import { pairsQuery, rankWikis, splitFandomId } from "../app/lib/fandom-discovery.mjs";
+import { IDS_PER_QUERY, QUERY_GAP_MS, chunk, createSparqlClient } from "../app/lib/wikidata-sparql.mjs";
 import { createModelClient, createThrottle, parseStructured } from "../app/lib/model-client.mjs";
 import { cleanWikitext } from "../app/lib/wikipedia-source.mjs";
 import {
@@ -66,9 +68,25 @@ const WRITE_BATCH = 200;
 const PROSE_LIMIT = Number(arg("prose", 0));
 const PAGE_LIMIT = Number(arg("pages", 60));
 
-// Where the tables actually are. Adding a wiki is one line, and the licence is still
-// checked live — a wiki can change its terms, and this list is not permission.
-const WIKIS = String(arg("wiki", "jamesbond,lotr")).split(",").map((w) => w.trim()).filter(Boolean);
+// Where the tables actually are, and the list is now measured rather than guessed.
+//
+// **All 242 wikis in the Wikidata overlap were probed, 12.09.** Four yielded rows:
+//
+//   lotr           22 rows from 3 pages   (6 of our works)
+//   jamesbond      18 rows from 3 pages   (20 of our works)
+//   gameofthrones   8 rows from 2 pages   (2 of our works)
+//   ghostbusters    6 rows from 3 pages   (4 of our works)
+//
+// The other 230 gave nothing: 95 hold only prose and 135 have no locations section at all.
+// The number that explains it is that **150 of the 234 reachable wikis hold exactly one of
+// our works** — they are wikis of single franchises, single series, even single
+// distributors, and reading down that list is not a source, it is a walk.
+//
+// Adding a wiki is still one line, and the licence is still checked live — a wiki can
+// change its terms, and this list is not permission. `memory-alpha` and `jedipedia` are
+// both CC-BY-NC and refuse themselves.
+const WIKIS = String(arg("wiki", "jamesbond,lotr,gameofthrones,ghostbusters"))
+  .split(",").map((wiki) => wiki.trim()).filter(Boolean);
 
 const UA = { "User-Agent": "GloryMap/1.0 (filming locations; nakonechnyi.n@gmail.com)" };
 
@@ -103,7 +121,8 @@ async function main() {
   // title matches nothing rather than guessing — see `matchWork`.
   const byTitle = new Map();
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.from("works").select("id, title, year, kind").range(from, from + 999);
+    // imdb_id too: it is the key the Wikidata page map joins on.
+    const { data, error } = await db.from("works").select("id, title, year, kind, imdb_id").range(from, from + 999);
     if (error) throw new Error(error.message);
     for (const work of data) {
       const k = normalizeWorkTitle(work.title);
@@ -158,6 +177,42 @@ async function main() {
     console.log(`  written ${written} so far`);
   }
 
+  // Which page each wiki holds for each of our works, straight from Wikidata's P6262.
+  // One SPARQL chunk per 400 ids, and a failure here costs breadth, not the run: search
+  // still supplies pages.
+  const mappedPages = new Map();
+  const workByPage = new Map();
+  const workByImdb = new Map();
+  for (const work of [...byTitle.values()].flat()) {
+    if (work.imdb_id) workByImdb.set(work.imdb_id, work);
+  }
+  try {
+    const sparql = createSparqlClient();
+    const imdbIds = [...new Set([...byTitle.values()].flat().map((work) => work.imdb_id).filter(Boolean))];
+    const wanted = new Set(WIKIS);
+    for (const [index, batch] of chunk(imdbIds, IDS_PER_QUERY).entries()) {
+      const rows = await sparql(pairsQuery(batch));
+      for (const row of rows) {
+        const split = splitFandomId(row.fandom.value);
+        if (!split || !wanted.has(split.wiki)) continue;
+        const work = workByImdb.get(row.imdb.value);
+        if (!work) continue;
+        if (!mappedPages.has(split.wiki)) mappedPages.set(split.wiki, []);
+        const list = mappedPages.get(split.wiki);
+        if (!list.includes(split.page)) list.push(split.page);
+        // **The mapping already says which work this page is**, and throwing that away to
+        // re-derive it from the page title is how ghostbusters yielded six rows to the
+        // discovery pass and zero here: Wikidata named four pages, `matchWork` recognised
+        // none of them, and all four were dropped as "matching no work".
+        workByPage.set(`${split.wiki}:${split.page}`, work);
+      }
+      if (index > 0) await new Promise((resolve) => setTimeout(resolve, QUERY_GAP_MS));
+    }
+    for (const [wiki, list] of mappedPages) console.log(`  ${wiki}: ${list.length} pages named by Wikidata`);
+  } catch (failure) {
+    console.log(`  wikidata page map unavailable (${failure.message}) — search only`);
+  }
+
   const skipped = { licence: 0, noSection: 0, noTable: 0, noWork: 0, prose: 0 };
   let proseCalls = 0;
   let proseRows = 0;
@@ -188,12 +243,23 @@ async function main() {
     }
     console.log(`\n### ${wiki} (${licence.text})`);
 
-    let pages = [];
+    // **The pages Wikidata names for our works come first, then what search turns up.**
+    //
+    // Search alone was the whole page list, and it is a guess: ghostbusters yielded six rows
+    // to the discovery pass and **zero** to this one on the same day, because discovery asks
+    // Wikidata for the exact page of each work we hold (P6262) while this asked the wiki's
+    // search engine for the phrase "filming location" and took what came back.
+    //
+    // Both, in that order. The mapped pages are the ones we can actually attach to a work;
+    // search adds the pages Wikidata has no statement for.
+    let pages = [...(mappedPages.get(wiki) ?? [])];
     try {
       const search = await api(wiki, {
         action: "query", list: "search", srsearch: "filming location", srlimit: String(PAGE_LIMIT),
       });
-      pages = (search?.query?.search ?? []).map((p) => p.title);
+      for (const hit of search?.query?.search ?? []) {
+        if (!pages.includes(hit.title)) pages.push(hit.title);
+      }
     } catch (error) {
       console.error(`  ${wiki}: search failed (${error.message})`);
       continue;
@@ -214,7 +280,9 @@ async function main() {
 
       // The work is resolved BEFORE the model is asked. A page we cannot attach to a work
       // is a page whose extraction we would pay for and then throw away.
-      const work = matchWork(page, byTitle);
+      // The mapping first, because it is a statement rather than a guess; the title
+      // matcher for pages Wikidata has nothing to say about.
+      const work = workByPage.get(`${wiki}:${page}`) ?? matchWork(page, byTitle);
       if (!work) { skipped.noWork += 1; continue; }
 
       let made = table
