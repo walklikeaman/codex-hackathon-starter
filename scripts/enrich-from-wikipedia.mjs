@@ -58,6 +58,9 @@ const ONE_WORK = arg("work", null);
 // Books and films are enriched from differently-named sections, so a run is usually one
 // kind at a time — `--kind book` reads the nine books, which no run could reach before.
 const KIND = arg("kind", null);
+// Re-read works that have already been attempted. For when the extractor itself has
+// changed and the old verdicts are worth revisiting — not for ordinary runs.
+const AGAIN = process.argv.includes("--again");
 const LANGUAGES = Number.parseInt(arg("languages", ""), 10) || MAX_LANGUAGES_PER_WORK;
 
 const headers = { "User-Agent": USER_AGENT, "Accept-Encoding": "gzip" };
@@ -130,7 +133,18 @@ async function main() {
   // the limit by breaching it, and this job has no deadline.
   const throttle = createThrottle(Number(env.MODEL_REQUESTS_PER_MINUTE) || 12);
 
-  let query = db.from("works").select("id, title, kind, year, wikidata_id").not("wikidata_id", "is", null);
+  // **Continue, rather than repeat.** This query had no ordering and no record of what had
+  // already been read, so a second run did the first run's works again. That was invisible
+  // while the pipeline could see 28 works; after the IMDb→Wikidata backfill it can see
+  // 5,480, and "run it for the next batch" silently meant "run it again".
+  //
+  // `wikipedia_enriched_at` is stamped whether or not a work yields anything, because most
+  // yield nothing — no production section, or nothing that survives the gates — and those
+  // are exactly the works that must not be retried forever.
+  let query = db.from("works").select("id, title, kind, year, wikidata_id")
+    .not("wikidata_id", "is", null)
+    .order("id", { ascending: true });
+  if (!AGAIN) query = query.is("wikipedia_enriched_at", null);
   if (ONE_WORK) query = query.eq("id", ONE_WORK);
   if (KIND) query = query.eq("kind", KIND);
   const { data: works, error } = await query.limit(LIMIT);
@@ -229,6 +243,11 @@ async function main() {
         + (result.rejected.length ? `, ${result.rejected.length} dropped` : ""));
     }
 
+    // Stamped before the write and before any `continue`, so a work that yielded nothing
+    // is still recorded as read. The alternative retries every barren work on every pass
+    // and never reaches the rest of the catalogue.
+    if (!DRY_RUN) await db.from("works").update({ wikipedia_enriched_at: new Date().toISOString() }).eq("id", work.id);
+
     if (accepted.length === 0) continue;
 
     // The area the prose put each place in, carried to the gazetteer. It cannot choose a
@@ -237,8 +256,8 @@ async function main() {
     const areas = new Map(accepted.map((location) => [location.place_name, location.area_hint]));
     // And the edition each name came from. A French article names Griffith Observatory
     // "observatoire Griffith", which is nothing in English and is itself in French.
-    const languages = new Map(accepted.map((location) => [location.place_name, location.language]));
-    const located = await geocode(accepted.map((location) => location.place_name), { areas, languages });
+    const placeLanguages = new Map(accepted.map((location) => [location.place_name, location.language]));
+    const located = await geocode(accepted.map((location) => location.place_name), { areas, languages: placeLanguages });
 
     // **A row without its credit cannot be stored, and must not be dropped silently.**
     //
