@@ -7,6 +7,47 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-12] ingest | 28 works could be enriched from Wikipedia; now 5,480 can
+
+**Object**: `app/lib/wikidata-sparql.mjs` (new), `scripts/backfill-wikidata-ids.mjs` (new),
+`scripts/discover-fandom.mjs`
+**Scenario**: ingest · **Outcome**: ✅ 5,452 works given a Wikidata id — film coverage 0.2% →
+75.8%
+**Code changes**: this commit
+
+**This was the constraint the whole Wikipedia side had been living under, and it was not a
+parser.** `enrich-from-wikipedia.mjs` selects on `wikidata_id is not null`. The table held
+7,063 works, 6,044 of them carrying an IMDb id — and **28** carrying a Wikidata id. Nine
+books and sixteen films were the entire universe that pipeline could ever see. Every
+improvement made to it this week applied to twenty-eight rows.
+
+The id is not looked up by title. It is joined on the IMDb id already in the row, through
+Wikidata's **P345** — the same property `fandom-discovery` uses. Measured on a sample of 400
+before running: **393 matched (98.3%)**, 391 of them to a single item.
+
+| kind | works | with a Wikidata id | |
+|---|---|---|---|
+| film | 6,403 | **4,855** | 0.2% → 75.8% |
+| series | 651 | **616** | → 94.6% |
+| book | 9 | 9 | 100% |
+
+**Nothing was guessed.** An IMDb id matching more than one Wikidata item is skipped and
+counted: The X-Files, Torchwood, Most Haunted, Gunsmoke — ids naming both a series and
+something beside it. Taking the first would write a plausible id about a different thing and
+nothing downstream could ever tell. A work already carrying an id is never overwritten, and
+the update is a per-row statement rather than an upsert, which would carry every other
+column along and let a null overwrite real data.
+
+**A test found a bug in the retry I had just written.** The client threw on a 4xx to skip
+the retries, and its own `catch` two lines below caught that throw and retried anyway — the
+early exit swallowed by the handler it was escaping. Nothing looked wrong from outside; a
+malformed query was merely reported three times slower. A flag replaces the throw.
+
+The paced, retrying client now lives in one place. `discover-fandom` carried a copy with the
+same swallowed-throw bug and now imports the shared one.
+
+---
+
 ## [2026-09-12] incident | Wikipedia enrichment wrote nothing for five weeks, and said so every time
 
 **Object**: `scripts/enrich-from-wikipedia.mjs`, `app/lib/wikipedia-source.mjs`,

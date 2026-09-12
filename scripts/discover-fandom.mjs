@@ -22,7 +22,11 @@ import process from "node:process";
 import { createClient } from "@supabase/supabase-js";
 
 import { licenceAllows, locationSection, parseLocationRows } from "../app/lib/fandom-source.mjs";
-import { IDS_PER_QUERY, WIKIDATA_SPARQL, chunk, classifyPage, pairsQuery, rankWikis, splitFandomId } from "../app/lib/fandom-discovery.mjs";
+import { classifyPage, pairsQuery, rankWikis, splitFandomId } from "../app/lib/fandom-discovery.mjs";
+// The paced, retrying client — one definition, rather than the copy this script used to
+// carry. That copy had a `throw` for 4xx that its own `catch` swallowed, so a malformed
+// query was retried three times before reporting itself. See [[fandom-discovery]].
+import { IDS_PER_QUERY, QUERY_GAP_MS, chunk, createSparqlClient } from "../app/lib/wikidata-sparql.mjs";
 
 const arg = (name, fallback = null) => {
   const index = process.argv.indexOf(`--${name}`);
@@ -38,34 +42,10 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Wikidata asks for five seconds between queries and the wikis get the crawler's own
 // 0.7s. Neither is negotiable: the whole reason this pass is cheap is that it is small,
 // and a small pass that hammers a free endpoint is not cheap, it is rude.
-const WIKIDATA_DELAY = 5000;
+const WIKIDATA_DELAY = QUERY_GAP_MS;
 const WIKI_DELAY = 700;
 
-// **A skipped chunk is lost catalogue, not a lost request.** The first real run lost 2 of
-// 16 chunks to 502 and reported 754 overlapping works as if that were the answer — it was
-// 12% short and nothing said so. The endpoint 502s under load and answers the same query
-// seconds later, so a retry costs one wait and buys back a chunk of the catalogue.
-const SPARQL_ATTEMPTS = 3;
-
-async function sparql(query) {
-  const url = `${WIKIDATA_SPARQL}?${new URLSearchParams({ query, format: "json" })}`;
-  let last;
-  for (let attempt = 1; attempt <= SPARQL_ATTEMPTS; attempt += 1) {
-    try {
-      const response = await fetch(url, { headers: { ...UA, Accept: "application/sparql-results+json" }, signal: AbortSignal.timeout(120_000) });
-      if (response.ok) return (await response.json()).results.bindings;
-      last = new Error(`wikidata http ${response.status}`);
-      // 4xx is the query's fault and will fail again identically; only a server-side
-      // refusal is worth waiting out.
-      if (response.status < 500 && response.status !== 429) throw last;
-    } catch (failure) {
-      last = failure;
-      if (failure?.name === "AbortError") last = new Error("wikidata timeout");
-    }
-    if (attempt < SPARQL_ATTEMPTS) await sleep(WIKIDATA_DELAY * attempt);
-  }
-  throw last ?? new Error("wikidata failed");
-}
+const sparql = createSparqlClient();
 
 async function wikiApi(wiki, params) {
   const url = `https://${wiki}.fandom.com/api.php?${new URLSearchParams({ ...params, format: "json" })}`;
@@ -105,7 +85,7 @@ async function main() {
       // Retried already. A chunk still failing is 400 works this run did not ask about,
       // and the total below says so rather than presenting a short count as the answer.
       lostChunks += 1;
-      console.log(`\n  wikidata chunk ${index + 1}: ${failure.message} (after ${SPARQL_ATTEMPTS} attempts)`);
+      console.log(`\n  wikidata chunk ${index + 1}: ${failure.message} (after every attempt)`);
       await sleep(WIKIDATA_DELAY);
       continue;
     }
