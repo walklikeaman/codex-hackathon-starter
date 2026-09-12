@@ -26,6 +26,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { metresApart, namesMatch, normalizePlaceName } from "../app/lib/place-dedup.mjs";
+import { sceneNote } from "../app/lib/place-note.mjs";
 
 const BASE = (process.env.GLORYMAP_URL ?? "https://codex-hackathon-starter.vercel.app")
   .replace(/\/+$/, "");
@@ -134,8 +135,9 @@ const server = new McpServer({ name: "glorymap", version: "1.0.0" });
 server.tool(
   "places_near",
   "Film and TV places near a point — the fast lookup for 'what is around here'. Returns one "
-    + "entry per distinct coordinate with every film listed at it, its IMDb score, and "
-    + "whether it sits inside a studio lot. Use this to build a list of stops along a route.",
+    + "entry per distinct coordinate with every film listed at it, what was filmed there in "
+    + "the source's own words, its IMDb score, and whether it sits inside a studio lot. Use "
+    + "this to build a list of stops along a route.",
   {
     lat: z.number().min(-90).max(90),
     lng: z.number().min(-180).max(180),
@@ -163,6 +165,10 @@ server.tool(
           .map((film) => ({
             title: film.title, year: film.year, kind: film.kind,
             imdb: film.imdb ?? null, imdb_votes: film.imdb_votes ?? null,
+            // What was filmed here, as the source wrote it — the thing an agent needs to
+            // say anything about a stop beyond naming a film. Null where the source only
+            // listed the address, and never filled in with a guess. See [[place-note]].
+            scene: sceneNote(film.note, { placeName: f.properties.name }),
             said_by: film.source_kind ?? null, source_url: film.source_url ?? null,
             status: film.status ?? "pending",
           }));
@@ -236,6 +242,7 @@ server.tool(
         const films = (f.properties.films ?? [])
           .filter((film) => !(minImdb > 0) || Number(film.imdb) >= minImdb)
           .map((film) => ({ title: film.title, year: film.year, imdb: film.imdb ?? null,
+            scene: sceneNote(film.note, { placeName: f.properties.name }),
             said_by: film.source_kind ?? null, source_url: film.source_url ?? null }));
         return {
           place: f.properties.name, lat: la, lng: lo,
