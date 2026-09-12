@@ -15,9 +15,10 @@ import {
 import { ACCESS } from "../app/lib/place-access.mjs";
 import { DISTANCE_INFLUENCE, DISTANCE_PERSON, DISTANCE_SELF } from "../app/lib/facts.mjs";
 
-// Real rows, in the shape `map_candidate_points_in_view` returns them. The coordinates and
-// spellings are the live ones from the Hollywood viewport on 2026-09-10 — the three
-// Grauman's rows and the two Roosevelt rows are the duplicates that broke the first plan.
+// Real rows in the shape the reader returned UNTIL 10.09 — one row per submission. Kept
+// because the graph reader still returns it and because the duplicates below are what broke
+// the first plan; the grouped shape the queue returns now is exercised at the bottom of
+// this file. The coordinates and spellings are live ones from the Hollywood viewport.
 const HOLLYWOOD = [
   { submission_id: "s1", work_id: "w1", work_title: "Forrest Gump", name: "Grauman's Chinese Theatre",
     lat: 34.10204, lng: -118.34093, status: "pending", source_kind: "moviemaps",
@@ -346,4 +347,64 @@ test("an ungraded queue row is not deleted for lacking a grade", () => {
   const built = buildTripPlan({ candidates: HOLLYWOOD, origin: ORIGIN, budgetMinutes: 120 });
   assert.ok(built.stops.length >= 3);
   assert.ok(!built.excluded.some((row) => row.reason === TRIP_EXCLUSION.not_a_spot));
+});
+
+// The shape `map_candidate_points_in_view` ACTUALLY returns since 10.09: one row per
+// coordinate, carrying the films listed at it. Reading the old field names meant `row.name`
+// was undefined and every queue row was dropped before anything could refuse it — the live
+// route answered "No stops." for the whole of Los Angeles while reporting 162 candidates in
+// view, with nothing in `excluded` to explain the gap.
+const GROUPED = [
+  {
+    lat: 34.11856, lng: -118.30037, place_name: "Griffith Observatory",
+    area_hint: "2800 East Observatory Road", row_count: 41, work_count: 39, status: "pending",
+    films: [
+      { work_id: "w1", title: "Adventures of Superman", year: 1952, kind: "film", imdb: 7.7,
+        source_kind: "moviemaps", source_url: "https://moviemaps.org/locations/a", status: "pending",
+        note: 'Appears as "Jor-El\'s Laboratory on Krypton"' },
+      { work_id: "w2", title: "La La Land", year: 2016, kind: "film", imdb: 8, source_kind: "moviemaps",
+        source_url: "https://moviemaps.org/locations/a", status: "pending", note: "Source: IMDb" },
+    ],
+  },
+  {
+    lat: 34.10204, lng: -118.34093, place_name: "Grauman's Chinese Theatre",
+    area_hint: "6925 Hollywood Boulevard", row_count: 3, work_count: 3, status: "pending",
+    films: [
+      { work_id: "w3", title: "Forrest Gump", year: 1994, kind: "film", imdb: 8.8,
+        source_kind: "moviemaps", source_url: "https://moviemaps.org/locations/b", status: "pending" },
+    ],
+  },
+  {
+    lat: 34.10175, lng: -118.34248, place_name: "Hollywood Roosevelt Hotel",
+    area_hint: "7000 Hollywood Boulevard", row_count: 2, work_count: 2, status: "pending",
+    films: [
+      { work_id: "w4", title: "Beverly Hills Cop", year: 1984, kind: "film", imdb: 7.4,
+        source_kind: "movielocations", source_url: "https://movie-locations.com/x", status: "pending" },
+    ],
+  },
+];
+
+test("a grouped queue row becomes a stop, with the films it lists", () => {
+  const built = buildTripPlan({ candidates: GROUPED, origin: [34.101, -118.34], budgetMinutes: 120 });
+
+  assert.equal(built.counts.considered, 3);
+  assert.ok(built.stops.length >= 3, `got ${built.stops.length} stops`);
+
+  const observatory = built.stops.find((stop) => stop.name === "Griffith Observatory");
+  assert.ok(observatory, "the observatory is a stop");
+  // One point, thirty-nine films. Naming one of them is the failure this carries.
+  assert.deepEqual(observatory.works.sort(), ["Adventures of Superman", "La La Land"]);
+  assert.equal(observatory.work.title, "Adventures of Superman");
+  assert.equal(observatory.grounding.verified, false);
+  assert.equal(observatory.grounding.source_kind, "moviemaps");
+  assert.equal(observatory.id, "point:34.11856,-118.30037");
+});
+
+test("a grouped row with no films is still refused for its own reason, not silently", () => {
+  const built = buildTripPlan({
+    candidates: [{ lat: 0, lng: 0, place_name: "Null Island", films: [] }, ...GROUPED],
+    origin: [34.101, -118.34],
+    budgetMinutes: 120,
+  });
+  assert.equal(built.excluded.some((row) => row.reason === TRIP_EXCLUSION.no_position), true);
 });

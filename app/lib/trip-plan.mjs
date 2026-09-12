@@ -92,17 +92,39 @@ function groundingForPlace(row) {
 }
 
 function groundingForCandidate(row) {
+  // A grouped row carries the source on each film rather than on itself; the lead film is
+  // the one that names the stop, so it is the one whose source is quoted.
+  const lead = Array.isArray(row?.films) ? row.films[0] : null;
   return {
     verified: false,
     store: "queue",
     // "pending" means nobody has looked yet; "verified" here means a reviewer checked the
     // SOURCE, not that the place entered the graph. Both are printed as they are.
-    status: row.status ?? "pending",
-    source_kind: row.source_kind ?? null,
-    source_url: row.source_url ?? null,
+    status: row.status ?? lead?.status ?? "pending",
+    source_kind: row.source_kind ?? lead?.source_kind ?? null,
+    source_url: row.source_url ?? lead?.source_url ?? null,
     confidence_band: null,
     geocode_precision: null,
   };
+}
+
+// The queue reader changed shape underneath this file and nothing said so.
+//
+// `map_candidate_points_in_view` used to return one row per SUBMISSION — `submission_id`,
+// `name`, `work_title`. Since 10.09 it returns one row per COORDINATE, carrying the films
+// listed there: `place_name` and a `films` array. This file kept reading the old field
+// names, so `row.name` was undefined, `.filter((stop) => stop.name)` dropped every queue
+// row before anything could refuse it, and `POST /api/trip/plan` answered "No stops." for
+// the whole of Los Angeles while reporting 162 candidates in view — the count and the
+// answer disagreeing, with nothing in `excluded` to explain it.
+//
+// Both shapes are read, because the graph reader still returns the old one.
+function normalizeRow(row) {
+  const films = Array.isArray(row?.films) ? row.films : [];
+  if (films.length === 0) return { row, films: [], lead: null };
+  // Best-known first is the order the query already fixed; the lead names the stop and the
+  // rest ride along in `works`, which is what makes a point with 39 films one stop.
+  return { row, films, lead: films[0] };
 }
 
 // One stop, in the vocabulary the rest of the product already uses.
@@ -113,20 +135,29 @@ function groundingForCandidate(row) {
 function toStop(row, { verified }) {
   const position = positionOf(row);
   const lot = position ? studioLotAt(position[0], position[1]) : null;
-  const name = String(row.name ?? "").trim();
+  const { films, lead } = normalizeRow(row);
+  const name = String(row.name ?? row.place_name ?? "").trim();
 
   return {
-    id: verified ? `place:${row.place_id}` : `submission:${row.submission_id}`,
+    // A grouped row has no submission id — it is several of them — so the coordinate is
+    // the identity, which is also what makes two films at one address one stop.
+    id: verified
+      ? `place:${row.place_id}`
+      : (row.submission_id ? `submission:${row.submission_id}` : `point:${position?.join(",") ?? name}`),
     name,
     position,
     address: row.area_hint ?? null,
     distance: Number.isFinite(row.distance) ? row.distance : DISTANCE_SELF,
     work: {
-      id: row.work_id ?? null,
-      title: row.work_title ?? null,
-      year: Number.isFinite(row.work_year) ? row.work_year : null,
-      kind: row.work_kind ?? null,
+      id: row.work_id ?? lead?.work_id ?? null,
+      title: row.work_title ?? lead?.title ?? null,
+      year: Number.isFinite(row.work_year) ? row.work_year
+        : (Number.isFinite(lead?.year) ? lead.year : null),
+      kind: row.work_kind ?? lead?.kind ?? null,
     },
+    // Every film listed at this point, so the walk can say what a reader is standing in
+    // front of rather than naming one of thirty-nine.
+    works: films.map((film) => film.title).filter(Boolean),
     grounding: verified ? groundingForPlace(row) : groundingForCandidate(row),
     // Lifted out of `grounding` so the routing rule can read it without caring which
     // store the row came from. Null for a queue row, which has never been graded.
