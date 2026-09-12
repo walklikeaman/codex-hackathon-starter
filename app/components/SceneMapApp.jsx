@@ -75,6 +75,9 @@ import {
   filmsInView,
   filmsInViewLabel,
 } from "../lib/films-in-view.mjs";
+import {
+  FILTER_DEFAULTS, activeFilterCount, filtersFromParams, writeFilterParams,
+} from "../lib/filter-url.mjs";
 import { labelledPlaces, notableHere } from "../lib/notable-here.mjs";
 import {
   DEFAULT_SORT,
@@ -799,7 +802,15 @@ export default function SceneMapApp() {
   // opening Los Angeles saw an empty screen and had to find two switches before the
   // product did anything. "We have nothing here" was the impression, and we hold 5,266
   // rows there.
-  const [graphLayerOn, setGraphLayerOn] = useState(true);
+  // The filters, read from the address bar once. Reading them lazily inside `useState` and
+  // not in an effect matters: an effect would render the unfiltered map first and then
+  // narrow it, so a shared link would flash everything the sender was trying not to show.
+  const initialFilters = useMemo(() => {
+    if (typeof window === "undefined") return FILTER_DEFAULTS;
+    return filtersFromParams(new URLSearchParams(window.location.search));
+  }, []);
+
+  const [graphLayerOn, setGraphLayerOn] = useState(initialFilters.graphLayer);
   const [graphSummary, setGraphSummary] = useState(null);
   // The queue on the browsable map, and ON by default.
   //
@@ -813,15 +824,15 @@ export default function SceneMapApp() {
   // hollow and grey where a fact is filled and amber, its popup says "In review", and the
   // panel above says the rows are named by our sources and not checked by us. A reader can
   // tell the two apart at a glance; an empty map tells them nothing at all.
-  const [candidatesOn, setCandidatesOn] = useState(true);
-  const [studioLotsOn, setStudioLotsOn] = useState(true);
+  const [candidatesOn, setCandidatesOn] = useState(initialFilters.candidates);
+  const [studioLotsOn, setStudioLotsOn] = useState(initialFilters.studioLots);
   // ONE "only my films" switch, for every layer.
   //
   // There were two — `libraryMapOnly` over the searched works and the chips, and
   // `candidatesMineOnly` over the queue pins — in two different parts of the interface,
   // three levels deep. The owner could not tell whether his library was loaded or whether
   // the map was showing everything, which is exactly what two switches for one idea does.
-  const [mineOnly, setMineOnly] = useState(false);
+  const [mineOnly, setMineOnly] = useState(initialFilters.mineOnly);
   // What is on screen right now, and how the reader wants to read it. Separate from the
   // film chips beside it: those are what somebody SEARCHED for, this is what the map is
   // showing, and it changes as the map moves.
@@ -838,13 +849,13 @@ export default function SceneMapApp() {
   // score would sort 1,641 films by a field that is null. A real export holds 2,407
   // ratings for 2,422 films.
   const [sortBy, setSortBy] = useState(DEFAULT_SORT);
-  const [minRating, setMinRating] = useState(NO_MINIMUM);
+  const [minRating, setMinRating] = useState(initialFilters.minRating);
   // The public score, independent of the reader's own. "Films I rated 8 AND the world
   // rated 7.5" is a real question and neither filter answers it alone. It works without a
   // library, which the reader's own cannot.
-  const [minImdb, setMinImdb] = useState(NO_MINIMUM);
-  const [graphKinds, setGraphKinds] = useState([]);   // [] = every kind
-  const [graphWorkId, setGraphWorkId] = useState(""); // "" = the whole library
+  const [minImdb, setMinImdb] = useState(initialFilters.minImdb);
+  const [graphKinds, setGraphKinds] = useState(initialFilters.kinds);   // [] = every kind
+  const [graphWorkId, setGraphWorkId] = useState(initialFilters.workId); // "" = the whole library
   const [graphWorks, setGraphWorks] = useState([]);
 
   // Works that actually have a mappable place under the current kind filter, so the
@@ -1382,6 +1393,27 @@ export default function SceneMapApp() {
     });
   }, []);
 
+  // The filters as they stand, in one object — the shape the URL and the reset both read.
+  const filters = useMemo(() => ({
+    mineOnly, minRating, minImdb, kinds: graphKinds, workId: graphWorkId,
+    candidates: candidatesOn, studioLots: studioLotsOn, graphLayer: graphLayerOn,
+  }), [mineOnly, minRating, minImdb, graphKinds, graphWorkId, candidatesOn, studioLotsOn, graphLayerOn]);
+
+  const activeCount = useMemo(() => activeFilterCount(filters), [filters]);
+
+  // One control puts every filter back, because six controls that can each empty the map
+  // need one that undoes all of them. It is only rendered when something is on.
+  const resetFilters = useCallback(() => {
+    setMineOnly(FILTER_DEFAULTS.mineOnly);
+    setMinRating(FILTER_DEFAULTS.minRating);
+    setMinImdb(FILTER_DEFAULTS.minImdb);
+    setGraphKinds(FILTER_DEFAULTS.kinds);
+    setGraphWorkId(FILTER_DEFAULTS.workId);
+    setCandidatesOn(FILTER_DEFAULTS.candidates);
+    setStudioLotsOn(FILTER_DEFAULTS.studioLots);
+    setGraphLayerOn(FILTER_DEFAULTS.graphLayer);
+  }, []);
+
   const chooseBasemap = useCallback((id) => {
     setBasemapId(layerById(id).id);
     if (typeof window !== "undefined") writeStoredLayerId(window.localStorage, id);
@@ -1501,6 +1533,11 @@ export default function SceneMapApp() {
   // The address bar follows the map, so whatever is on screen can be sent to somebody.
   // `replaceState`, never `pushState`: a map is dragged continuously and every nudge would
   // otherwise become a history entry the back button has to walk through.
+  //
+  // **One writer, and that is load-bearing.** The filters had an effect of their own, and it
+  // raced this one: both rebuilt the whole query string, this one ran last, and a link
+  // opened with `?imdb=8.5&kind=film` lost both the moment the map settled. The filtered
+  // view was applied and then made unshareable one render later.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const query = mapUrlQuery({
@@ -1510,11 +1547,15 @@ export default function SceneMapApp() {
       citySlug: citySlugFromName(cityName),
     });
     if (!query) return;
-    const next = `${window.location.pathname}?${query}`;
+
+    // The place first, the filters layered on: two different questions about one map, and
+    // the answer to either must survive a change to the other.
+    const withFilters = writeFilterParams(query, filters).toString();
+    const next = `${window.location.pathname}${withFilters ? `?${withFilters}` : ""}`;
     if (next !== `${window.location.pathname}${window.location.search}`) {
       window.history.replaceState(null, "", next);
     }
-  }, [browseCenter, mapZoom, cityName]);
+  }, [browseCenter, mapZoom, cityName, filters]);
 
   const filmsHere = useMemo(() => filmsInView(candidatesDrawn), [candidatesDrawn]);
 
@@ -2833,6 +2874,12 @@ export default function SceneMapApp() {
           </button>
         </div>
 
+
+        {activeCount > 0 && (
+          <button type="button" className="reset-filters" onClick={resetFilters}>
+            Reset {activeCount} filter{activeCount === 1 ? "" : "s"}
+          </button>
+        )}
 
         {/* What this place is known for, above everything the reader would have to ask for.
             Ranked by rating AND reach: the rating alone puts a 9.2 with 300 voters above
