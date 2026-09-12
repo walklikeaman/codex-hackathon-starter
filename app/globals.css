@@ -157,6 +157,30 @@ img {
 .maplibregl-popup .maplibregl-popup-content .point-films a { color: #f3efe7; text-decoration: none; }
 .maplibregl-popup .maplibregl-popup-content .point-films a:hover { text-decoration: underline; }
 .point-film-year { color: rgba(236, 232, 225, 0.45); }
+/* What was filmed here. Its own line under the title, because it is a sentence and not a
+   label, and clamped to two lines: a pin can hold ninety-six films, and a popup that
+   prints ninety-six paragraphs is a popup nobody reads. The rest is one click away at the
+   source. */
+.maplibregl-popup .maplibregl-popup-content .point-films .point-film-note {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 0.1rem;
+  color: rgba(236, 232, 225, 0.78);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+/* Where the claim came from. Quiet, because it is provenance rather than content — but
+   always there, and on a row with no note it carries the only honest thing we can say. */
+.maplibregl-popup .maplibregl-popup-content .point-films a.point-film-source {
+  display: inline-block;
+  margin-top: 0.1rem;
+  color: rgba(247, 183, 51, 0.72);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+}
+.maplibregl-popup .maplibregl-popup-content .point-films a.point-film-source:hover { color: #f7b733; }
 
 /* The way into everything a place holds — the voice guide, the frames, the route. It is a
    destination, not the default: most clicks are "what is this?", and that is answered above
