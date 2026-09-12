@@ -264,6 +264,27 @@ export function sentenceSupportsRole(sentence, relation) {
   return !sentenceClaimsIntentNotFact(text);
 }
 
+// A person is not a place, however much the gazetteer would like to help.
+//
+// **Measured on the 574 rows of the first real run**: the model returned `John Hughes` as a
+// place_name, quoting *"John Hughes conceived the film before he sold it to the Farrelly
+// brothers."* It geocoded to **Antigua and Barbuda** — there is a settlement of that name —
+// and the row was stored with a coordinate in the Caribbean.
+//
+// The tell is not the name, which no list can hold, but the GRAMMAR: the name opens the
+// sentence and is followed by something only a person does. A place is written about; a
+// person acts. Checked against all 574 rows, this flags exactly one — that one — and
+// nothing else, which is the narrowness a rule about names has to have.
+const PERSON_ACTION = /^(conceived|wrote|writes|directed|produced|said|says|decided|sold|asked|hired|cast|chose|chosen|wanted|felt|thought|approached|suggested|insisted|recalled|remembered|explained|described|met|joined|agreed|refused|hoped|pitched|drafted|revised|was born|grew up)\b/i;
+
+export function namesAnAgentNotAPlace(name, sentence) {
+  const text = String(sentence ?? "").trim();
+  const subject = String(name ?? "").trim();
+  if (!subject || !text) return false;
+  if (!text.toLowerCase().startsWith(subject.toLowerCase())) return false;
+  return PERSON_ACTION.test(text.slice(subject.length).replace(/^[\s,]+/, ""));
+}
+
 export function acceptExtraction(parsed, { prose, article }) {
   const accepted = [];
   const rejected = [];
@@ -301,6 +322,8 @@ export function acceptExtraction(parsed, { prose, article }) {
     if (!sentenceMentionsPlace(location.source_sentence, name)) {
       drop("quote_is_about_elsewhere"); continue;
     }
+    // The sentence's subject doing something a person does is a person, not a place.
+    if (namesAnAgentNotAPlace(name, location.source_sentence)) { drop("names_a_person"); continue; }
     // And this asks whether it claims what the role claims. A sentence describing a place
     // inside the story says nothing was made or shot there.
     if (!sentenceSupportsRole(location.source_sentence, relation)) {
