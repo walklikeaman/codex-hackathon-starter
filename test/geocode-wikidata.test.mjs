@@ -13,6 +13,7 @@ import {
   chooseCandidate,
   areaNamesCountry,
   contradictsArea,
+  hintNamesAnAdministrativeArea,
   dominantByPopulation,
   gazetteerName,
   groupByName,
@@ -443,4 +444,62 @@ test("a country the gazetteer itself named is recognised without a list to maint
   const american = at(33.66, -95.55, { name: "Paris", country: "United States" });
   assert.equal(contradictsArea(american, "Paris, France", ["France", "United States"]), true);
   assert.equal(contradictsArea(french, "Paris, France", ["France", "United States"]), false);
+});
+
+
+// --- the chain, for a hint that names a city rather than a country ---------------------
+
+const withChain = (name, chain, country) => ({ name, country, chain: new Set(chain), lat: 0, lng: 0, exact_label: true });
+
+test("a city-level hint refuses a candidate the chain puts elsewhere", () => {
+  // New-York for the film Big resolved to Niu-York in the Donetsk region and was stored at
+  // 48.33, 37.84. No country is named in a hint of "New York", so the country test could
+  // not see it; the chain says Toretsk Hromada / Bakhmut Raion / Ukraine and none of it is
+  // New York.
+  const ukraine = withChain("Niu-York", ["Toretsk Hromada", "Bakhmut Raion", "Ukraine"], "Ukraine");
+  assert.equal(contradictsArea(ukraine, "New York"), true);
+  assert.equal(chooseCandidate([ukraine], { area: "New York" }).reason, "contradicts_area");
+});
+
+test("the chain must be transitive, or it refuses the right answers", () => {
+  // Wildwood Regional Park's IMMEDIATE P131 is Ventura County. A hint of "Thousand Oaks,
+  // California" matches nothing there, and on the immediate parent alone this rule refused
+  // 127 of 246 correct coordinates. Transitively the chain reaches California and agrees.
+  const park = withChain("Wildwood Regional Park", ["Ventura County", "California", "United States"], "United States");
+  assert.equal(contradictsArea(park, "Thousand Oaks, California"), false);
+  // ANY token agreeing is agreement: a hint names a place and its enclosing areas, and the
+  // widest of them still says the two are talking about the same part of the world.
+  assert.equal(contradictsArea(park, "California"), false);
+});
+
+test("a chain that knows only the country cannot contradict a city", () => {
+  // Studios, parks and railways often carry no P131 at all. Refusing on such a chain cost
+  // seven correct coordinates in the measurement — it does not disagree, it does not know.
+  const studio = withChain("Culver Studios", ["United States"], "United States");
+  assert.equal(contradictsArea(studio, "Culver City, California"), false);
+});
+
+test("a hint that is prose or an informal region is not an area", () => {
+  // Both are common in what a model writes into area_hint, and neither can appear in an
+  // administrative chain however right the coordinate is.
+  assert.equal(hintNamesAnAdministrativeArea("Primary filming location for the movie"), false);
+  assert.equal(hintNamesAnAdministrativeArea("city where principal photography took place"), false);
+  assert.equal(hintNamesAnAdministrativeArea("French Alps"), false);
+  assert.equal(hintNamesAnAdministrativeArea("Cape Ann area"), false);
+  assert.equal(hintNamesAnAdministrativeArea("Asia"), false);
+  // And the ones that are.
+  assert.equal(hintNamesAnAdministrativeArea("Thousand Oaks, California"), true);
+  assert.equal(hintNamesAnAdministrativeArea("Bristol, England"), true);
+  const megeve = withChain("Megève", ["Haute-Savoie", "France"], "France");
+  assert.equal(contradictsArea(megeve, "French Alps"), false);
+});
+
+test("a hint sharing only a wide ancestor is NOT caught, and that is the known limit", () => {
+  // Clifton Village, Bristol resolved to Clifton in Nottingham on a hint of "Bristol,
+  // England". The chain holds England and so does the hint, so they agree on the widest
+  // token and the rule stays silent. Catching it needs the hint's MOST SPECIFIC token to be
+  // required — and measured, that refused Wildwood Regional Park and 126 others like it.
+  // Written down rather than papered over.
+  const nottingham = withChain("Clifton", ["Nottingham", "England", "United Kingdom"], "United Kingdom");
+  assert.equal(contradictsArea(nottingham, "Bristol, England"), false);
 });

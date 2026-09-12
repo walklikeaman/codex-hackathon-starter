@@ -8,6 +8,7 @@ import {
   MAX_LOCATIONS_PER_ARTICLE,
   quoteAppearsInSource,
   sentenceClaimsIntentNotFact,
+  namesAnAgentNotAPlace,
   sentenceSupportsRole,
   sentenceMentionsPlace,
   wikipediaLocationsSchema,
@@ -388,4 +389,36 @@ test("making a work is described with an ordinary vocabulary, not eight verbs", 
   assert.equal(sentenceSupportsRole("Dostoevsky owed large sums of money to creditors.", "author_place"), false);
   assert.equal(sentenceSupportsRole("The novel is set in Saint Petersburg.", "author_place"), false);
   assert.equal(sentenceSupportsRole("Hogwarts is the school at the centre of the series.", "author_place"), false);
+});
+
+
+test("a person is not a place, however much the gazetteer would like to help", () => {
+  // Measured on the 574 rows of the first real run: the model returned "John Hughes" as a
+  // place, and it geocoded to Antigua and Barbuda, where a settlement of that name exists.
+  // The tell is the grammar, not the name: a place is written about, a person acts.
+  assert.equal(namesAnAgentNotAPlace(
+    "John Hughes", "John Hughes conceived the film before he sold it to the Farrelly brothers.",
+  ), true);
+  assert.equal(namesAnAgentNotAPlace(
+    "Quentin Tarantino", "Quentin Tarantino wrote the script while living in New York City.",
+  ), true);
+  // And the places that open their own sentences must survive — this is the common shape.
+  assert.equal(namesAnAgentNotAPlace(
+    "Pinewood Studios", "Pinewood Studios housed the production for six months.",
+  ), false);
+  assert.equal(namesAnAgentNotAPlace(
+    "Reform Club", "the palatial 19th-century interior of the Reform Club stood in for the Club.",
+  ), false);
+  assert.equal(namesAnAgentNotAPlace(
+    "Wildwood Regional Park", "The Rifleman was partially filmed in Wildwood Regional Park.",
+  ), false);
+});
+
+test("a person reaching the accept pass is dropped by name", () => {
+  const prose = "John Hughes conceived the film before he sold it to the Farrelly brothers.";
+  const { accepted, rejected } = acceptExtraction({ locations: [
+    found({ place_name: "John Hughes", source_sentence: prose, place_role: "author" }),
+  ] }, { prose, article });
+  assert.equal(accepted.length, 0);
+  assert.equal(rejected[0].reason, "names_a_person");
 });

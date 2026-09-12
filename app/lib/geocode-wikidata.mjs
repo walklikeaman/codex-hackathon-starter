@@ -142,7 +142,7 @@ export function buildGeocodeQuery(names) {
 
   const values = wanted.map((name) => `"${sparqlLiteral(name)}"@en`).join(" ");
 
-  return `SELECT ?name ?place ?placeLabel ?lat ?lng ?population ?typeLabel ?exact ?countryLabel WHERE {
+  return `SELECT ?name ?place ?placeLabel ?lat ?lng ?population ?typeLabel ?exact ?countryLabel ?ancLabel WHERE {
   VALUES ?name { ${values} }
   ?place rdfs:label|skos:altLabel ?name .
   # Whether the name is the entity's OWN label or merely one of its aliases. "Istanbul
@@ -156,6 +156,10 @@ export function buildGeocodeQuery(names) {
   # The country the candidate is actually in. Not used to CHOOSE one — see
   # contradictsArea — only to refuse one the prose says is somewhere else.
   OPTIONAL { ?place wdt:P17 ?country }
+  # The whole administrative chain, not just the immediate parent. Measured: the immediate
+  # P131 of Wildwood Regional Park is Ventura County, so a hint of "California" matches
+  # nothing and a correct place is refused. Transitive, it matches.
+  OPTIONAL { ?place wdt:P131*|wdt:P17 ?anc }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
 }
@@ -177,7 +181,13 @@ export function groupByName(bindings) {
     const key = normalizePlaceName(name);
     if (!grouped.has(key)) grouped.set(key, []);
     // One entity comes back once per P31 value; the same id is one candidate.
-    if (grouped.get(key).some((candidate) => candidate.wikidata_id === qid)) continue;
+    const already = grouped.get(key).find((candidate) => candidate.wikidata_id === qid);
+    if (already) {
+      // One entity comes back once per (P31 x ancestor) pair; the extra rows carry the rest
+      // of its chain and nothing else.
+      if (row?.ancLabel?.value) already.chain.add(row.ancLabel.value);
+      continue;
+    }
     grouped.get(key).push({
       wikidata_id: qid,
       name: row?.placeLabel?.value ?? name,
@@ -187,6 +197,7 @@ export function groupByName(bindings) {
       type_label: typeLabel,
       exact_label: row?.exact?.value === "true",
       country: row?.countryLabel?.value ?? null,
+      chain: new Set([row?.ancLabel?.value, row?.countryLabel?.value].filter(Boolean)),
     });
   }
   return grouped;
@@ -308,10 +319,63 @@ export function areaNamesCountry(area, knownCountries = []) {
   return null;
 }
 
+const normalizeAreaWord = (value) => String(value ?? "")
+  .toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+
+// A hint that cannot contradict anything, because it is not the name of an administrative
+// unit. Two kinds, and both are common in what a model writes into `area_hint`:
+//
+//   a description        "city where principal photography took place", "Location of the house"
+//   an informal region   "French Alps", "Cape Ann area", "Central European city", "Asia"
+//
+// Neither appears in a P131 chain however right it is, so reading either as a contradiction
+// refuses correct coordinates. Measured over 246 placed rows, these two guards together
+// took the false refusals from 19 to 2.
+const HINT_IS_PROSE = /\b(where|which|used|filmed|filming|shot|scenes?|location of|took place|is |was |were |house|home of)\b/i;
+const HINT_IS_INFORMAL = /\b(asia|europe|africa|america|north|south|east|west|central|region|area|metropolitan|alps|coast|bay|near|outskirts|greater)\b/i;
+
+export function hintNamesAnAdministrativeArea(area) {
+  const text = String(area ?? "").trim();
+  return Boolean(text) && text.length <= 42 && !HINT_IS_PROSE.test(text) && !HINT_IS_INFORMAL.test(text);
+}
+
+// Is this candidate's own chain detailed enough to disagree with a hint about a city?
+//
+// Many entities carry no P131 at all — studios, parks, railways — so their chain is the
+// country and themselves. Such a chain cannot contradict "Culver City, California"; it
+// simply does not know. Refusing on it cost seven correct coordinates in the measurement.
+function chainIsInformative(place) {
+  const own = normalizeAreaWord(place?.name);
+  const ancestors = [...(place?.chain ?? [])].map(normalizeAreaWord).filter((word) => word && word !== own);
+  return ancestors.length >= 2 ? ancestors : null;
+}
+
 export function contradictsArea(place, area, knownCountries = []) {
+  // The country test first: it works even on a thin chain, and it is the one that caught
+  // Bognor.
   const claimed = areaNamesCountry(area, knownCountries);
-  if (!claimed || !place?.country) return false;
-  return String(place.country).toLowerCase() !== claimed.toLowerCase();
+  if (claimed && place?.country && String(place.country).toLowerCase() !== claimed.toLowerCase()) {
+    return true;
+  }
+
+  // Then the chain, which is what a city-level hint needs. New-York resolved to Niu-York in
+  // Ukraine on a hint of "New York"; no country is named there, so nothing above could see
+  // it, and the chain says Toretsk Hromada / Bakhmut Raion / Ukraine.
+  const ancestors = chainIsInformative(place);
+  if (!ancestors || !hintNamesAnAdministrativeArea(area)) return false;
+
+  const words = new Set([normalizeAreaWord(place?.name), ...ancestors]
+    .flatMap((word) => [word, COUNTRY_BY_AREA_WORD[word] && normalizeAreaWord(COUNTRY_BY_AREA_WORD[word])])
+    .filter(Boolean));
+  const tokens = String(area).split(",").map(normalizeAreaWord).filter((token) => token.length > 2)
+    .flatMap((token) => [token, COUNTRY_BY_AREA_WORD[token] && normalizeAreaWord(COUNTRY_BY_AREA_WORD[token])])
+    .filter(Boolean);
+  if (tokens.length === 0) return false;
+
+  // ANY token agreeing is agreement. A hint names a place and its enclosing areas, and
+  // matching the widest of them is still the hint and the candidate talking about the same
+  // part of the world.
+  return !tokens.some((token) => [...words].some((word) => word === token || word.includes(token) || token.includes(word)));
 }
 
 export function chooseCandidate(candidates, { near = null, area = null } = {}) {
