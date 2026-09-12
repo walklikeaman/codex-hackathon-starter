@@ -32,10 +32,20 @@ const BASE = (process.env.GLORYMAP_URL ?? "https://codex-hackathon-starter.verce
   .replace(/\/+$/, "");
 const TIMEOUT_MS = 20_000;
 
+// The owner's own account, if he set one up. Everything here works without it — the token
+// buys exactly one thing, which is "plan from MY films" without the agent carrying 2,798
+// titles in every call. It is read from the environment and never from a tool argument, so
+// a prompt cannot talk the server into using somebody else's.
+const TOKEN = process.env.GLORYMAP_TOKEN?.trim() || null;
+
 async function api(path, init) {
   const response = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { Accept: "application/json", ...(init?.headers ?? {}) },
+    headers: {
+      Accept: "application/json",
+      ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
+      ...(init?.headers ?? {}),
+    },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   const text = await response.text();
@@ -320,19 +330,43 @@ server.tool(
     include_studio_lots: z.boolean().default(false),
     library: z.array(z.object({ title: z.string(), year: z.number().nullable().optional() }))
       .optional().describe("The traveller's own films, if the plan should be limited to them."),
+    mine_only: z.boolean().default(false)
+      .describe("Plan only from the films on the owner's account. Needs GLORYMAP_TOKEN in "
+        + "the server's environment; fails loudly rather than quietly planning from "
+        + "everything. Ignored when `library` is given."),
   },
-  async ({ bbox, budget_minutes: budgetMinutes, origin, include_studio_lots: lots, library }) => asText({
-    ...(await api("/api/trip/plan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      // `bbox` is NESTED in the route's body and was spread flat here, so every call
-      // answered 400 "Provide a bbox with west, south, east and north".
-      body: JSON.stringify({
-        bbox, budgetMinutes, origin, includeStudioLots: lots, library,
-      }),
-    })),
-    note: HONESTY,
-  }),
+  async ({ bbox, budget_minutes: budgetMinutes, origin, include_studio_lots: lots, library,
+    mine_only: mineOnly }) => {
+    if (mineOnly && !library && !TOKEN) {
+      throw new Error("mine_only needs GLORYMAP_TOKEN set for this server — otherwise the "
+        + "plan would come from the whole catalogue while claiming to be yours.");
+    }
+    return asText({
+      ...(await api("/api/trip/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // `bbox` is NESTED in the route's body and was spread flat here, so every call
+        // answered 400 "Provide a bbox with west, south, east and north".
+        body: JSON.stringify({
+          bbox, budgetMinutes, origin, includeStudioLots: lots, library,
+          useStoredLibrary: mineOnly === true,
+        }),
+      })),
+      note: HONESTY,
+    });
+  },
+);
+
+server.tool(
+  "my_library",
+  "What the owner's account holds: how many titles, how many rated, and the five most "
+    + "recent — enough to tell 'your films are not in this city' from 'your list never "
+    + "arrived'. Needs GLORYMAP_TOKEN. Never returns the list itself.",
+  {},
+  async () => {
+    if (!TOKEN) throw new Error("No GLORYMAP_TOKEN is set for this server.");
+    return asText(await api("/api/library"));
+  },
 );
 
 await server.connect(new StdioServerTransport());

@@ -26,8 +26,12 @@ const OSRM_OK = {
   }],
 };
 
-function request(body) {
-  return { json: async () => body, url: "https://glorymap.test/api/trip/plan" };
+function request(body, { token = null } = {}) {
+  return {
+    json: async () => body,
+    url: "https://glorymap.test/api/trip/plan",
+    headers: { get: (name) => (name.toLowerCase() === "authorization" && token ? `Bearer ${token}` : null) },
+  };
 }
 
 function handlerWith({ candidates = CANDIDATES, places = [], router = OSRM_OK, readerError = null } = {}) {
@@ -202,4 +206,105 @@ test("candidates can be turned off, and then the graph is all there is", async (
   const body = await (await handler(request({ bbox: HOLLYWOOD_BBOX, includeCandidates: false }))).json();
   assert.equal(body.stops.length, 0, "the LA graph holds one place: a plan from it alone is empty");
   assert.ok(!calls.rpc.some(([name]) => name === "candidates"));
+});
+
+
+// An agent acts for the owner in another process: no localStorage, and carrying 2,798
+// titles into every call is a workaround, not a design. So the list may live on the
+// account — and the route must prove the caller owns it before handing anything back.
+function handlerWithLibrary(stored, { throws = null } = {}) {
+  const seen = [];
+  const handler = createTripPlanHandler({
+    env: { NEXT_PUBLIC_SUPABASE_URL: "https://x.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon" },
+    createReader: () => ({
+      points: async () => [],
+      candidatePoints: async () => CANDIDATES,
+    }),
+    readStoredLibrary: () => async (token) => {
+      seen.push(token);
+      if (throws) throw throws;
+      return stored;
+    },
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => OSRM_OK }),
+    logError: () => {},
+  });
+  return { handler, seen };
+}
+
+test("a plan can be filtered by the list on the caller's account", async () => {
+  const { handler, seen } = handlerWithLibrary([{ title: "Forrest Gump", year: 1994 }]);
+  const response = await handler(request(
+    { bbox: HOLLYWOOD_BBOX, budgetMinutes: 120, useStoredLibrary: true },
+    { token: "tok-123" },
+  ));
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(seen, ["tok-123"]);
+  // Two of the three Hollywood stops are not in the account's list, and each says so.
+  assert.deepEqual(
+    body.excluded.filter((row) => row.reason === "not_in_library").map((row) => row.name).sort(),
+    ["El Capitan Theatre", "Madame Tussauds Hollywood"],
+  );
+  // Which list it filtered by, never the titles back.
+  assert.deepEqual(body.filtered_by, { source: "account", titles: 1 });
+  assert.equal(response.headers.get("Cache-Control"), "private, no-store");
+});
+
+// A list in the body is the more specific instruction, and the only one a caller without
+// an account has.
+test("a list in the body wins over the one on the account", async () => {
+  const { handler, seen } = handlerWithLibrary([{ title: "Forrest Gump", year: 1994 }]);
+  const response = await handler(request({
+    bbox: HOLLYWOOD_BBOX, budgetMinutes: 120, useStoredLibrary: true,
+    library: [{ title: "The Muppets", year: 2011 }],
+  }, { token: "tok-123" }));
+
+  const body = await response.json();
+  assert.deepEqual(seen, [], "the account was never read");
+  assert.deepEqual(
+    body.excluded.filter((row) => row.reason === "not_in_library").map((row) => row.name).sort(),
+    ["Grauman's Chinese Theatre", "Madame Tussauds Hollywood"],
+  );
+  assert.deepEqual(body.filtered_by, { source: "request", titles: 1 });
+});
+
+// Silently planning from the whole catalogue when somebody asked for their own films would
+// hand them a list of films they have never seen, labelled as films they have.
+test("asking for my films without a token is refused, not quietly widened", async () => {
+  const { handler } = handlerWithLibrary([{ title: "Forrest Gump", year: 1994 }]);
+  const response = await handler(request({ bbox: HOLLYWOOD_BBOX, useStoredLibrary: true }));
+  assert.equal(response.status, 401);
+  assert.match((await response.json()).error, /Authorization: Bearer/);
+});
+
+test("a token that identifies nobody is refused", async () => {
+  const { handler } = handlerWithLibrary(null);
+  const response = await handler(request(
+    { bbox: HOLLYWOOD_BBOX, useStoredLibrary: true }, { token: "stale" },
+  ));
+  assert.equal(response.status, 401);
+});
+
+test("an account with no library says so instead of planning from everything", async () => {
+  const { handler } = handlerWithLibrary([]);
+  const response = await handler(request(
+    { bbox: HOLLYWOOD_BBOX, useStoredLibrary: true }, { token: "tok-123" },
+  ));
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /import one first/);
+});
+
+test("a failure reading the account is a 502, never an unfiltered plan", async () => {
+  const { handler } = handlerWithLibrary(null, { throws: new Error("network") });
+  const response = await handler(request(
+    { bbox: HOLLYWOOD_BBOX, useStoredLibrary: true }, { token: "tok-123" },
+  ));
+  assert.equal(response.status, 502);
+});
+
+test("an unfiltered plan says it was filtered by nothing", async () => {
+  const { handler } = handlerWithLibrary([]);
+  const body = await (await handler(request({ bbox: HOLLYWOOD_BBOX }))).json();
+  assert.equal(body.filtered_by, null);
 });
