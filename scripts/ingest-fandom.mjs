@@ -114,7 +114,50 @@ async function main() {
   }
   console.log(`catalogue: ${byTitle.size} distinct titles`);
 
-  const rows = [];
+  // **Written as the run goes, not collected and written at the end.**
+  //
+  // The first version pushed every row into one array and upserted after the last wiki. On
+  // seven wikis that was merely invisible — nothing appeared in the queue until the whole
+  // pass finished, so there was no way to watch it work. On seventy it would be worse than
+  // invisible: a failure on the last wiki would discard the hours and the model calls spent
+  // on the first sixty-nine, and a model call is the one thing here that cannot be repeated
+  // for free.
+  //
+  // The buffer exists only to make batches. `place_key` is generated as
+  // lower(btrim(place_name)) and the unique index is (work_id, place_key), so a batch
+  // holding the same pair twice fails — the collapse below is per batch, which is where the
+  // constraint actually bites. Across batches the upsert's own conflict clause handles it.
+  const buffer = [];
+  const sample = [];
+  let written = 0;
+  let failedBatches = 0;
+
+  async function flush({ force = false } = {}) {
+    if (buffer.length === 0 || (!force && buffer.length < WRITE_BATCH)) return;
+    const unique = new Map();
+    for (const row of buffer) unique.set(`${row.work_id}:${row.place_name.trim().toLowerCase()}`, row);
+    const batch = [...unique.values()];
+    buffer.length = 0;
+
+    if (DRY_RUN) {
+      for (const row of batch) if (sample.length < 12) sample.push(row);
+      written += batch.length;
+      return;
+    }
+    const { error } = await db.from("location_submissions")
+      .upsert(batch, { onConflict: "work_id,place_key", ignoreDuplicates: false });
+    if (error) {
+      // One bad batch is not a reason to throw away the wikis still queued behind it — but
+      // it is every reason to say so, loudly, and to count it into the total. A run that
+      // loses rows and reports success is the failure this whole file keeps meeting.
+      failedBatches += 1;
+      console.log(`  !! batch of ${batch.length} failed: ${error.message}`);
+      return;
+    }
+    written += batch.length;
+    console.log(`  written ${written} so far`);
+  }
+
   const skipped = { licence: 0, noSection: 0, noTable: 0, noWork: 0, prose: 0 };
   let proseCalls = 0;
   let proseRows = 0;
@@ -229,37 +272,37 @@ async function main() {
       }
 
       if (!made.length) { skipped.noTable += 1; continue; }
-      rows.push(...made);
+      buffer.push(...made);
+      await flush();
       if (table.length) console.log(`  ${page.slice(0, 46).padEnd(48)} ${String(made.length).padStart(3)} rows -> ${work.title}`);
       await new Promise((r) => setTimeout(r, 250));
     }
+
+    // **A finished wiki is written before the next one is touched.** The size threshold
+    // alone is not a guarantee: a batch of 200 is never reached on a wiki that yields
+    // sixty-eight rows, so every row would still have ridden to the end of the run on the
+    // first version of this. The unit that matters is not "enough rows" but "work already
+    // done", and a wiki is the smallest boundary worth paying a write for.
+    await flush({ force: true });
   }
 
-  // The database's own identity, mirrored: `place_key` is generated as
-  // lower(btrim(place_name)) and the unique index is (work_id, place_key). Upserting a
-  // batch that contains the same pair twice fails, so the run has to collapse them first.
-  const unique = new Map();
-  for (const row of rows) unique.set(`${row.work_id}:${row.place_name.trim().toLowerCase()}`, row);
-  const ready = [...unique.values()];
+  await flush({ force: true });
 
-  console.log(`\n${ready.length} rows from ${WIKIS.length} wikis`);
+  console.log(`\n${written} rows from ${WIKIS.length} wikis`);
   console.log(`  skipped: ${skipped.licence} wikis on licence, ${skipped.noSection} pages with no section, `
     + `${skipped.noTable} with no readable table, ${skipped.noWork} matching no work`);
 
   if (DRY_RUN) {
     console.log("--dry-run: nothing written\n");
-    for (const row of ready.slice(0, 12)) console.log(`   ${row.source_sentence.slice(0, 150)}`);
+    for (const row of sample) console.log(`   ${row.source_sentence.slice(0, 150)}`);
     return;
   }
-
-  let written = 0;
-  for (let index = 0; index < ready.length; index += WRITE_BATCH) {
-    const batch = ready.slice(index, index + WRITE_BATCH);
-    const { error } = await db.from("location_submissions")
-      .upsert(batch, { onConflict: "work_id,place_key", ignoreDuplicates: false });
-    if (error) throw new Error(error.message);
-    written += batch.length;
-    console.log(`  written ${written}/${ready.length}`);
+  if (failedBatches) {
+    // Said last, because it is the thing a reader must not miss, and non-zero so a caller
+    // watching the exit code sees it too.
+    console.log(`done: ${written} candidate rows — INCOMPLETE: ${failedBatches} batch(es) failed`);
+    process.exitCode = 1;
+    return;
   }
   console.log(`done: ${written} candidate rows`);
 }
