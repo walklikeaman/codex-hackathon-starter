@@ -4219,3 +4219,20 @@ figcaption a {
   letter-spacing: 0.05em;
   color: #b98cff;
 }
+
+/* One control that puts every filter back. Only rendered when something is on — a permanent
+   "Reset 0 filters" is a button that teaches the reader to ignore it. */
+.reset-filters {
+  margin-top: 0.7rem;
+  width: 100%;
+  padding: 0.4rem 0.7rem;
+  border-radius: 9px;
+  border: 1px solid rgba(247, 183, 51, 0.4);
+  background: rgba(247, 183, 51, 0.1);
+  color: var(--accent, #f0a83c);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.reset-filters:hover { background: rgba(247, 183, 51, 0.18); }
