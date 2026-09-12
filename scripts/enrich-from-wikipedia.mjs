@@ -54,6 +54,9 @@ function arg(name, fallback = null) {
 const DRY_RUN = process.argv.includes("--dry-run");
 const LIMIT = Number.parseInt(arg("limit", "5"), 10) || 5;
 const ONE_WORK = arg("work", null);
+// Books and films are enriched from differently-named sections, so a run is usually one
+// kind at a time — `--kind book` reads the nine books, which no run could reach before.
+const KIND = arg("kind", null);
 const LANGUAGES = Number.parseInt(arg("languages", ""), 10) || MAX_LANGUAGES_PER_WORK;
 
 const headers = { "User-Agent": USER_AGENT, "Accept-Encoding": "gzip" };
@@ -128,6 +131,7 @@ async function main() {
 
   let query = db.from("works").select("id, title, kind, year, wikidata_id").not("wikidata_id", "is", null);
   if (ONE_WORK) query = query.eq("id", ONE_WORK);
+  if (KIND) query = query.eq("kind", KIND);
   const { data: works, error } = await query.limit(LIMIT);
   if (error) throw new Error(error.message);
   if (!works?.length) { console.log("Nothing to enrich."); return; }
@@ -162,7 +166,7 @@ async function main() {
         continue;
       }
 
-      const section = chooseSection(toc.parse?.tocdata, language);
+      const section = chooseSection(toc.parse?.tocdata, language, { kind: work.kind });
       if (!section) { console.log(`   ${language}: no production section`); continue; }
 
       const revid = toc.parse?.revid;
@@ -215,7 +219,20 @@ async function main() {
 
     const located = await geocode(accepted.map((location) => location.place_name));
 
-    const rows = accepted.map((location) => {
+    // **A row without its credit cannot be stored, and must not be dropped silently.**
+    //
+    // `source_url` and `source_license` are NOT NULL, and a location whose edition
+    // produced no attribution has neither. Sending null is what broke this pipeline for
+    // five weeks (see below); skipping the row without saying so would be the quieter
+    // version of the same bug.
+    const uncredited = accepted.filter((location) => !credits.get(location.language)?.permalink);
+    if (uncredited.length) {
+      console.log(`   ${uncredited.length} dropped: no attribution for their edition`);
+    }
+    const creditable = accepted.filter((location) => credits.get(location.language)?.permalink);
+    if (creditable.length === 0) continue;
+
+    const rows = creditable.map((location) => {
       const chosen = located.get(location.place_name);
       const credit = credits.get(location.language);
       return {
@@ -230,7 +247,17 @@ async function main() {
         source_revid: location.article_revid,
         // The credit points at the edition the sentence was copied from. A French
         // quote under an en.wikipedia permalink credits the wrong authors.
-        source_url: credit?.permalink ?? null,
+        source_url: credit.permalink,
+        // **NOT NULL with no default, and this script never set it.** The
+        // `provenance_is_required` migration of 04.08 dropped the default that had been
+        // covering the omission, and every run since wrote nothing: each work failed with
+        // `null value in column "source_license"`, the failure was logged per work, and
+        // the run continued and looked successful. The last row this pipeline stored is
+        // dated 03.08 — five weeks of a dead source that reported no error of its own.
+        //
+        // The licence belongs to the EDITION the sentence came from, which is why it is
+        // taken off the same credit as the permalink rather than hardcoded here.
+        source_license: credit.license,
         ...(chosen?.place
           ? {
             lat: chosen.place.lat,
