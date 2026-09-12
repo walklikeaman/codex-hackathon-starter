@@ -3740,10 +3740,13 @@ figcaption a {
   padding: 0.16rem 0.4rem;
   font-size: 0.78rem;
 }
+/* It only renders when a filter is narrowing the map, and then it is the sentence that
+   explains why the map got smaller. 0.42 alpha over the panel measured 3.5:1 — below AA on
+   the one line a surprised reader has to read. */
 .list-control-note {
   flex-basis: 100%;
   font-size: 0.72rem;
-  color: rgba(236, 232, 225, 0.42);
+  color: rgba(236, 232, 225, 0.68);
 }
 /* The reader's own score on a chip. Warm, because it is the one number on the card that
    came from them rather than from a source. */
@@ -4066,12 +4069,17 @@ figcaption a {
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
 }
+/* The TRACK is 3 px; the CONTROL is 24. Both design reviews measured this input as a 3 px
+   hit target, which is what it was: the height was the height of the line you see, so the
+   thing you had to hit was three pixels tall. The element is 24 px now and paints its track
+   as a background, so the line looks the same and the target is a target. */
 .list-control.is-slider input[type="range"] {
   width: 100%;
-  height: 3px;
-  margin: 0.25rem 0 0;
+  height: 24px;
+  margin: 0;
   appearance: none;
-  background: rgba(255, 255, 255, 0.16);
+  background: linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.16))
+    center / 100% 3px no-repeat;
   border-radius: 999px;
   cursor: pointer;
 }
@@ -4196,14 +4204,40 @@ figcaption a {
   display: flex;
   align-items: baseline;
   gap: 0.45rem;
-  padding: 0.3rem 0.45rem;
   border-radius: 8px;
   font-size: 0.84rem;
   background: rgba(255, 255, 255, 0.02);
 }
-.notable-here li:hover { background: rgba(255, 255, 255, 0.06); }
-.notable-here a { color: #f3efe7; text-decoration: none; }
-.notable-here a:hover { text-decoration: underline; }
+/* The row IS the control: the whole line lights on hover because the whole line acts, and
+   the hover paint was already there before anything answered it. */
+.notable-here .notable-row {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 28px;
+  padding: 0.3rem 0.45rem;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: #f3efe7;
+  font: inherit;
+  font-size: 0.84rem;
+  text-align: left;
+  cursor: pointer;
+}
+.notable-here .notable-row:hover,
+.notable-here .notable-row:focus-visible { background: rgba(255, 255, 255, 0.06); }
+.notable-here .notable-row[disabled] { cursor: default; }
+.notable-here .notable-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The provenance of the whole list, once, rather than the same mark repeated on five rows
+   that are all the same kind of claim. */
+.notable-note {
+  margin: 0.3rem 0 0;
+  font-size: 0.7rem;
+  color: rgba(236, 232, 225, 0.6);
+}
 .notable-year { font-size: 0.74rem; color: rgba(236, 232, 225, 0.45); }
 .notable-rating {
   margin-left: auto;
