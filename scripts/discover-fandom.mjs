@@ -105,6 +105,24 @@ async function main() {
   console.log();
 
   const report = [];
+
+  // **Written after every wiki, not once at the end.** Two hundred and forty-two wikis is
+  // ten minutes of polite fetching, and a failure on the last one used to discard the other
+  // 241 — the same lesson the ingest met and the same fix. The file is a measurement of a
+  // moment anyway, so a partial one is still worth having.
+  const save = () => {
+    if (!OUT) return;
+    mkdirSync(path.dirname(OUT), { recursive: true });
+    writeFileSync(OUT, JSON.stringify({
+      generated_at: new Date().toISOString(),
+      overlap,
+      lost_chunks: lostChunks,
+      wikis_probed: report.length,
+      wikis_total: ranked.length,
+      report,
+    }, null, 2));
+  };
+
   for (const candidate of ranked.slice(0, WIKI_LIMIT)) {
     const { wiki, entries } = candidate;
 
@@ -123,6 +141,7 @@ async function main() {
       // rather than after fetching its pages.
       console.log(`${wiki.padEnd(26)} ${String(candidate.works).padStart(5)} works   SKIPPED — licence: ${(licence.text || "unreadable").slice(0, 34)}`);
       report.push({ wiki, works: candidate.works, skipped: "licence" });
+      save();
       continue;
     }
 
@@ -145,6 +164,7 @@ async function main() {
       + `sampled ${sample.length}: ${readable} readable (${shapes.table}t/${shapes.list}l), `
       + `${shapes.prose} prose, ${shapes.no_section} none  → ${rows} rows`);
     report.push({ wiki, works: candidate.works, sampled: sample.length, ...shapes, rows });
+    save();
   }
 
   const totals = report.reduce((sum, r) => ({
@@ -154,11 +174,23 @@ async function main() {
   }), { readable: 0, prose: 0, rows: 0 });
   console.log(`\nsampled total: ${totals.readable} pages readable for free, ${totals.prose} would need a model, ${totals.rows} rows`);
 
-  if (OUT) {
-    mkdirSync(path.dirname(OUT), { recursive: true });
-    writeFileSync(OUT, JSON.stringify({ generated_at: new Date().toISOString(), overlap, lost_chunks: lostChunks, report }, null, 2));
-    console.log(`${OUT}: written`);
+  // Ranked by what they actually yielded, which is a different list from the one they were
+  // probed in — that order was our overlap, this one is the answer.
+  const productive = report.filter((row) => (row.rows ?? 0) > 0)
+    .sort((a, b) => b.rows - a.rows);
+  if (productive.length) {
+    console.log("\nwikis that yielded anything, best first:");
+    for (const row of productive) {
+      console.log(`  ${row.wiki.padEnd(28)} ${String(row.rows).padStart(4)} rows from ${row.sampled} pages`
+        + `  (${row.works} of our works)`);
+    }
   }
+  const proseOnly = report.filter((row) => (row.rows ?? 0) === 0 && (row.prose ?? 0) > 0);
+  console.log(`\n${productive.length} wikis yielded rows; ${proseOnly.length} more hold only prose;`
+    + ` ${report.filter((r) => r.skipped).length} refused on licence`);
+
+  save();
+  if (OUT) console.log(`${OUT}: written`);
 }
 
 if (process.argv[1]?.endsWith("discover-fandom.mjs")) {
