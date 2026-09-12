@@ -45,7 +45,11 @@ export function createGeocoder({ fetchImpl = fetch, sleep = wait, onNote = () =>
   // `near` is the enclosing area the caller already knows about — the city the user is
   // looking at. It is the only thing allowed to break a homonym tie, and it comes from
   // the request rather than from a model.
-  return async function geocodeNames(names, { near = null } = {}) {
+  // `areas` is what the PROSE said about each name — "England" for Bognor — keyed by the
+  // name as the caller asked it. Unlike `near`, it may only REFUSE a candidate, never pick
+  // one: it is written by a model, and an invented area that could select would move a pin.
+  // See `contradictsArea`.
+  return async function geocodeNames(names, { near = null, areas = null } = {}) {
     const resolved = new Map();
 
     // Ask the gazetteer the question it can answer, and report under the name the
@@ -118,8 +122,13 @@ export function createGeocoder({ fetchImpl = fetch, sleep = wait, onNote = () =>
       const payload = await response.json().catch(() => null);
       const grouped = groupByName(payload?.results?.bindings);
       for (const lookup of batch) {
-        const chosen = chooseCandidate(grouped.get(normalizePlaceName(lookup)) ?? [], { near });
-        for (const original of asked.get(lookup) ?? [lookup]) resolved.set(original, chosen);
+        const candidates = grouped.get(normalizePlaceName(lookup)) ?? [];
+        // Several prose names can reduce to one lookup, and they may carry different
+        // hints. The decision is made per ORIGINAL name so that one row's area cannot
+        // silently answer for another's.
+        for (const original of asked.get(lookup) ?? [lookup]) {
+          resolved.set(original, chooseCandidate(candidates, { near, area: areas?.get?.(original) ?? null }));
+        }
       }
     }
 

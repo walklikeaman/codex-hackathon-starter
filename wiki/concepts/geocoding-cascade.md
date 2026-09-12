@@ -129,3 +129,37 @@ The point's provenance is separate from the claim's — see [[location-discovery
 source said the film shot here; Wikidata said where here is.
 
 See also: [[place-precision]], [[wikipedia-enrichment]], [[location-discovery]].
+
+## The area the prose named — it may refuse, but never choose
+
+`area_hint` has been collected since the extractor was written, for exactly the purpose its
+own comment states: *"Cambridge is unresolvable, Cambridge, England is not."* It was never
+passed to the gazetteer.
+
+**Bognor is what that cost.** The prose said Joyce wrote there, `area_hint` said England, and
+the gazetteer answered **Bognor, Ontario** — stored, with a Canadian coordinate, on a map of
+places a reader walks to. It was not a tie: plain "Bognor" has one candidate, because the
+English town is called Bognor Regis. **No tie-break could ever have caught it.**
+
+So the hint is wired in, and wired in one direction only. `near` is documented as *"the only
+thing allowed to break a homonym tie, and it comes from the request rather than from a
+model"* — and that rule is right, because `area_hint` is written by a model. An invented area
+that could SELECT would move a pin on a guess.
+
+Refusing is the safe half of the same information. `chooseCandidate` applies the check to
+every decision that carries a place, because the contradiction is orthogonal to how the
+candidate was chosen. A refusal costs a name without a point, which the schema already
+expects and the review queue already handles.
+
+Three silences, all deliberate:
+
+- **A hint naming no country says nothing.** "Edinburgh" is not a country and decides nothing.
+- **A candidate with no `P17` says nothing.**
+- **A name that is both a country and something else says nothing.** "Savannah, Georgia" must
+  not be read as the Caucasus. Refusing a true coordinate costs a place, and so does storing
+  a false one — silence is the only answer that costs neither.
+
+Constituent countries map to what P17 actually says: a place in Scotland is *United Kingdom*
+there, so a hint of "Scotland" has to mean that or it would contradict every true answer.
+Beyond the short alias table, the hint is matched against **the countries the gazetteer
+itself returned** for those candidates, so the two cannot drift apart.
