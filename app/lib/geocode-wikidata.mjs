@@ -86,6 +86,39 @@ export function isPlaceType(typeLabel) {
   return !NON_PLACE_TYPES.has(label);
 }
 
+// **A state is not a point.** Measured over the 246 coordinates of the first real run:
+// six rows are a "U.S. state" and one a "province of Canada" — New Jersey at 40.0,-74.5,
+// Minnesota at 46.0,-94.0, British Columbia in the middle of its own forest. Those are
+// centroids of an administrative polygon, and standing on one tells a reader nothing.
+//
+// The owner's rule of 04.08 already said it for islands: *an island named as a location
+// goes on the map as an AREA, never as a point.* A state is the same shape of claim and a
+// larger error. The name is kept and the coordinate declined, which is what the schema
+// expects of a place we cannot locate.
+//
+// Cities, towns, county seats and census-designated places are NOT this. A city centroid is
+// where a reader would aim, and 27 of the 246 are exactly that. The test is anchored so
+// that "state capital" and "city in the state of New York" — both city types — do not read
+// as states.
+const AREA_TYPE_PATTERNS = [
+  /^u\.?s\.? state$/i,
+  /^state of the united states/i,
+  /^(federal |constituent |autonomous )?state$/i,
+  /^state of \w+/i,
+  /^province(\b| of )/i,
+  /^(autonomous )?region(\b| of )/i,
+  /^territory(\b| of )/i,
+  /^(sovereign )?country$/i,
+  /^oblast|^krai$|^prefecture(\b| of )/i,
+  /^autonomous community/i,
+  /^constituent country/i,
+];
+
+export function isAreaNotAPoint(place) {
+  const labels = [...(place?.types ?? []), place?.type_label].filter(Boolean);
+  return labels.some((label) => AREA_TYPE_PATTERNS.some((pattern) => pattern.test(String(label).trim())));
+}
+
 // A name too generic to disambiguate. These match hundreds of entities, and a
 // population tiebreak between them is a coin toss dressed up as a decision.
 const TOO_GENERIC = new Set([
@@ -134,13 +167,31 @@ export function sparqlLiteral(value) {
 // geographic feature, and requires a coordinate — an entity we cannot place is not an
 // answer. Population comes back for the tiebreak, and `hint` narrows by the enclosing
 // area when the prose gave one.
-export function buildGeocodeQuery(names) {
+// **A French article names French places in French, and the gazetteer speaks every
+// language.** Measured on the first real run: `observatoire Griffith`, `manoir Playboy`,
+// `Colombie-Britannique` and `Sony Pictures Studios de Culver City` all came back
+// `no_candidate` — asked in English, they are nothing. Asked with the tag of the edition
+// they came from, Wikidata answers **Griffith Observatory** and **British Columbia**.
+//
+// Nothing is translated. The name is the one the source used, asked in the language the
+// source is written in, which is the only honest way to look it up — a model asked to
+// render it in English would be inventing a name the article never carried.
+//
+// `languages` maps the name to the edition it came from. A name with no entry is asked in
+// English, as before.
+export function buildGeocodeQuery(names, { languages = null } = {}) {
   const wanted = (Array.isArray(names) ? names : [])
     .filter(isGeocodableName)
     .slice(0, MAX_NAMES_PER_QUERY);
   if (wanted.length === 0) return null;
 
-  const values = wanted.map((name) => `"${sparqlLiteral(name)}"@en`).join(" ");
+  const values = wanted.flatMap((name) => {
+    const literal = `"${sparqlLiteral(name)}"`;
+    const language = languages?.get?.(name);
+    // Both tags, not one: an English name in a French article still answers in English,
+    // and asking only in French would lose it.
+    return language && language !== "en" ? [`${literal}@en`, `${literal}@${language}`] : [`${literal}@en`];
+  }).join(" ");
 
   return `SELECT ?name ?place ?placeLabel ?lat ?lng ?population ?typeLabel ?exact ?countryLabel ?ancLabel WHERE {
   VALUES ?name { ${values} }
@@ -186,6 +237,7 @@ export function groupByName(bindings) {
       // One entity comes back once per (P31 x ancestor) pair; the extra rows carry the rest
       // of its chain and nothing else.
       if (row?.ancLabel?.value) already.chain.add(row.ancLabel.value);
+      if (typeLabel) already.types.add(typeLabel);
       continue;
     }
     grouped.get(key).push({
@@ -198,6 +250,11 @@ export function groupByName(bindings) {
       exact_label: row?.exact?.value === "true",
       country: row?.countryLabel?.value ?? null,
       chain: new Set([row?.ancLabel?.value, row?.countryLabel?.value].filter(Boolean)),
+      // Every P31, not only the first row's. An entity comes back once per type and the
+      // one that arrives first is arbitrary — Honolulu is a "county seat" on one row and a
+      // "consolidated city-county" on another, and a rule reading only one of them is a
+      // coin toss.
+      types: new Set([typeLabel].filter(Boolean)),
     });
   }
   return grouped;
@@ -424,6 +481,8 @@ export function chooseCandidate(candidates, { near = null, area = null } = {}) {
 // to how the candidate was chosen: Bognor was `unique`, not a tie.
 function refuseIfElsewhere(decision, area, all) {
   if (!decision.place) return decision;
+  // A region has no point to stand on, however confidently it was identified.
+  if (isAreaNotAPoint(decision.place)) return { place: null, reason: "area_not_a_point", candidates: all };
   const known = [...new Set(all.map((candidate) => candidate.country).filter(Boolean))];
   if (!contradictsArea(decision.place, area, known)) return decision;
   return { place: null, reason: "contradicts_area", candidates: all };

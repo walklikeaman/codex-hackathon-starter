@@ -235,7 +235,10 @@ async function main() {
     // candidate — only refuse one that is in a different country, which is what Bognor
     // needed: the hint said England and the only candidate was Bognor, Ontario.
     const areas = new Map(accepted.map((location) => [location.place_name, location.area_hint]));
-    const located = await geocode(accepted.map((location) => location.place_name), { areas });
+    // And the edition each name came from. A French article names Griffith Observatory
+    // "observatoire Griffith", which is nothing in English and is itself in French.
+    const languages = new Map(accepted.map((location) => [location.place_name, location.language]));
+    const located = await geocode(accepted.map((location) => location.place_name), { areas, languages });
 
     // **A row without its credit cannot be stored, and must not be dropped silently.**
     //

@@ -14,6 +14,7 @@ import {
   areaNamesCountry,
   contradictsArea,
   hintNamesAnAdministrativeArea,
+  isAreaNotAPoint,
   dominantByPopulation,
   gazetteerName,
   groupByName,
@@ -502,4 +503,65 @@ test("a hint sharing only a wide ancestor is NOT caught, and that is the known l
   // Written down rather than papered over.
   const nottingham = withChain("Clifton", ["Nottingham", "England", "United Kingdom"], "United Kingdom");
   assert.equal(contradictsArea(nottingham, "Bristol, England"), false);
+});
+
+
+// --- a region is an area, not a point --------------------------------------------------
+
+const typed = (name, types) => ({
+  name, types: new Set(types), lat: 1, lng: 1, exact_label: true,
+  chain: new Set(["United States"]), country: "United States",
+});
+
+test("a state has no point to stand on", () => {
+  // Measured over the 246 coordinates of the first real run: six rows are a "U.S. state"
+  // and one a "province of Canada" — New Jersey at 40.0,-74.5, Minnesota at 46.0,-94.0.
+  // Those are centroids of a polygon, and standing on one tells a reader nothing. The
+  // owner's rule of 04.08 already said it for islands: an island named as a location goes
+  // on the map as an AREA, never as a point.
+  assert.equal(isAreaNotAPoint(typed("New Jersey", ["U.S. state"])), true);
+  assert.equal(isAreaNotAPoint(typed("British Columbia", ["province of Canada"])), true);
+  assert.equal(chooseCandidate([typed("New Jersey", ["U.S. state"])], {}).reason, "area_not_a_point");
+  assert.equal(chooseCandidate([typed("New Jersey", ["U.S. state"])], {}).place, null);
+});
+
+test("a city is not a region, however the type is worded", () => {
+  // 27 of the 246 are cities and a city centroid is where a reader would aim. The patterns
+  // are anchored so that "state capital" and "city in the state of New York" — both city
+  // types — do not read as states.
+  for (const [name, types] of [
+    ["New York City", ["city in the state of New York"]],
+    ["Mumbai", ["state capital"]],
+    ["Honolulu", ["county seat", "consolidated city-county"]],
+    ["Kaneohe", ["census-designated place in the United States"]],
+    ["Wildwood Regional Park", ["regional park"]],
+  ]) {
+    assert.equal(isAreaNotAPoint(typed(name, types)), false, name);
+  }
+});
+
+test("every P31 is read, not whichever row arrived first", () => {
+  // An entity comes back once per type and the order is arbitrary — Honolulu is a "county
+  // seat" on one row and a "consolidated city-county" on another. A rule reading one of
+  // them is a coin toss.
+  assert.equal(isAreaNotAPoint(typed("Somewhere", ["city", "U.S. state"])), true);
+  assert.equal(isAreaNotAPoint(typed("Somewhere", ["U.S. state", "city"])), true);
+});
+
+// --- the edition's own language ---------------------------------------------------------
+
+test("a name from a French article is asked in French as well as English", () => {
+  // observatoire Griffith, Colombie-Britannique and Sony Pictures Studios de Culver City
+  // all came back no_candidate: asked in English they are nothing. Nothing is translated —
+  // the name is the one the source used, asked in the language the source is written in.
+  const query = buildGeocodeQuery(["observatoire Griffith"], { languages: new Map([["observatoire Griffith", "fr"]]) });
+  assert.match(query, /"observatoire Griffith"@en/);
+  assert.match(query, /"observatoire Griffith"@fr/);
+});
+
+test("without a language, and for English itself, only the English tag is asked", () => {
+  assert.match(buildGeocodeQuery(["Pinewood Studios"]), /"Pinewood Studios"@en/);
+  assert.ok(!buildGeocodeQuery(["Pinewood Studios"]).includes("@fr"));
+  const english = buildGeocodeQuery(["Pinewood Studios"], { languages: new Map([["Pinewood Studios", "en"]]) });
+  assert.equal((english.match(/"Pinewood Studios"@/g) ?? []).length, 1);
 });

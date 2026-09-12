@@ -49,7 +49,7 @@ export function createGeocoder({ fetchImpl = fetch, sleep = wait, onNote = () =>
   // name as the caller asked it. Unlike `near`, it may only REFUSE a candidate, never pick
   // one: it is written by a model, and an invented area that could select would move a pin.
   // See `contradictsArea`.
-  return async function geocodeNames(names, { near = null, areas = null } = {}) {
+  return async function geocodeNames(names, { near = null, areas = null, languages = null } = {}) {
     const resolved = new Map();
 
     // Ask the gazetteer the question it can answer, and report under the name the
@@ -74,7 +74,7 @@ export function createGeocoder({ fetchImpl = fetch, sleep = wait, onNote = () =>
     // 429 spends the room needed to shrink: seen live, 8 names went 8 → 4 → wait → 4 →
     // 2 and then gave up with splits still available.
     async function resolveBatch(batch, { splits = 0, waits = 0 } = {}) {
-      const query = buildGeocodeQuery(batch);
+      const query = buildGeocodeQuery(batch, { languages });
       if (!query) return;
 
       let response;
