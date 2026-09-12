@@ -71,16 +71,26 @@ export function notableHere(films, { limit = 5 } = {}) {
 //
 // Keyed by coordinate because that is what the pin layer has; a place is a point, and two
 // works at one address share a pin.
+// The cap is on the LABELS, not on the films, and that distinction is the whole point. It
+// used to cap the film list at eight and then label every place each of those films held —
+// and one film holds up to 96 places at one address in this data set, so eight films could
+// produce hundreds of labels. The number that had to stay small was the number of words
+// drawn over the streets.
 export function labelledPlaces(films, { limit = 8 } = {}) {
   const labels = new Map();
+  const ceiling = Math.max(0, limit);
+  if (ceiling === 0) return labels;
 
-  for (const film of notableHere(films, { limit })) {
+  // Ranked without a cap, so the eighth label can come from the twentieth film when the
+  // best-known nineteen all sit at one address.
+  for (const film of notableHere(films, { limit: Infinity })) {
     for (const place of Array.isArray(film.places) ? film.places : []) {
       if (!Number.isFinite(place?.lat) || !Number.isFinite(place?.lng)) continue;
       const key = `${place.lat},${place.lng}`;
       // First writer wins: the films arrive best-known first, so a place shared by two
       // works is named after the one people came for.
       if (!labels.has(key)) labels.set(key, film.title ?? "");
+      if (labels.size >= ceiling) return labels;
     }
   }
 

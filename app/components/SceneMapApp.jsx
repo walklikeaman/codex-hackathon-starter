@@ -98,7 +98,6 @@ import {
   passesImdbFilter,
   passesLibraryFilter,
   ratingLabel,
-  sortLabel,
   sortWorks,
 } from "../lib/library-view.mjs";
 import { getSupabaseBrowserClient } from "../lib/supabase-browser.mjs";
@@ -2283,6 +2282,17 @@ export default function SceneMapApp() {
     invalidateRoute();
   }
 
+  // Fly the map to a coordinate the panel is pointing at, without answering any of the
+  // other questions on this surface: the city, the radius and the search all stay as they
+  // were. `activeLocation` is cleared because it outranks `mapCenter` in what the map pans
+  // to, so leaving an old card selected would swallow the move silently.
+  function showOnMap(position) {
+    if (!Array.isArray(position) || !Number.isFinite(position[0]) || !Number.isFinite(position[1])) return;
+    preserveViewportContext.current = true;
+    setActiveLocation(null);
+    setMapCenter(position);
+  }
+
   function refreshVisibleMap({ center, radiusKm, zoom }) {
     preserveViewportContext.current = true;
     setBrowseCenter(center);
@@ -2910,19 +2920,43 @@ export default function SceneMapApp() {
           <section className="notable-here" aria-label="Best known here">
             <h2>Known for</h2>
             <ul>
-              {notable.map((film) => (
-                <li key={film.work_id ?? film.title}>
-                  {film.work_id
-                    ? <a href={workPath({ id: film.work_id, title: film.title })}>{film.title}</a>
-                    : <span>{film.title}</span>}
-                  {film.year ? <span className="notable-year">{film.year}</span> : null}
-                  <span className="notable-rating">{Number(film.imdb).toFixed(1)}</span>
-                  {/* A film seen only on a backlot is a different answer from one seen on
-                      the street, and it is said before anybody walks. */}
-                  {film.on_a_lot_only && <span className="notable-lot">studio lot</span>}
-                </li>
-              ))}
+              {notable.map((film) => {
+                const place = (film.places ?? []).find(
+                  (candidate) => Number.isFinite(candidate?.lat) && Number.isFinite(candidate?.lng));
+                return (
+                  <li key={film.work_id ?? film.title}>
+                    {/* A row acts on the MAP. It used to be a link to `/work/…`, which took
+                        the reader out of the product to read a description of a place they
+                        were already looking at — and the row lit up on hover while doing
+                        nothing to the map, so it made the same promise the film chips below
+                        it keep. Hovering names its pins; clicking flies to one. */}
+                    <button
+                      type="button"
+                      className="notable-row"
+                      onMouseEnter={() => setHighlightedFilm(film)}
+                      onMouseLeave={() => setHighlightedFilm(null)}
+                      onFocus={() => setHighlightedFilm(film)}
+                      onBlur={() => setHighlightedFilm(null)}
+                      onClick={() => place && showOnMap([place.lat, place.lng])}
+                      disabled={!place}
+                      title={place ? `Show ${film.title} on the map` : film.title}
+                    >
+                      <span className="notable-title">{film.title}</span>
+                      {film.year ? <span className="notable-year">{film.year}</span> : null}
+                      <span className="notable-rating">{Number(film.imdb).toFixed(1)}</span>
+                    </button>
+                    {/* A film seen only on a backlot is a different answer from one seen on
+                        the street, and it is said before anybody walks. */}
+                    {film.on_a_lot_only && <span className="notable-lot">studio lot</span>}
+                  </li>
+                );
+              })}
             </ul>
+            {/* Every row here comes from the queue — the rows our sources name and nobody
+                has checked. The panel's most prominent list was the one place the product
+                made no claim about its own evidence, which is the same failure as the
+                London cover strip in a new shape. */}
+            <p className="notable-note">Named by our sources · not checked by us</p>
           </section>
         )}
 
@@ -2954,8 +2988,8 @@ export default function SceneMapApp() {
             {graphLayerOn && graphSummary ? (
               <span className="graph-count">
                 {graphSummary.clustered
-                  ? `${graphSummary.count} clusters`
-                  : `${graphSummary.count} points`}
+                  ? `${graphSummary.count} cluster${graphSummary.count === 1 ? "" : "s"}`
+                  : `${graphSummary.count} point${graphSummary.count === 1 ? "" : "s"}`}
               </span>
             ) : null}
           </button>
@@ -3257,19 +3291,25 @@ export default function SceneMapApp() {
             />
           </label>
 
-          <small className="list-control-note">
-            {sortLabel(sortBy)}
-            {impliesLibraryOnly(minRating)
-              // Said out loud: a bar on YOUR rating can only describe your list, and a
-              // reader who did not expect the map to narrow deserves to know why it did.
-              ? ` · ${ratingLabel(minRating)} and up, from your list only`
-              : ""}
-            {Number(minImdb) > NO_MINIMUM
-              // And the same for the public bar, which also hides every film nobody has
-              // rated — 123 of the 1,642 Los Angeles works.
-              ? ` · IMDb ${imdbLabel(minImdb)}+, rated films only`
-              : ""}
-          </small>
+          {/* Only the consequences, and only when there are any. The note used to open by
+              repeating the sort select's own current value back at the reader — the one
+              line in this panel that failed AA contrast (3.5:1 at 11.5 px) was also the one
+              line that said nothing the control beside it did not already say. */}
+          {(impliesLibraryOnly(minRating) || Number(minImdb) > NO_MINIMUM) && (
+            <small className="list-control-note">
+              {impliesLibraryOnly(minRating)
+                // Said out loud: a bar on YOUR rating can only describe your list, and a
+                // reader who did not expect the map to narrow deserves to know why it did.
+                ? `${ratingLabel(minRating)} and up, from your list only`
+                : ""}
+              {impliesLibraryOnly(minRating) && Number(minImdb) > NO_MINIMUM ? " · " : ""}
+              {Number(minImdb) > NO_MINIMUM
+                // And the same for the public bar, which also hides every film nobody has
+                // rated — 123 of the 1,642 Los Angeles works.
+                ? `IMDb ${imdbLabel(minImdb)}+, rated films only`
+                : ""}
+            </small>
+          )}
         </div>
 
         <div className="film-grid" aria-label="Selected stories">
