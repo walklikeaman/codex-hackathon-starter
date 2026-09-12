@@ -7,6 +7,41 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-12] fix | A finished wiki is written before the next one is touched
+
+**Object**: `scripts/ingest-fandom.mjs`
+**Scenario**: fix · **Outcome**: ✅ rows land as the pass runs; a failure costs one wiki, not
+the run
+**Code changes**: this commit
+
+The ingest pushed every row into one array and upserted after the last wiki. On seven wikis
+that was merely invisible — nothing reached the queue until the whole pass finished, so
+there was no way to watch it work, and "show me what landed" could only be answered
+afterwards. On seventy it would be worse: a failure on the last wiki discards the hours and
+the model calls spent on the first sixty-nine, and **a model call is the one thing here that
+cannot be repeated for free**.
+
+**A size threshold alone is not the fix, and the first attempt proved it.** Flushing at 200
+rows changed nothing on a run yielding sixty-eight: the buffer never reached the threshold
+and every row still rode to the end. The unit that matters is not "enough rows" but **work
+already done**, and a wiki is the smallest boundary worth paying a write for. Both now
+apply — the threshold keeps batches large where volume is high, the wiki boundary bounds
+what a failure can cost.
+
+The duplicate collapse moved with it. `place_key` is generated as `lower(btrim(place_name))`
+and the unique index is `(work_id, place_key)`, so a batch holding the same pair twice
+fails — that collapse is now **per batch**, which is where the constraint actually bites.
+Across batches the upsert's own conflict clause handles it.
+
+**A failed batch no longer throws away the wikis behind it — and no longer passes for
+success either.** It is counted, printed with `!!`, named in the final line as
+`INCOMPLETE: N batch(es) failed`, and sets a non-zero exit code. A run that loses rows and
+reports success is the failure this file has met three times now.
+
+`enrich-from-wikipedia` needed nothing: its write already sits inside the per-work loop.
+
+---
+
 ## [2026-09-12] ingest | 28 works could be enriched from Wikipedia; now 5,480 can
 
 **Object**: `app/lib/wikidata-sparql.mjs` (new), `scripts/backfill-wikidata-ids.mjs` (new),
