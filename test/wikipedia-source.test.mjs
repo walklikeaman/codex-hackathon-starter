@@ -14,6 +14,7 @@ import {
   chooseSection,
   sectionRankFor,
   SUPPORTED_LANGUAGES,
+  MAX_ENTITIES_PER_REQUEST,
   languagesForWork,
   preferredLanguages,
   cleanWikitext,
@@ -443,4 +444,17 @@ test("every edition we read has a book vocabulary too", () => {
 test("a series is read like a film, not like a book", () => {
   const toc = { sections: [{ line: "Background", index: "1" }, { line: "Filming", index: "2" }] };
   assert.equal(chooseSection(toc, "en", { kind: "series" }).line, "Filming");
+});
+
+
+test("above the API's batch ceiling the builder refuses, and says so by its type", () => {
+  // A caller asking for more than the endpoint allows gets null, not a URL that would be
+  // rejected on arrival. The caller has to chunk — and the run that first asked for 200
+  // works discovered this as "Failed to parse URL from null", which names neither the
+  // limit nor the caller. It had never appeared because the default limit is five.
+  const many = Array.from({ length: MAX_ENTITIES_PER_REQUEST + 1 }, (_, i) => `Q${i + 1}`);
+  assert.equal(buildEntitiesUrl(many), null);
+  assert.ok(buildEntitiesUrl(many.slice(0, MAX_ENTITIES_PER_REQUEST)));
+  assert.equal(buildEntitiesUrl([]), null);
+  assert.equal(MAX_ENTITIES_PER_REQUEST, 50);
 });
