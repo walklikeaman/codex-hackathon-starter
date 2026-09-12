@@ -7,6 +7,70 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-12] incident | Wikipedia enrichment wrote nothing for five weeks, and said so every time
+
+**Object**: `scripts/enrich-from-wikipedia.mjs`, `app/lib/wikipedia-source.mjs`,
+`app/lib/wikipedia-extract.mjs`
+**Scenario**: incident · **Outcome**: ✅ the pipeline writes again; first `author_place`
+rows in the queue; one wrong coordinate withdrawn
+**Code changes**: this commit
+
+Running the enrichment over the catalogue's nine books turned up four separate things, and
+only the last is about books.
+
+**1. The pipeline had been dead since 04.08.** `provenance_is_required` dropped the default
+on `location_submissions.source_license` and left the column NOT NULL. This script never set
+it. Every work since has failed with *"null value in column source_license"* — logged per
+work, the run continuing past it, the exit code zero. **The last row this source stored is
+dated 03.08**, the day before the migration. Five weeks, and nothing looked broken.
+
+The licence now comes off the same credit as the permalink, because it belongs to the
+EDITION the sentence was copied from — a French quote under the English article's licence is
+the same error as under its permalink, which the code already guarded. `source_url` is
+likewise NOT NULL and was being sent as `?? null`; a row with no attribution is now skipped
+**and counted out loud**, because dropping it silently is the quieter version of this bug.
+
+**2. A book is not made on a set.** `chooseSection` looked for "Production" and "Filming",
+so every book resolved to *no production section* — nine works unreachable. Their articles
+say "Background", "Background and composition", "Concept and creation", "Genèse et
+rédaction", "Entstehung". A second rank table per edition, chosen by the work's kind.
+
+**3. The multi-language pass earned itself, measurably.** Six of nine books yielded a
+section and **three only through a non-English edition**: Oliver Twist and Mrs Dalloway have
+nothing about their writing in English and do in French; The Lord of the Rings' French
+section is longer than its English one; Paddington has no English article at all.
+
+**4. My own gate was one word short — for the third time.** The model found Bognor
+correctly, role `author`, quoting *"Joyce completed another four short sketches in July and
+August 1923, while holidaying in Bognor."* `sentenceSupportsRole` threw it away: the list
+held `sketched` and not `sketches`, and no `completed` at all.
+
+Three misses of the same shape now — `production was based`, the curly apostrophe, this.
+**The lesson is the shape, not the words added.** Making a work is described with an
+ordinary, wide vocabulary, so the list must err long: a dropped true claim costs a place, an
+over-wide one costs a reviewer a rejection, and every row is reviewed anyway.
+
+**What landed: two rows, both `author_place`, the first in the queue.** Bognor and Paris,
+from Finnegans Wake.
+
+**And one of them was pinned in the wrong country.** Bognor was geocoded to
+**44.67, −80.83 — Bognor, Ontario**, while `area_hint` said England. The hint exists for
+exactly this: its own comment says *"Cambridge is unresolvable, Cambridge, England is not"*.
+It is collected and never passed. The same shape as the dead `preferred` language argument:
+a disambiguator designed, built and never wired.
+
+It is not a one-line fix, and the rule it runs into is a good one — `createGeocoder`'s `near`
+is documented as *"the only thing allowed to break a homonym tie, and it comes from the
+request rather than from a model"*, and `area_hint` is model-written. So the hint must not
+SELECT a candidate. It could honestly **refuse** one: a candidate whose country contradicts
+the hint is a coordinate we should decline rather than store. That needs the country in the
+gazetteer query, which it does not currently return.
+
+Not done here. The wrong coordinate was withdrawn from the live row by hand, the name kept,
+the reason recorded — which is what the schema intends for a place we cannot locate.
+
+---
+
 ## [2026-09-12] fix | The edition in the work's own language was never read
 
 **Object**: `app/lib/wikipedia-source.mjs`

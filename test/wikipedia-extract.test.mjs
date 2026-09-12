@@ -372,3 +372,20 @@ test("the drop reason says which gate refused it", () => {
   assert.equal(accepted.length, 0);
   assert.equal(rejected[0].reason, "quote_is_a_plan_not_a_fact");
 });
+
+
+test("making a work is described with an ordinary vocabulary, not eight verbs", () => {
+  // Joyce's Bognor was a real author place found correctly by the model and thrown away by
+  // this gate: the list held "sketched" and not "sketches", and no "completed" at all.
+  // Third time the list was one word short of a true claim.
+  assert.equal(sentenceSupportsRole(
+    "Joyce completed another four short sketches in July and August 1923, while holidaying in Bognor.",
+    "author_place",
+  ), true);
+  assert.equal(sentenceSupportsRole("He worked on the manuscript in a rented room in Wiesbaden.", "author_place"), true);
+  assert.equal(sentenceSupportsRole("She revised the final chapters in Edinburgh.", "author_place"), true);
+  // And it still refuses a sentence about the work rather than about its making.
+  assert.equal(sentenceSupportsRole("Dostoevsky owed large sums of money to creditors.", "author_place"), false);
+  assert.equal(sentenceSupportsRole("The novel is set in Saint Petersburg.", "author_place"), false);
+  assert.equal(sentenceSupportsRole("Hogwarts is the school at the centre of the series.", "author_place"), false);
+});

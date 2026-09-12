@@ -222,7 +222,16 @@ export function sentenceMentionsPlace(sentence, placeName) {
 // accepted fictional one puts Hogwarts in a review queue that a person then has to clean.
 const ROLE_EVIDENCE = Object.freeze({
   filming_location: /\b(film(ed|ing|s)?|shot|shoot(ing)?|record(ed|ing)|lens(ed)?|photograph(ed|y)|principal photography|on location|set up|scene(s)? (were|was)|stood in for|doubl(e|ed|ing) for|stand-in|production (was |is |were )?(moved|based|housed)|studios?)\b/i,
-  author_place: /\b(wrote|written|writing|author(ed)?|drafted|penn(ed|ing)|compos(ed|ing)|drew|draw(n|ing)? (on|from)|inspir(ed|ation)|based (on|upon)|model(l)?ed (on|after)|named? (after|from)|took the name|sketch(ed)?|imagined|conceiv(ed)|set out to)\b/i,
+  // **Widened three times now, each time by one word short of a true claim.** Joyce's
+  // "completed another four short sketches ... while holidaying in Bognor" was refused
+  // because the list held `sketched` and not `sketches`, and no `completed` at all — a real
+  // author place lost to a missing inflection.
+  //
+  // The lesson is the shape of the mistake, not the words added: making something is
+  // described with a wide and ordinary vocabulary, so this list errs long. A dropped true
+  // claim costs one place; an over-wide list costs a reviewer one rejection, and every row
+  // is reviewed anyway.
+  author_place: /\b(wrote|writ(ten|ing|es)|author(ed)?|draft(ed|ing|s)?|penn(ed|ing)|compos(e|ed|ing|ition)|complet(e|ed|ing)|finish(ed|ing)?|work(ed|ing) on|revis(e|ed|ing|ion)|dictat(e|ed|ing)|sketch(es|ed|ing)?|chapters?|manuscript|notebooks?|drew|draw(n|ing)? (on|from)|inspir(ed|ation)|based (on|upon)|model(l)?ed (on|after)|named? (after|from)|took the name|imagined|conceiv(ed|ing)|set out to|began|begun|started)\b/i,
 });
 
 // A place that was CONSIDERED is not a place that was used, and the sentence says which.
