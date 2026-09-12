@@ -1019,6 +1019,7 @@ export default function SceneMapApp() {
   const [cloudReady, setCloudReady] = useState(false);
   const [libraryStorageKey, setLibraryStorageKey] = useState(GUEST_LIBRARY_KEY);
   const [pendingConnector, setPendingConnector] = useState(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
   const [library, setLibrary] = useState(() => readStoredLibrary(GUEST_LIBRARY_KEY));
   const [libraryQuery, setLibraryQuery] = useState("");
   const [importMessage, setImportMessage] = useState("");
@@ -1876,6 +1877,30 @@ export default function SceneMapApp() {
       // ternary that has to be found and widened every time a service is added.
       connectorInputRef.current.accept = mediaSource(connector)?.accept ?? ".csv,text/csv";
       connectorInputRef.current.click();
+    }
+  }
+
+  // Hand this account's access token to an agent, and say what it is worth.
+  //
+  // With it, `POST /api/trip/plan { useStoredLibrary: true }` plans from the films on this
+  // account instead of the caller carrying every title. It is a short-lived credential —
+  // Supabase issues it for an hour by default — and anybody holding it can read this
+  // library, so the button says both rather than leaving a person to find out.
+  async function copyApiToken() {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) return;
+    try {
+      await navigator.clipboard.writeText(token);
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 4000);
+    } catch {
+      // A clipboard a browser refuses is not an error worth a dialog; the token is still
+      // reachable from the session, and saying nothing is better than a failure the
+      // reader cannot act on.
+      setTokenCopied(false);
     }
   }
 
@@ -3973,6 +3998,13 @@ export default function SceneMapApp() {
                     <strong>{accountUser.user_metadata?.name || "Signed in"}</strong>
                     <small>{accountUser.email}</small>
                   </span>
+                  {/* The one thing an agent needs and cannot get any other way. The token
+                      is already in this browser; copying it by hand means digging through
+                      localStorage, and a person doing that learns nothing about how long
+                      it lasts. Copying it here says so. */}
+                  <button type="button" className="copy-token" onClick={copyApiToken}>
+                    <Copy size={15} />{tokenCopied ? "Copied" : "API token"}
+                  </button>
                   <button type="button" onClick={signOut}><LogOut size={16} />Sign out</button>
                 </div>
               ) : (

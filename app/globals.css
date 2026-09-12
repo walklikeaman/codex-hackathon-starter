@@ -4307,3 +4307,12 @@ figcaption a {
   text-decoration: none;
 }
 .directory-link:hover { color: #fff; text-decoration: underline; }
+
+/* The token an agent needs, handed over from the one place that knows what it is worth.
+   Quiet: it sits beside "Sign out" and is used once, not every visit. */
+.account-session .copy-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.74rem;
+}
