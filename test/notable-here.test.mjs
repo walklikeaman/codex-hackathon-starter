@@ -85,6 +85,32 @@ test("only the best-known places are given a name on the pin", () => {
   assert.equal(labels.has("34.3,-118.5"), false);
 });
 
+// The cap that matters is the number of words drawn over the streets. Capping the FILMS
+// and then labelling every place each one holds is not a cap: one film holds up to 96
+// places at one address in this data set.
+test("the cap counts labels, not films", () => {
+  const crowded = Array.from({ length: 3 }, (_, film) => ({
+    title: `Film ${film}`,
+    imdb: 8,
+    imdb_votes: 100000 - film,
+    places: Array.from({ length: 40 }, (_, i) => ({ lat: 34 + film + i / 100, lng: -118 - i / 100 })),
+  }));
+  assert.equal(labelledPlaces(crowded, { limit: 8 }).size, 8);
+});
+
+// And the eighth label may have to come from the twentieth film, when the best-known ones
+// all sit at one address.
+test("a label is found past the top few films when they share a place", () => {
+  const shared = { lat: 34.1, lng: -118.3 };
+  const films = [
+    { ...forrestGump, places: [shared] },
+    { ...lebowski, places: [shared] },
+    { ...ninetyTwoTen, places: [{ lat: 34.9, lng: -118.9 }] },
+  ];
+  const labels = labelledPlaces(films, { limit: 2 });
+  assert.deepEqual([...labels.values()], ["Forrest Gump", "90210"]);
+});
+
 // A place shared by two works is named after the one people came for.
 test("a shared place takes the name of the better-known work", () => {
   const shared = { lat: 34.1, lng: -118.3 };
