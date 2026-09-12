@@ -306,7 +306,9 @@ server.tool(
     + "traveller's own films — those titles are compared in memory and never stored.",
   {
     bbox: z.object({ west: z.number(), south: z.number(), east: z.number(), north: z.number() }),
-    budget_minutes: z.number().int().default(120),
+    // The route accepts three budgets and refuses anything else, so the tool offers the
+    // three rather than letting an agent discover the rule from a 400.
+    budget_minutes: z.union([z.literal(30), z.literal(60), z.literal(120)]).default(120),
     origin: z.tuple([z.number(), z.number()]).optional(),
     include_studio_lots: z.boolean().default(false),
     library: z.array(z.object({ title: z.string(), year: z.number().nullable().optional() }))
@@ -316,8 +318,10 @@ server.tool(
     ...(await api("/api/trip/plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // `bbox` is NESTED in the route's body and was spread flat here, so every call
+      // answered 400 "Provide a bbox with west, south, east and north".
       body: JSON.stringify({
-        ...bbox, budgetMinutes, origin, includeStudioLots: lots, library,
+        bbox, budgetMinutes, origin, includeStudioLots: lots, library,
       }),
     })),
     note: HONESTY,
