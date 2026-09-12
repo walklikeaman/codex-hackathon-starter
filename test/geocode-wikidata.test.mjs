@@ -11,6 +11,8 @@ import {
   buildHeadquartersQuery,
   cacheRow,
   chooseCandidate,
+  areaNamesCountry,
+  contradictsArea,
   dominantByPopulation,
   gazetteerName,
   groupByName,
@@ -373,4 +375,72 @@ test("only the entities that sit on their headquarters come back", () => {
   assert.ok(inherited.has("Q219555"));
   assert.ok(!inherited.has("Q49088"));
   assert.equal(inheritedPointIds(null).size, 0);
+});
+
+
+// --- the area the prose named, which may refuse but never choose -----------------------
+
+test("a candidate in the wrong country is refused, even when it is the only one", () => {
+  // Bognor. The prose said Joyce wrote there and area_hint said England; the gazetteer
+  // returned Bognor, Ontario and the row was stored with a Canadian coordinate. It was
+  // never a tie — plain "Bognor" has one candidate, the English town is Bognor Regis — so
+  // no tie-break could have helped. Only a contradiction can.
+  const ontario = at(44.67, -80.83, { name: "Bognor", country: "Canada" });
+  assert.equal(chooseCandidate([ontario], { area: "England" }).reason, "contradicts_area");
+  assert.equal(chooseCandidate([ontario], { area: "England" }).place, null);
+  // Unchanged where nothing contradicts: no hint, or a hint that agrees.
+  assert.equal(chooseCandidate([ontario], {}).reason, "unique");
+  assert.equal(chooseCandidate([ontario], { area: "Canada" }).reason, "unique");
+  // The candidates still travel with the refusal, as every other refusal does.
+  assert.equal(chooseCandidate([ontario], { area: "England" }).candidates.length, 1);
+});
+
+test("the hint may refuse but never select", () => {
+  // Two real rivals. A hint naming one country does not promote that candidate — it only
+  // removes an answer that contradicts it. area_hint is written by a model, and letting an
+  // invented area pick between candidates is how a pin moves on a guess.
+  const rivals = [
+    at(52.2053, 0.1218, { name: "Cambridge", population: 145000, country: "United Kingdom" }),
+    at(42.3736, -71.1097, { name: "Cambridge", population: 118000, country: "United States" }),
+  ];
+  assert.equal(chooseCandidate(rivals, { area: "England" }).reason, "ambiguous_homonyms");
+  assert.equal(chooseCandidate(rivals, { area: "England" }).place, null);
+});
+
+test("a hint that names no country says nothing", () => {
+  const place = at(44.67, -80.83, { name: "Bognor", country: "Canada" });
+  for (const area of ["Edinburgh", "the north coast", "", null, undefined]) {
+    assert.equal(chooseCandidate([place], { area }).reason, "unique", `area ${area}`);
+  }
+  // And neither does a candidate with no country of its own.
+  const countryless = at(1, 1, { name: "Somewhere" });
+  assert.equal(chooseCandidate([countryless], { area: "England" }).reason, "unique");
+});
+
+test("constituent countries resolve to the state the gazetteer names", () => {
+  // Wikidata's P17 for a place in Scotland is "United Kingdom", so a hint of "Scotland"
+  // has to mean that or it would contradict every true answer.
+  assert.equal(areaNamesCountry("Scotland"), "United Kingdom");
+  assert.equal(areaNamesCountry("England"), "United Kingdom");
+  assert.equal(areaNamesCountry("USA"), "United States");
+  const scottish = at(56.8, -5.1, { name: "Glencoe", country: "United Kingdom" });
+  assert.equal(contradictsArea(scottish, "Scotland"), false);
+});
+
+test("a name that is both a country and a state says nothing", () => {
+  // "Savannah, Georgia" must not be read as the Caucasus. Silence is the safe answer:
+  // refusing a true coordinate costs a place, and so does storing a false one.
+  assert.equal(areaNamesCountry("Savannah, Georgia"), null);
+  assert.equal(areaNamesCountry("Georgia"), null);
+  const savannah = at(32.05, -81.1, { name: "Savannah", country: "United States" });
+  assert.equal(contradictsArea(savannah, "Savannah, Georgia"), false);
+});
+
+test("a country the gazetteer itself named is recognised without a list to maintain", () => {
+  // The hint is matched against the countries that came back for these candidates, so the
+  // two cannot drift apart as the world's country names change.
+  const french = at(48.86, 2.35, { name: "Paris", country: "France" });
+  const american = at(33.66, -95.55, { name: "Paris", country: "United States" });
+  assert.equal(contradictsArea(american, "Paris, France", ["France", "United States"]), true);
+  assert.equal(contradictsArea(french, "Paris, France", ["France", "United States"]), false);
 });

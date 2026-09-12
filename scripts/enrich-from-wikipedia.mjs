@@ -217,7 +217,11 @@ async function main() {
 
     if (accepted.length === 0) continue;
 
-    const located = await geocode(accepted.map((location) => location.place_name));
+    // The area the prose put each place in, carried to the gazetteer. It cannot choose a
+    // candidate — only refuse one that is in a different country, which is what Bognor
+    // needed: the hint said England and the only candidate was Bognor, Ontario.
+    const areas = new Map(accepted.map((location) => [location.place_name, location.area_hint]));
+    const located = await geocode(accepted.map((location) => location.place_name), { areas });
 
     // **A row without its credit cannot be stored, and must not be dropped silently.**
     //

@@ -142,7 +142,7 @@ export function buildGeocodeQuery(names) {
 
   const values = wanted.map((name) => `"${sparqlLiteral(name)}"@en`).join(" ");
 
-  return `SELECT ?name ?place ?placeLabel ?lat ?lng ?population ?typeLabel ?exact WHERE {
+  return `SELECT ?name ?place ?placeLabel ?lat ?lng ?population ?typeLabel ?exact ?countryLabel WHERE {
   VALUES ?name { ${values} }
   ?place rdfs:label|skos:altLabel ?name .
   # Whether the name is the entity's OWN label or merely one of its aliases. "Istanbul
@@ -153,6 +153,9 @@ export function buildGeocodeQuery(names) {
   ?node wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lng .
   OPTIONAL { ?place wdt:P1082 ?population }
   OPTIONAL { ?place wdt:P31 ?type }
+  # The country the candidate is actually in. Not used to CHOOSE one — see
+  # contradictsArea — only to refuse one the prose says is somewhere else.
+  OPTIONAL { ?place wdt:P17 ?country }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
 }
@@ -183,6 +186,7 @@ export function groupByName(bindings) {
       population: finiteOrNull(row?.population?.value),
       type_label: typeLabel,
       exact_label: row?.exact?.value === "true",
+      country: row?.countryLabel?.value ?? null,
     });
   }
   return grouped;
@@ -260,7 +264,57 @@ function kmApart(a, b) {
 // Returned rather than made public through a second, looser policy. Two definitions of
 // "which candidate wins" is how the two surfaces start disagreeing; one definition plus
 // the evidence it worked from is not.
-export function chooseCandidate(candidates, { near = null } = {}) {
+// **The country a written hint names, or nothing.**
+//
+// This exists because of Bognor. The prose said Joyce wrote in Bognor and `area_hint` said
+// England; the gazetteer returned **Bognor, Ontario** and the row was stored with a Canadian
+// coordinate. Nothing caught it, because it was not a tie — plain "Bognor" has one
+// candidate, and the English town is called Bognor Regis. No tie-break could ever have
+// helped; only a contradiction can.
+//
+// **And a hint may only refuse, never select.** `near` is documented as "the only thing
+// allowed to break a homonym tie, and it comes from the request rather than from a model",
+// and that rule is right: `area_hint` is written by a model, and letting it pick between
+// candidates would let an invented area move a pin. Refusing is the safe half of the same
+// information — a coordinate we decline to store costs a name without a point, which the
+// schema already expects.
+//
+// Silence is the default. An unrecognised hint says nothing, and so does a candidate with
+// no country.
+const COUNTRY_BY_AREA_WORD = Object.freeze({
+  england: "United Kingdom", scotland: "United Kingdom", wales: "United Kingdom",
+  "northern ireland": "United Kingdom", britain: "United Kingdom",
+  "great britain": "United Kingdom", uk: "United Kingdom", "united kingdom": "United Kingdom",
+  usa: "United States", us: "United States", america: "United States",
+  "united states": "United States", "united states of america": "United States",
+});
+
+// Names that are a country AND something else, so they say nothing on their own. Georgia is
+// a country and a US state; a hint of "Savannah, Georgia" must not be read as the Caucasus.
+const AMBIGUOUS_AREA_WORDS = new Set(["georgia", "ireland", "macedonia", "luxembourg", "singapore"]);
+
+export function areaNamesCountry(area, knownCountries = []) {
+  const text = String(area ?? "").trim().toLowerCase();
+  if (!text) return null;
+  const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
+  for (const part of [...parts].reverse()) {
+    if (AMBIGUOUS_AREA_WORDS.has(part)) return null;
+    if (COUNTRY_BY_AREA_WORD[part]) return COUNTRY_BY_AREA_WORD[part];
+    // A country the gazetteer itself named for one of the candidates. Matching against
+    // what came back rather than against a list we maintain keeps the two in step.
+    const match = knownCountries.find((country) => String(country).toLowerCase() === part);
+    if (match) return match;
+  }
+  return null;
+}
+
+export function contradictsArea(place, area, knownCountries = []) {
+  const claimed = areaNamesCountry(area, knownCountries);
+  if (!claimed || !place?.country) return false;
+  return String(place.country).toLowerCase() !== claimed.toLowerCase();
+}
+
+export function chooseCandidate(candidates, { near = null, area = null } = {}) {
   const all = (Array.isArray(candidates) ? candidates : []).filter(Boolean);
   if (all.length === 0) return { place: null, reason: "no_candidate", candidates: [] };
 
@@ -271,7 +325,7 @@ export function chooseCandidate(candidates, { near = null } = {}) {
   const list = exact.length > 0 ? exact : all;
 
   if (list.length === 1) {
-    return { place: list[0], reason: exact.length > 0 && all.length > 1 ? "exact_label" : "unique", candidates: all };
+    return refuseIfElsewhere({ place: list[0], reason: exact.length > 0 && all.length > 1 ? "exact_label" : "unique", candidates: all }, area, all);
   }
 
   if (near && finiteOrNull(near.lat) !== null && finiteOrNull(near.lng) !== null) {
@@ -283,7 +337,7 @@ export function chooseCandidate(candidates, { near = null } = {}) {
     // And it must clearly favour one; two candidates equally close to it decide nothing.
     const clearlyFavoured = kmApart(sorted[1], near) - kmApart(sorted[0], near) > RIVAL_DISTANCE_KM;
     if (winnerIsNearby && clearlyFavoured) {
-      return { place: sorted[0], reason: "nearest_to_hint", candidates: all };
+      return refuseIfElsewhere({ place: sorted[0], reason: "nearest_to_hint", candidates: all }, area, all);
     }
   }
 
@@ -293,13 +347,22 @@ export function chooseCandidate(candidates, { near = null } = {}) {
   const allTogether = list.every((candidate) => kmApart(candidate, first) <= RIVAL_DISTANCE_KM);
   if (allTogether) {
     const best = [...list].sort((a, b) => (b.population ?? 0) - (a.population ?? 0))[0];
-    return { place: best, reason: "same_place_multiple_records", candidates: all };
+    return refuseIfElsewhere({ place: best, reason: "same_place_multiple_records", candidates: all }, area, all);
   }
 
   const dominant = dominantByPopulation(list);
-  if (dominant) return { place: dominant, reason: "dominant_population", candidates: all };
+  if (dominant) return refuseIfElsewhere({ place: dominant, reason: "dominant_population", candidates: all }, area, all);
 
   return { place: null, reason: "ambiguous_homonyms", candidates: all };
+}
+
+// Applied to every decision that carries a place, because the contradiction is orthogonal
+// to how the candidate was chosen: Bognor was `unique`, not a tie.
+function refuseIfElsewhere(decision, area, all) {
+  if (!decision.place) return decision;
+  const known = [...new Set(all.map((candidate) => candidate.country).filter(Boolean))];
+  if (!contradictsArea(decision.place, area, known)) return decision;
+  return { place: null, reason: "contradicts_area", candidates: all };
 }
 
 // An entity that has no place of its own, only the one it inherited (#152).
