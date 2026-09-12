@@ -323,29 +323,28 @@ img {
   background: linear-gradient(135deg, #8ad194, #3c9a75);
 }
 
+/* The kind of work, as a mark. It was the word FILM in a filled pill, and in a list row
+   that pill stretched the full width — a banner announcing the least surprising fact on the
+   card. On a map of film locations "film" is the default; only the exceptions earn notice.
+
+   `inline-flex` with an explicit width, because the thing it replaced went full-width when
+   its parent was a grid. A mark with no intrinsic size is a mark at the mercy of whatever
+   lays it out. */
 .work-kind {
-  display: inline-block;
-  border-radius: 999px;
-  padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+  border-radius: 6px;
   color: #19130a;
   background: var(--gold-strong);
-  font-size: 0.64rem;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  line-height: 1.15;
-  text-transform: uppercase;
-  vertical-align: baseline;
+  vertical-align: -4px;
 }
 
-.work-kind.kind-series {
-  color: #071425;
-  background: #81c8fb;
-}
-
-.work-kind.kind-book {
-  color: #092417;
-  background: #9be1a7;
-}
+.work-kind.kind-series { color: #071425; background: #81c8fb; }
+.work-kind.kind-book { color: #10210f; background: #9fd98a; }
 
 .command-panel,
 .location-sheet {
@@ -4236,3 +4235,17 @@ figcaption a {
   cursor: pointer;
 }
 .reset-filters:hover { background: rgba(247, 183, 51, 0.18); }
+
+/* A link, sized like one. It replaced a 42 px full-width button that sat under another
+   42 px full-width button, both competing with the one action on this surface that is
+   actually a call to action. */
+.directory-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+  font-size: 0.76rem;
+  color: rgba(236, 232, 225, 0.6);
+  text-decoration: none;
+}
+.directory-link:hover { color: #fff; text-decoration: underline; }

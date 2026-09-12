@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   CheckCircle2,
+  BookOpen,
   Clapperboard,
   Copy,
   Cloud,
@@ -26,6 +27,7 @@ import {
   Sparkles,
   Star,
   Trash2,
+  Tv,
   User,
   X,
   Layers,
@@ -407,6 +409,25 @@ const fallbackLocations = [
     now: "https://images.unsplash.com/photo-1577048982768-5cb3e7ddfa23?auto=format&fit=crop&w=1200&q=80",
   },
 ].map((location) => ({ ...location, kind: "film", backdropVerified: false }));
+
+// What kind of work this is, as a mark rather than a word.
+//
+// It used to be the word FILM in a filled pill, and in a list row that pill stretched the
+// full width of the row — a banner announcing the least surprising fact on the card. The
+// kind is a qualifier, not a headline: on a map of film locations, "film" is the default
+// and only the exceptions are worth a reader's attention.
+//
+// The label is still there for anybody who cannot see the icon. `aria-label` on the span
+// rather than visually-hidden text, so it does not land in the middle of a sentence when a
+// screen reader reads the line around it.
+function WorkKindMark({ kind }) {
+  const Icon = kind === "series" ? Tv : kind === "book" ? BookOpen : Film;
+  return (
+    <span className={`work-kind kind-${kind}`} aria-label={kindLabel(kind)} title={kindLabel(kind)}>
+      <Icon size={13} aria-hidden="true" />
+    </span>
+  );
+}
 
 function kindLabel(kind) {
   return kindLabels[kind] ?? "Work";
@@ -2776,20 +2797,20 @@ export default function SceneMapApp() {
         </SearchBox>
         {locationsStatus && <p className="location-search-status" role="status">{locationsStatus}</p>}
 
-        <div className="place-controls">
-          <button className="use-location-button" type="button" onClick={useCurrentLocation}>
-            <LocateFixed size={16} />
-            Use my location
-          </button>
-          {/* The directory shipped with a way back to the map and no way in from it. The
-              map answers "what is here"; the directory answers "what have you got", which
-              is the question nobody could ask while the only way in was to know a title
-              already. */}
-          <a className="use-location-button" href="/directory">
-            <List size={16} />
-            Browse everything
-          </a>
-        </div>
+        {/* Three full-width buttons stood here, 42 px each, one under another.
+            "Use my location" was a DUPLICATE of the locate control on the map — the same
+            action, twice, and the map is where its effect is visible. The design review
+            flagged the pair directly: "«Use my location» and «What's nearby?» are adjacent,
+            differently styled, and do different things — nothing on screen distinguishes
+            them." One of them was not needed at all.
+
+            The directory keeps its way in — the map answers "what is here", the directory
+            answers "what have you got" — but it is a link, not a call to action, and it is
+            sized like one. */}
+        <a className="directory-link" href="/directory">
+          <List size={14} aria-hidden="true" />
+          Browse everything we hold
+        </a>
         {citySearchStatus && <p className="eyebrow city-search-status">{citySearchStatus}</p>}
 
         <div className="nearby-card" aria-label="Nearby locations">
@@ -3285,7 +3306,7 @@ export default function SceneMapApp() {
                   <span>
                     <strong>{film.title}</strong>
                     <small>
-                      <span className={`work-kind kind-${film.kind}`}>{kindLabel(film.kind)}</span>
+                      <WorkKindMark kind={film.kind} />
                       {film.year ? ` · ${film.year}` : ""}
                       {/* The reader's own score, on the chip. An order nobody can see the
                           key for is indistinguishable from no order at all — and with the
@@ -3428,7 +3449,7 @@ export default function SceneMapApp() {
               <button type="button" onClick={() => setActiveLocation(location)}>
                 <strong>{location.place}</strong>
                 <span>
-                  <span className={`work-kind kind-${location.kind}`}>{kindLabel(location.kind)}</span>{" "}
+                  <WorkKindMark kind={location.kind} />{" "}
                   {location.film}
                 </span>
               </button>
@@ -3567,7 +3588,7 @@ export default function SceneMapApp() {
               ) : null;
             })()}
             <div>
-              <p><span className={`work-kind kind-${activeLocation.kind}`}>{kindLabel(activeLocation.kind)}</span>{" "}{activeLocation.film}</p>
+              <p><WorkKindMark kind={activeLocation.kind} />{" "}{activeLocation.film}</p>
               <h2>{activeLocation.scene}</h2>
             </div>
           </div>
