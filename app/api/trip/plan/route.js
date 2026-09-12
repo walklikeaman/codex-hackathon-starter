@@ -110,6 +110,10 @@ export function parseTripBody(body) {
     budgetMinutes,
     origin,
     library: Array.isArray(library) && library.length > 0 ? library : null,
+    // "Use the list on my account" — for a caller that has an account and does not want to
+    // carry 2,798 titles in every request. A list in the body always wins: it is the more
+    // specific instruction, and it is also the only one a caller without an account has.
+    useStoredLibrary: body?.useStoredLibrary === true || body?.mineOnly === true,
     includeStudioLots: body?.includeStudioLots === true,
     includeCandidates: body?.includeCandidates !== false,
   };
@@ -140,14 +144,58 @@ async function walkFor(stops, { fetchImpl, routerUrl, logError }) {
   }
 }
 
+// The traveller's own list, read from their account instead of from the request body.
+//
+// [[personal-library]] keeps the library in the browser and the body parameter exists so it
+// never has to leave. That stays true for the site. An AGENT is the case it does not cover:
+// it acts for the owner in another process, it has no localStorage, and carrying 2,798
+// titles into every call is not a design, it is a workaround. So an account may now hold
+// the list, and a caller that proves it owns that account gets to filter by it.
+//
+// The token is checked against Supabase Auth on every call — never trusted, never cached —
+// and the row is read under the ANON key, so row-level security is what decides which
+// library comes back. A service-role read here would work for any user id the caller
+// named, which is the shape of the bug that ends up on a news site.
+function defaultReadStoredLibrary(env) {
+  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return null;
+
+  return async (token) => {
+    if (!token) return null;
+    const client = createClient(url, anonKey, {
+      auth: { persistSession: false },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    const { data: auth, error: authError } = await client.auth.getUser(token);
+    if (authError || !auth?.user?.id) return null;
+
+    const { data, error } = await client
+      .from("user_media_libraries")
+      .select("movies")
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
+    if (error) throw new Error(`stored library read failed: ${error.message}`);
+    return Array.isArray(data?.movies) ? data.movies : [];
+  };
+}
+
+function bearerToken(request) {
+  const header = request.headers.get("authorization") || "";
+  const token = header.replace(/^Bearer\s+/i, "").trim();
+  return token || null;
+}
+
 export function createTripPlanHandler({
   env = process.env,
   createReader,
+  readStoredLibrary,
   fetchImpl = fetch,
   routerUrl = process.env.WALKING_ROUTER_URL || undefined,
   logError = (...args) => console.error(...args),
 } = {}) {
   const makeReader = createReader ?? (() => defaultCreateReader(env));
+  const makeLibraryReader = readStoredLibrary ?? (() => defaultReadStoredLibrary(env));
 
   return async function POST(request) {
     let body;
@@ -162,6 +210,31 @@ export function createTripPlanHandler({
 
     const reader = makeReader(env);
     if (!reader) return jsonError("Map graph is not configured", 503);
+
+    // Asked for, and either granted or refused OUT LOUD. Silently planning from the whole
+    // catalogue when somebody asked for their own films is the failure this states instead:
+    // they would read a list of films they have never seen as a list of films they have.
+    let library = query.library;
+    let storedLibrary = null;
+    if (!library && query.useStoredLibrary) {
+      const readLibrary = makeLibraryReader(env);
+      const token = bearerToken(request);
+      if (!readLibrary) return jsonError("Accounts are not configured", 503);
+      if (!token) {
+        return jsonError("useStoredLibrary needs an Authorization: Bearer <token> header", 401);
+      }
+      try {
+        storedLibrary = await readLibrary(token);
+      } catch (error) {
+        logError("Stored library read failed", { message: error?.message });
+        return jsonError("Could not read the library on this account", 502);
+      }
+      if (storedLibrary === null) return jsonError("That token does not identify an account", 401);
+      if (storedLibrary.length === 0) {
+        return jsonError("This account holds no library yet — import one first", 409);
+      }
+      library = storedLibrary;
+    }
 
     const params = {
       p_west: query.bbox.west,
@@ -195,7 +268,7 @@ export function createTripPlanHandler({
         candidates,
         origin: query.origin,
         budgetMinutes: query.budgetMinutes,
-        library: query.library,
+        library,
         includeStudioLots: query.includeStudioLots,
         includeCandidates: query.includeCandidates,
       });
@@ -214,6 +287,12 @@ export function createTripPlanHandler({
       // What the plan was drawn from, so a caller can tell "nothing here" from "we only
       // looked at the first thousand rows". The map caps a viewport at 1,000 and Los
       // Angeles holds 4,665 queue rows, so this is reached in practice, not in theory.
+      // Which list the plan was filtered by, so a caller can tell "your films, and this is
+      // what is left" from "everything we hold". Never the titles back — only where the
+      // list came from and how long it was.
+      filtered_by: library
+        ? { source: storedLibrary ? "account" : "request", titles: library.length }
+        : null,
       coverage: {
         verified_in_view: places.length,
         candidates_in_view: candidates.length,
@@ -227,7 +306,7 @@ export function createTripPlanHandler({
         // cached at the edge. Without one the answer is the same for everybody who asks
         // about that viewport, and an hour is short enough that a newly reviewed row
         // reaches a traveller the same day.
-        "Cache-Control": query.library
+        "Cache-Control": library
           ? "private, no-store"
           : "public, s-maxage=3600, stale-while-revalidate=86400",
       },
