@@ -21,6 +21,7 @@ import {
   apiError,
   articleTitleFromEntity,
   buildEntitiesUrl,
+  MAX_ENTITIES_PER_REQUEST,
   buildSectionUrl,
   buildTocUrl,
   chooseSection,
@@ -136,8 +137,21 @@ async function main() {
   if (error) throw new Error(error.message);
   if (!works?.length) { console.log("Nothing to enrich."); return; }
 
-  // One batched call resolves every article title; the API allows 50 per request.
-  const entities = await wikimedia(buildEntitiesUrl(works.map((work) => work.wikidata_id)));
+  // **The API allows 50 ids per request, and the run has to respect that itself.**
+  //
+  // This asked for all of them in one call. `buildEntitiesUrl` answers null above the
+  // ceiling — correctly, rather than building a URL that would be refused — and the null
+  // arrived at `fetch` as *"Failed to parse URL from null"*, which names neither the limit
+  // nor the caller. It had never shown up because the default limit is five works; the run
+  // that first asked for 200 died on its first call.
+  const entities = { entities: {} };
+  const ids = works.map((work) => work.wikidata_id);
+  for (let from = 0; from < ids.length; from += MAX_ENTITIES_PER_REQUEST) {
+    const url = buildEntitiesUrl(ids.slice(from, from + MAX_ENTITIES_PER_REQUEST));
+    if (!url) continue;
+    const page = await wikimedia(url);
+    Object.assign(entities.entities, page?.entities ?? {});
+  }
 
   for (const work of works) {
     console.log(`\n${work.title}`);

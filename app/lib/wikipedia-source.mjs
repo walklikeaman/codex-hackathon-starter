@@ -166,9 +166,14 @@ export function preferredLanguages(entity) {
   return [...new Set([...fromLanguage, ...fromCountry].filter(Boolean))];
 }
 
+// The API's own batch ceiling. A caller with more ids than this must ask more than once —
+// `buildEntitiesUrl` answers null rather than building a URL that would be refused, and the
+// null is what a caller passing 200 ids discovers as "Failed to parse URL from null".
+export const MAX_ENTITIES_PER_REQUEST = 50;
+
 export function buildEntitiesUrl(qids, languages = SUPPORTED_LANGUAGES) {
   const ids = [...new Set(qids ?? [])].filter((id) => /^Q[1-9]\d*$/.test(id));
-  if (ids.length === 0 || ids.length > 50) return null; // the API's own batch ceiling
+  if (ids.length === 0 || ids.length > MAX_ENTITIES_PER_REQUEST) return null;
   const url = new URL("https://www.wikidata.org/w/api.php");
   url.searchParams.set("action", "wbgetentities");
   url.searchParams.set("ids", ids.join("|"));
