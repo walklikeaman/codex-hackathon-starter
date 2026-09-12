@@ -13,6 +13,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { workPath } from "../lib/work-url.mjs";
 import { candidateSummary, pointFilmLine, pointSummary, viewportQuery } from "../lib/map-layer.mjs";
+import { describedFilms, listingLine, sourceLabel } from "../lib/place-note.mjs";
 import { useGeoJsonLayer, useMapCanvas, claimClick } from "./map/MapCanvas.jsx";
 import { MapPopup, PinLayer } from "./map/layers.jsx";
 
@@ -322,13 +323,35 @@ function GraphLayer({
               {openProps.area_hint && (<><br /><small>{openProps.area_hint}</small></>)}
               {/* The films themselves. Before the points were grouped this was unreachable:
                   every film after the first was drawn underneath the pin you could see. */}
+              {/* What was filmed here, not only which film. A title alone leaves the
+                  reader to click through to a work page to find out why this corner is
+                  worth the walk — and we were holding the answer in the sentence the place
+                  was found in the whole time. See [[place-note]]: 78% of the queue can say
+                  it, and the 22% that cannot say nothing rather than something invented. */}
               <ul className="point-films">
-                {(openProps.films ?? []).map((film) => (
-                  <li key={`${film.work_id}-${film.place_name}`}>
-                    <a href={workPath({ id: film.work_id, title: film.title })}>{film.title}</a>
-                    {film.year ? <span className="point-film-year"> {film.year}</span> : null}
-                  </li>
-                ))}
+                {describedFilms(openProps.films, { placeName: openProps.name }).map((film) => {
+                  const note = film.note;
+                  return (
+                    <li key={`${film.work_id}-${film.place_name}`}>
+                      <a href={workPath({ id: film.work_id, title: film.title })}>{film.title}</a>
+                      {film.year ? <span className="point-film-year"> {film.year}</span> : null}
+                      {note && <span className="point-film-note">{note}</span>}
+                      {/* Where the claim came from, always — it is the reader's way to the
+                          full sentence, and on a row with no note it is the only thing we
+                          can honestly offer beyond the title. */}
+                      {film.source_url && (
+                        <a
+                          className="point-film-source"
+                          href={film.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer nofollow"
+                        >
+                          {note ? sourceLabel(film.source_kind) : listingLine(film)}
+                        </a>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
               {openProps.films_truncated && (
                 <small>
