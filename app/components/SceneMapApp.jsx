@@ -67,7 +67,7 @@ import { externalPlaceLinks } from "../lib/place-links.mjs";
 import { loadCloudLibrary, saveCloudLibrary } from "../lib/cloud-library.mjs";
 import { createCoalescingRunner } from "../lib/coalesce.mjs";
 import { WALKING_SPEED_KMH, haversineKm, isLatLng } from "../lib/geo.mjs";
-import { libraryRating, mergeLibraries, parseMediaCsv, upgradeLibraryScale, workIsInLibrary } from "../lib/media-library.mjs";
+import { libraryEntryFor, libraryRating, mergeLibraries, parseMediaCsv, upgradeLibraryScale, workIsInLibrary } from "../lib/media-library.mjs";
 import { MEDIA_SOURCES, mediaSource, mediaSourceLabel } from "../lib/media-sources.mjs";
 import { citySlugFromName, mapUrlQuery, readMapUrl } from "../lib/map-url.mjs";
 import { workPath } from "../lib/work-url.mjs";
@@ -1586,6 +1586,28 @@ export default function SceneMapApp() {
   }, [browseCenter, mapZoom, cityName, filters]);
 
   const filmsHere = useMemo(() => filmsInView(candidatesDrawn), [candidatesDrawn]);
+
+  // How many of the reader's own films are on the map RIGHT NOW.
+  //
+  // The chip beside "2,798 movies" counted `libraryFilmIds` — the library matched against
+  // `films`, which is the LOCATIONS list, and that list comes from the verified graph: 70
+  // places in the whole world. So the owner imported 2,798 films, of which **1,074 have
+  // places here and 7,937 points are drawn from them**, and read "3 mapped on map". He
+  // concluded the product held nothing of his. The map had been drawing his films the
+  // whole time; the number beside the switch was answering a different question.
+  //
+  // Counted over what the map ACTUALLY draws — the queue pins in view and the located
+  // works beside them — and keyed on the matched LIBRARY row, so one film listed by both
+  // stores is one film and the two id spaces never double-count.
+  const myFilmsInView = useMemo(() => {
+    if (library.length === 0) return 0;
+    const mine = new Set();
+    for (const work of [...filmsHere, ...films]) {
+      const entry = libraryEntryFor(work, library);
+      if (entry) mine.add(entry.id);
+    }
+    return mine.size;
+  }, [filmsHere, films, library]);
 
   // What this part of the map is known for. The panel could say how MANY films were in view
   // and never which ones mattered — "994 films · 2,480 places" is a quantity, and the
@@ -4070,7 +4092,10 @@ export default function SceneMapApp() {
                 disabled={library.length === 0}
                 aria-pressed={mineOnly}
               >
-                {mineOnly ? `${libraryFilmIds.size} mapped on map` : "Show library on map"}
+                {/* "in view", because that is the scope of the number. "Mapped on map"
+                    read as "of your whole library", which is a claim about 2,798 films
+                    made from what one viewport happens to hold. */}
+                {mineOnly ? `${myFilmsInView} of mine in view` : "Show library on map"}
               </button>
             </div>
 
