@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { MIN_VOTES, labelledPlaces, notability, notableHere } from "../app/lib/notable-here.mjs";
+import {
+  EMPTY_REASON, MIN_VOTES, labelledPlaces, notability, notableEmptyReason, notableHere,
+} from "../app/lib/notable-here.mjs";
 
 // Real rows from the Los Angeles set, so the ordering can be checked against what a person
 // would answer if asked what the city is known for.
@@ -124,4 +126,50 @@ test("a shared place takes the name of the better-known work", () => {
 test("a place with no coordinate cannot be labelled", () => {
   const labels = labelledPlaces([{ ...forrestGump, places: [{ lat: null, lng: null }] }]);
   assert.equal(labels.size, 0);
+});
+
+
+// The section used to UNMOUNT when empty, and the panel around it kept talking. These are
+// five different situations with five different fixes.
+const summary = { clustered: false, candidateCount: 40 };
+
+test("a list with rows has no empty reason", () => {
+  assert.equal(notableEmptyReason({ notable: [forrestGump], summary }), null);
+});
+
+// A failed tile load draws nothing and used to look exactly like an empty city.
+test("a map that has not answered is said to be loading, not empty", () => {
+  assert.equal(notableEmptyReason({ summary: null }).code, EMPTY_REASON.loading);
+});
+
+test("hiding the queue is named as the reason, because it is almost everything", () => {
+  assert.equal(notableEmptyReason({ summary, candidatesOn: false }).code, EMPTY_REASON.queue_hidden);
+});
+
+test("a zoomed-out map asks for a zoom rather than claiming the area is empty", () => {
+  assert.equal(
+    notableEmptyReason({ summary: { ...summary, clustered: true } }).code,
+    EMPTY_REASON.zoomed_out,
+  );
+});
+
+// `?imdb=8` reproduced the silence on a map that had drawn perfectly well.
+test("a filter that emptied the map is told apart from a place we hold nothing for", () => {
+  assert.equal(notableEmptyReason({ summary, filmsHere: [], activeFilters: 1 }).code, EMPTY_REASON.filtered_out);
+  assert.equal(notableEmptyReason({ summary, filmsHere: [], activeFilters: 0 }).code, EMPTY_REASON.nothing_here);
+});
+
+// The pins are on screen; "nothing here" would be false.
+test("films drawn but too thinly rated say so, with the count", () => {
+  const reason = notableEmptyReason({ summary, filmsHere: [fredAndVinnie, { title: "B" }] });
+  assert.equal(reason.code, EMPTY_REASON.unranked);
+  assert.match(reason.text, /^2 films are here/);
+  assert.match(notableEmptyReason({ summary, filmsHere: [fredAndVinnie] }).text, /^1 film is here/);
+});
+
+test("the loading check comes before every claim about what was drawn", () => {
+  assert.equal(
+    notableEmptyReason({ summary: null, candidatesOn: false, activeFilters: 3 }).code,
+    EMPTY_REASON.loading,
+  );
 });

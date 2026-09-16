@@ -80,7 +80,7 @@ import {
 import {
   FILTER_DEFAULTS, activeFilterCount, filtersFromParams, writeFilterParams,
 } from "../lib/filter-url.mjs";
-import { labelledPlaces, notableHere } from "../lib/notable-here.mjs";
+import { EMPTY_REASON, labelledPlaces, notableEmptyReason, notableHere } from "../lib/notable-here.mjs";
 import {
   DEFAULT_SORT,
   IMDB_MAX,
@@ -1622,6 +1622,16 @@ export default function SceneMapApp() {
   // and never which ones mattered — "994 films · 2,480 places" is a quantity, and the
   // question a visitor arrives with is "what is this place famous for".
   const notable = useMemo(() => notableHere(filmsHere, { limit: 5 }), [filmsHere]);
+  // Why "Known for" is empty, when it is. Only meaningful while the queue layer exists at
+  // all — with the whole graph layer off there is no map answer to explain.
+  const notableEmpty = useMemo(() => (graphLayerOn ? notableEmptyReason({
+    notable,
+    filmsHere,
+    summary: graphSummary,
+    candidatesOn,
+    activeFilters: activeCount,
+  }) : null), [graphLayerOn, notable, filmsHere, graphSummary, candidatesOn, activeCount]);
+
 
   // Which pins have earned a name. The same ranking the list above uses, spent on the map:
   // a label is scarce on purpose, because a thousand of them is the same as none — they
@@ -2982,7 +2992,22 @@ export default function SceneMapApp() {
             Ranked by rating AND reach: the rating alone puts a 9.2 with 300 voters above
             Forrest Gump, and the vote count alone ranks by how many watched rather than by
             what is worth walking to. See [[notable-here]] for the arithmetic. */}
-        {notable.length > 0 && (
+        {/* Always mounted. It used to unmount when empty, and the panel around it kept
+            asserting content over a map that had drawn nothing — see notableEmptyReason. */}
+        {notableEmpty ? (
+          <section className="notable-here is-empty" aria-label="Best known here" aria-live="polite">
+            <h2>Known for</h2>
+            <p className="notable-empty">
+              {notableEmpty.text}
+              {notableEmpty.code === EMPTY_REASON.filtered_out && (
+                <button type="button" className="notable-empty-action" onClick={resetFilters}>Reset filters</button>
+              )}
+              {notableEmpty.code === EMPTY_REASON.queue_hidden && (
+                <button type="button" className="notable-empty-action" onClick={() => setCandidatesOn(true)}>Show them</button>
+              )}
+            </p>
+          </section>
+        ) : (
           <section className="notable-here" aria-label="Best known here">
             <h2>Known for</h2>
             <ul>
@@ -3037,7 +3062,13 @@ export default function SceneMapApp() {
             <Layers size={15} aria-hidden="true" />
             <span>What the map is drawing</span>
             <span className="layers-console-count">
-              {graphSummary?.candidateCount ? `${graphSummary.candidateCount} unchecked` : "layers"}
+              {/* It fell back to the bare word "layers" whenever the count was zero or the
+                  map had not answered — which read as a label, not as "nothing drawn". */}
+              {!graphSummary
+                ? "loading…"
+                : graphSummary.clustered
+                  ? "zoom in"
+                  : `${graphSummary.candidateCount ?? 0} unchecked`}
             </span>
           </summary>
         <section className="graph-layer-panel" aria-label="Grounded places layer">
