@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  FILTER_DEFAULTS, activeFilterCount, activeFilters, filtersFromParams, writeFilterParams,
+  FILTER_DEFAULTS, activeFilterCount, activeFilters, clearedFilter, filterChipLabel, filtersFromParams,
+  narrowingFilters, writeFilterParams,
 } from "../app/lib/filter-url.mjs";
 import { NO_MINIMUM } from "../app/lib/library-view.mjs";
 
@@ -97,4 +98,41 @@ test("a work id is bounded, because it lands in a URL somebody can type", () => 
 test("filters read from a plain object as well as from URLSearchParams", () => {
   assert.equal(filtersFromParams({ mine: "1", imdb: "7.5" }).mineOnly, true);
   assert.equal(filtersFromParams({ mine: "1", imdb: "7.5" }).minImdb, 7.5);
+});
+
+
+// Three of the eight flags "Reset" counted were LAYER switches. Pressing it turned back on
+// layers the reader had deliberately turned off.
+test("a layer switch is not a filter the reset may undo", () => {
+  const state = { ...FILTER_DEFAULTS, candidates: false, studioLots: false, graphLayer: false };
+  assert.deepEqual(narrowingFilters(state), []);
+  // ...and it still travels in the URL, which is a different question.
+  assert.equal(activeFilterCount(state), 3);
+});
+
+test("the narrowing filters come back in a stable, readable order", () => {
+  const state = { ...FILTER_DEFAULTS, workId: "w", minImdb: 8, mineOnly: true, candidates: false };
+  assert.deepEqual(narrowingFilters(state), ["mineOnly", "minImdb", "workId"]);
+});
+
+// "Reset 3 filters" named a number and none of the filters.
+test("every chip names what it keeps, in the reader's terms", () => {
+  const state = { ...FILTER_DEFAULTS, mineOnly: true, minRating: 7, minImdb: 7.5, kinds: ["film", "book"] };
+  assert.equal(filterChipLabel("mineOnly", state), "My films");
+  assert.equal(filterChipLabel("minRating", state), "Mine 7/10+");
+  assert.equal(filterChipLabel("minImdb", state), "IMDb 7.5+");
+  assert.equal(filterChipLabel("kinds", state), "Films + Books");
+});
+
+test("a work chip uses the title, and never the raw id", () => {
+  const state = { ...FILTER_DEFAULTS, workId: "0d9f1c2e-aaaa-bbbb-cccc-000000000000" };
+  assert.equal(filterChipLabel("workId", state, { workTitle: "Skyfall" }), "Skyfall");
+  assert.equal(filterChipLabel("workId", state), "One work");
+});
+
+test("clearing one chip puts back exactly that filter's default", () => {
+  assert.equal(clearedFilter("mineOnly"), false);
+  assert.equal(clearedFilter("minImdb"), NO_MINIMUM);
+  assert.deepEqual(clearedFilter("kinds"), []);
+  assert.equal(clearedFilter("nonsense"), undefined);
 });

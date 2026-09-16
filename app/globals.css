@@ -4338,3 +4338,42 @@ figcaption a {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* The filters narrowing the map, each named and each undone by its own ×. Amber like the
+   reset button they replace, because they are the same promise: this is why the map is
+   smaller than you expected, and here is the way back. */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 28px;
+  padding: 0.2rem 0.45rem 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 183, 51, 0.4);
+  background: rgba(247, 183, 51, 0.1);
+  color: var(--accent, #f0a83c);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.filter-chip:hover,
+.filter-chip:focus-visible { background: rgba(247, 183, 51, 0.2); }
+.filter-chip span { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-chips-clear {
+  border: 0;
+  background: none;
+  padding: 0.2rem 0.3rem;
+  color: rgba(236, 232, 225, 0.7);
+  font: inherit;
+  font-size: 0.74rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
