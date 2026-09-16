@@ -27,8 +27,28 @@ const WORK_KIND_CONFIG = {
   },
 };
 
+// Every kind at once — the answer to "what was shot around here", which is the question
+// a visitor arrives with. The panel asked it of FILMS only and never said so: the select
+// offered Film / Series / Book and no way to stop choosing, so a first-time reader could
+// not see a single series or book location and was never told one existed.
+export const EVERY_KIND = "all";
+export const WORK_KINDS = Object.freeze(["film", "series", "book"]);
+
 export function workKindConfig(kind) {
   return WORK_KIND_CONFIG[kind] ?? null;
+}
+
+export function isEveryKind(kind) {
+  return kind === EVERY_KIND;
+}
+
+// What to call the set on screen. "works" rather than "films" when all three are drawn,
+// because naming one of them is how the panel came to be lying in the first place.
+export function workKindLabel(kind, { plural = false } = {}) {
+  if (isEveryKind(kind)) return plural ? "works" : "work";
+  const config = workKindConfig(kind);
+  if (!config) return plural ? "works" : "work";
+  return plural ? config.plural : config.label;
 }
 
 // What to say about a work that has no filming locations at all.
@@ -62,7 +82,7 @@ export function locationFallbacks(kind) {
 }
 
 export function isWorkKind(kind) {
-  return Boolean(workKindConfig(kind));
+  return isEveryKind(kind) || Boolean(workKindConfig(kind));
 }
 
 export function isWikidataId(value) {
@@ -92,10 +112,41 @@ function isPlaceholderLabel(value) {
   return /^Q\d+(?:\s|$)/.test(value?.trim() ?? "");
 }
 
-function coreLocationPattern({ lat, lng, radius, workIds, config, excludeLocationId }) {
-  const instancePattern = workIds?.length || config.label !== "film"
-    ? `wdt:P31/wdt:P279* wd:${config.rootType}`
-    : `wdt:P31 wd:${config.rootType}`;
+// One branch per kind, each binding the kind it matched so the row can be labelled with
+// the right relation afterwards — a filming location and a story setting are different
+// claims and the UNION must not blur them.
+//
+// **Each branch carries its OWN limit**, and that is the whole point. A single LIMIT over
+// the union is spent in branch order: measured against the live endpoint over London, 60
+// rows came back and **all 60 were films** — series and books were starved by the cap, so
+// "every kind" would have drawn exactly what "film" already drew while claiming more.
+//
+// Measured after the split: 0.5–1.9 s for the same 60 rows, the same order as the
+// single-kind query it replaces.
+function everyKindPattern({ lat, lng, radius, perKind, excludedLocation }) {
+  return WORK_KINDS.map((kind) => {
+    const config = WORK_KIND_CONFIG[kind];
+    return `    {
+      SELECT DISTINCT ?work ?location ?coord ?workKind WHERE {
+        SERVICE wikibase:around {
+          ?location wdt:P625 ?coord .
+          bd:serviceParam wikibase:center "Point(${lng} ${lat})"^^geo:wktLiteral .
+          bd:serviceParam wikibase:radius "${radius}" .
+        }
+        ?work wdt:P31/wdt:P279* wd:${config.rootType} ;
+              wdt:${config.locationProperty} ?location .${excludedLocation}
+        BIND("${kind}" AS ?workKind)
+      }
+      LIMIT ${perKind}
+    }`;
+  }).join("\n    UNION\n");
+}
+
+function coreLocationPattern({ lat, lng, radius, workIds, config, excludeLocationId, everyKind = false, perKindLimit = 60 }) {
+  const instancePattern = everyKind ? null
+    : (workIds?.length || config.label !== "film"
+      ? `wdt:P31/wdt:P279* wd:${config.rootType}`
+      : `wdt:P31 wd:${config.rootType}`);
 
   if (workIds?.length) {
     const values = workIds.map((id) => `wd:${id}`).join(" ");
@@ -110,12 +161,23 @@ function coreLocationPattern({ lat, lng, radius, workIds, config, excludeLocatio
     ? `\n      FILTER(?location != wd:${excludeLocationId})`
     : "";
 
-  return `
+  const around = `
       SERVICE wikibase:around {
         ?location wdt:P625 ?coord .
         bd:serviceParam wikibase:center "Point(${lng} ${lat})"^^geo:wktLiteral .
         bd:serviceParam wikibase:radius "${radius}" .
-      }
+      }`;
+
+  if (everyKind) {
+    // The FULL budget to each branch, not a third each. Splitting it starved the result
+    // twice over: measured on London, a 20-row film branch ranked so thinly that the
+    // merged list came back with 5 places where the film-only query returned 11. Each
+    // kind is asked the same question the single-kind query asks, and the merge happens
+    // after — three independent subqueries, ~3× the work of one, still under two seconds.
+    return everyKindPattern({ lat, lng, radius, excludedLocation, perKind: perKindLimit });
+  }
+
+  return `${around}
       ?work ${instancePattern} ;
             wdt:${config.locationProperty} ?location .${excludedLocation}`;
 }
@@ -144,8 +206,12 @@ export function buildLocationsSparql({
   workIds = [],
   excludeLocationId = null,
 }) {
-  const config = workKindConfig(kind);
-  if (!config) throw new Error(`Unsupported work kind: ${kind}`);
+  const everyKind = isEveryKind(kind);
+  const config = everyKind ? null : workKindConfig(kind);
+  if (!everyKind && !config) throw new Error(`Unsupported work kind: ${kind}`);
+  // A title search names ONE work, and a work is of one kind — so "every kind" is a
+  // question about an AREA and nothing else.
+  if (everyKind && workIds.length) throw new Error("A work list has a kind of its own");
   if (workIds.some((id) => !isWikidataId(id))) throw new Error("Invalid Wikidata work id");
 
   const core = coreLocationPattern({
@@ -155,6 +221,8 @@ export function buildLocationsSparql({
     workIds,
     config,
     excludeLocationId,
+    everyKind,
+    perKindLimit: sourceLimit,
   });
 
   // `?types` is what a place IS, and it decides whether the place may be a pin at all
@@ -162,17 +230,20 @@ export function buildLocationsSparql({
   // P31s and SAMPLE picks one at random: the Isle of Skye is an island AND a place with
   // a Council area, and grading it on whichever arrives first is a coin toss over
   // whether it appears as a dot you could stand on.
+  // `?workKind` rides through the subquery so each row knows which branch matched it.
+  const kindColumn = everyKind ? " ?workKind" : "";
+
   return `
-SELECT ?work ?workLabel ?location ?locationLabel ?coord ?locationDescription
+SELECT ?work ?workLabel ?location ?locationLabel ?coord ?locationDescription${kindColumn}
        (MIN(?date) AS ?releaseDate)
        (SAMPLE(?placeImage) AS ?image)
        (SAMPLE(?tmdb) AS ?tmdbId)
        (GROUP_CONCAT(DISTINCT ?typeLabel; separator="|") AS ?types)
 WHERE {
   {
-    SELECT DISTINCT ?work ?location ?coord WHERE {${core}
+    SELECT DISTINCT ?work ?location ?coord${kindColumn} WHERE {${core}
     }
-    LIMIT ${sourceLimit}
+    LIMIT ${everyKind ? sourceLimit * WORK_KINDS.length : sourceLimit}
   }
   OPTIONAL { ?work wdt:P577 ?date . }
   OPTIONAL { ?work wdt:P4947 ?tmdb . }
@@ -188,7 +259,7 @@ WHERE {
   }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" . }
 }
-GROUP BY ?work ?workLabel ?location ?locationLabel ?coord ?locationDescription`;
+GROUP BY ?work ?workLabel ?location ?locationLabel ?coord ?locationDescription${kindColumn}`;
 }
 
 // How many title candidates to consider before deciding which work was meant.
@@ -343,9 +414,20 @@ export function typeAncestry(entity, typeEntities) {
 }
 
 export function workMatchesTypeGraph(workEntity, typeEntities, kind) {
-  const rootType = workKindConfig(kind)?.rootType;
-  if (!rootType) return false;
-  return typeAncestry(workEntity, typeEntities).has(rootType);
+  return resolveWorkKind(workEntity, typeEntities, kind) !== null;
+}
+
+// WHICH kind a work turned out to be. A title search under "every kind" still has to pick
+// one, because the rest of the answer — which property holds the places, what the relation
+// is called — is a fact about that kind and not about the search.
+export function resolveWorkKind(workEntity, typeEntities, kind) {
+  const ancestry = typeAncestry(workEntity, typeEntities);
+  const candidates = isEveryKind(kind) ? WORK_KINDS : [kind];
+  for (const candidate of candidates) {
+    const rootType = workKindConfig(candidate)?.rootType;
+    if (rootType && ancestry.has(rootType)) return candidate;
+  }
+  return null;
 }
 
 // `via` reads a DIFFERENT property than the kind's own, for a work that has none of its
@@ -451,11 +533,18 @@ function relationDescription({ workTitle, place, kind, locationDescription, via 
 }
 
 export function normalizeWikidataLocations(bindings, { kind }) {
-  const config = workKindConfig(kind);
-  if (!config) return [];
+  const everyKind = isEveryKind(kind);
+  const fallbackConfig = everyKind ? null : workKindConfig(kind);
+  if (!everyKind && !fallbackConfig) return [];
   const locations = new Map();
 
   for (const row of bindings ?? []) {
+    // With every kind drawn at once the row says which branch matched it, and the answer
+    // decides the relation: P915 is "the camera was here", P840 is "the story is set
+    // here". Blurring the two would be the same lie as a queue row shaped like a fact.
+    const rowKind = everyKind ? (row.workKind?.value ?? null) : kind;
+    const config = everyKind ? workKindConfig(rowKind) : fallbackConfig;
+    if (!config) continue;
     const workWikidataId = wikidataId(row.work?.value);
     const locWikidataId = wikidataId(row.location?.value);
     const point = coordinates(row.coord?.value);
@@ -471,13 +560,13 @@ export function normalizeWikidataLocations(bindings, { kind }) {
       work_wikidata_id: workWikidataId,
       work_title: workTitle,
       work_year: releaseYear(row.releaseDate?.value),
-      kind,
+      kind: rowKind,
       loc_wikidata_id: locWikidataId,
       loc_name: place,
       lat: point.lat,
       lng: point.lng,
       commons_image: row.image?.value ?? null,
-      film_tmdb_id: kind === "film" ? row.tmdbId?.value ?? null : null,
+      film_tmdb_id: rowKind === "film" ? row.tmdbId?.value ?? null : null,
       relation_kind: config.relationKind,
       relation_property: config.locationProperty,
       relation_label: config.relationLabel,
@@ -538,7 +627,7 @@ export function selectFirstMatchingWork(locations, workIds, limit, excludeLocati
   return [];
 }
 
-export function rankNearbyLocations(locations, { limit, maxWorks = 5, maxPerWork = 6 }) {
+export function rankNearbyLocations(locations, { limit, maxWorks = 5, maxPerWork = 6, balanced = false }) {
   const groups = new Map();
   for (const location of locations) {
     const group = groups.get(location.work_wikidata_id) ?? [];
@@ -546,11 +635,47 @@ export function rankNearbyLocations(locations, { limit, maxWorks = 5, maxPerWork
     groups.set(location.work_wikidata_id, group);
   }
 
-  return [...groups.values()]
-    .sort((first, second) => second.length - first.length)
-    .slice(0, maxWorks)
+  const ordered = [...groups.values()].sort((first, second) => second.length - first.length);
+  const chosen = balanced ? balanceKinds(ordered, maxWorks) : ordered.slice(0, maxWorks);
+
+  return chosen
     .flatMap((group) => group.slice(0, maxPerWork))
     .slice(0, limit);
+}
+
+// Five works fit, and with three kinds merged the five biggest were all series and books:
+// measured on London, "every kind" returned 6 places and **not one film**, where film
+// alone returned 11. The cap is not the bug — losing a whole kind to it is.
+//
+// So the kinds take turns, biggest first within each. A kind with nothing here still
+// yields its turn rather than holding a slot empty.
+function balanceKinds(ordered, maxWorks) {
+  const queues = new Map(WORK_KINDS.map((kind) => [kind, []]));
+  const others = [];
+  for (const group of ordered) {
+    const queue = queues.get(group[0]?.kind);
+    if (queue) queue.push(group);
+    else others.push(group);
+  }
+
+  const chosen = [];
+  while (chosen.length < maxWorks) {
+    const before = chosen.length;
+    for (const kind of WORK_KINDS) {
+      if (chosen.length >= maxWorks) break;
+      const next = queues.get(kind).shift();
+      if (next) chosen.push(next);
+    }
+    if (chosen.length === before) break;
+  }
+
+  // Anything whose kind we could not read goes last, and only if there is room.
+  for (const group of others) {
+    if (chosen.length >= maxWorks) break;
+    chosen.push(group);
+  }
+
+  return chosen;
 }
 
 export function safeSearchQuery(value) {

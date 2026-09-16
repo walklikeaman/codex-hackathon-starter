@@ -21,6 +21,9 @@ import {
   rankNearbyLocations,
   safeSearchQuery,
   selectFirstMatchingWork,
+  isEveryKind,
+  resolveWorkKind,
+  WORK_KINDS,
   workKindConfig,
   workMatchesTypeGraph,
 } from "../../lib/location-search.mjs";
@@ -106,9 +109,10 @@ async function findSubmissionPlaces({ workEntity, work, kind, center, exclude, e
     // The title round runs even when the identifier found rows: 3 of Doctor Who's 569
     // came from the id, and stopping there would have been the bug.
     if (titleNorm) {
-      const { data, error } = await base()
-        .eq("works.title_norm", titleNorm)
-        .eq("works.kind", kind);
+      // A title is asked of one kind unless the reader asked for all of them; then the
+      // work's own kind is whatever the row says it is.
+      const titleQuery = base().eq("works.title_norm", titleNorm);
+      const { data, error } = await (isEveryKind(kind) ? titleQuery : titleQuery.eq("works.kind", kind));
       if (error) throw new Error(error.message);
       collect(data, MATCHED_BY.title);
     }
@@ -154,7 +158,11 @@ function gradeLocations(locations) {
 export const runtime = "nodejs";
 
 const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
-const DEFAULTS = { lat: 51.5072, lng: -0.1276, radius: 15, limit: 30, kind: "film" };
+// Every kind, by default. It was "film", and nothing on screen said so: a visitor could
+// not see a single series or book location in this panel and was never told one existed
+// ([[location-search]] EVERY_KIND). A default that narrows silently is a filter nobody
+// can find to turn off.
+const DEFAULTS = { lat: 51.5072, lng: -0.1276, radius: 15, limit: 30, kind: "all" };
 const USER_AGENT = "GloryMap/1.1 (https://codex-hackathon-starter.vercel.app/)";
 const ENTITY_CHUNK_SIZE = 5;
 
@@ -267,9 +275,13 @@ async function fetchEntities(ids) {
 }
 
 async function fetchTypeGraph(workEntities, kind) {
-  const rootType = workKindConfig(kind).rootType;
+  // Under "every kind" the walk stops at whichever of the three roots it reaches first,
+  // so all three are seeded rather than one.
+  const roots = isEveryKind(kind)
+    ? WORK_KINDS.map((each) => workKindConfig(each).rootType)
+    : [workKindConfig(kind).rootType];
   const graph = new Map();
-  const visited = new Set([rootType]);
+  const visited = new Set(roots);
   let frontier = [...new Set(
     [...workEntities.values()].flatMap((entity) => entityClaimIds(entity, "P31")),
   )].filter((typeId) => !visited.has(typeId));
@@ -286,7 +298,7 @@ async function fetchTypeGraph(workEntities, kind) {
       }
     }
 
-    frontier = [...new Set(next)].filter((typeId) => typeId !== rootType);
+    frontier = [...new Set(next)].filter((typeId) => !roots.includes(typeId));
   }
 
   return graph;
@@ -296,13 +308,19 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
   const workIds = workMatches.map((match) => match.id);
   const workEntities = await fetchEntities(workIds);
   let matchedWorkId = null;
+  // The kind the matched work turned out to BE. Asking for every kind still has to end
+  // with one: which property holds its places, and whether they are filming locations or
+  // a story setting, are facts about the work and not about the search.
+  let matchedKind = isEveryKind(kind) ? null : kind;
 
   for (const workId of workIds) {
     const entity = workEntities.get(workId);
     if (!entity) continue;
     const typeGraph = await fetchTypeGraph(new Map([[workId, entity]]), kind);
-    if (workMatchesTypeGraph(entity, typeGraph, kind)) {
+    const resolved = resolveWorkKind(entity, typeGraph, kind);
+    if (resolved) {
       matchedWorkId = workId;
+      matchedKind = resolved;
       break;
     }
   }
@@ -314,7 +332,7 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
   if (!matchedWorkId) return { matchedWork: null, locations: [] };
 
   const workEntity = workEntities.get(matchedWorkId);
-  const config = workKindConfig(kind);
+  const config = workKindConfig(matchedKind);
 
   // The work's own property first, then the weaker ones — but only if the strong one
   // gave nothing. Measured on 24 famous titles, three returned an empty map: Spirited
@@ -324,7 +342,7 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
   let via = null;
   let locationIds = entityClaimIds(workEntity, config.locationProperty);
   if (locationIds.length === 0) {
-    for (const fallback of locationFallbacks(kind)) {
+    for (const fallback of locationFallbacks(matchedKind)) {
       const ids = entityClaimIds(workEntity, fallback.property);
       if (ids.length === 0) continue;
       via = fallback;
@@ -344,7 +362,7 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
     [...typeEntities].map(([typeId, entity]) => [typeId, entityText(entity, "labels")]),
   );
   const normalized = normalizeWikidataEntityLocations(workEntity, locationEntities, {
-    kind, typeLabels, via,
+    kind: matchedKind, typeLabels, via,
   });
   // Every place the work touches, nearest first. The radius no longer decides what
   // exists — a title search is not a question about the city on screen.
@@ -367,7 +385,7 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
 
   const candidates = await findInvertedPlaces({
     work,
-    kind,
+    kind: matchedKind,
     center,
     radiusKm: radius,
     limit: Math.max(0, limit - stated.length),
@@ -381,7 +399,7 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
   const queued = await findSubmissionPlaces({
     workEntity,
     work,
-    kind,
+    kind: matchedKind,
     center,
     exclude: [...stated, ...candidates],
   });
@@ -420,7 +438,7 @@ async function findOwnWorkPlaces({ query, kind, center, env = process.env }) {
 
   try {
     const client = createClient(url, anonKey, { auth: { persistSession: false } });
-    const { data, error } = await client
+    const ownRows = client
       .from("location_submissions")
       .select(OWN_WORK_COLUMNS)
       // NOT rejected, rather than pending. A row we have checked and believe must not
@@ -428,8 +446,8 @@ async function findOwnWorkPlaces({ query, kind, center, env = process.env }) {
       // `pending` did — the review would have quietly deleted its own best results.
       .neq("status", "rejected")
       .not("lat", "is", null)
-      .eq("works.title_norm", titleNorm)
-      .eq("works.kind", kind)
+      .eq("works.title_norm", titleNorm);
+    const { data, error } = await (isEveryKind(kind) ? ownRows : ownRows.eq("works.kind", kind))
       .limit(SUBMISSION_FETCH_LIMIT);
 
     if (error) throw new Error(error.message);
@@ -572,7 +590,10 @@ export async function GET(request) {
     const bindings = await fetchLocationBindings(query);
     const normalized = normalizeWikidataLocations(bindings, { kind });
     const nearby = locationsWithinRadius(normalized, { lat, lng }, radius);
-    const locations = rankNearbyLocations(nearby, { limit });
+    // With every kind merged the five-work cap has to be shared, or the biggest works in
+    // the area take it and a whole kind disappears from a list that claims to hold all
+    // three.
+    const locations = rankNearbyLocations(nearby, { limit, balanced: isEveryKind(kind) });
 
     return NextResponse.json(
       {

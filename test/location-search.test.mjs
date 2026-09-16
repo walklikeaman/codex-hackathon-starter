@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import {
   buildLocationsSparql,
   buildWikidataEntitiesUrl,
+  EVERY_KIND,
+  resolveWorkKind,
+  workKindLabel,
+  WORK_KINDS,
   buildWikidataSearchUrl,
   cityRadiusKm,
   entityClaimIds,
@@ -290,4 +294,124 @@ test("fame is read from the binding, and an unreadable count is zero rather than
 test("fifteen candidates, because the film was not in the top eight", () => {
   assert.equal(WORK_SEARCH_CANDIDATES, 15);
   assert.match(String(buildWikidataSearchUrl("Skyfall")), /limit=15/);
+});
+
+
+// Every kind at once (#240). The panel asked for films only and said so nowhere, so a
+// first-time visitor could not see a single series or book location and was never told
+// one existed.
+
+test("the every-kind query asks for all three, each with its own share of the budget", () => {
+  const query = buildLocationsSparql({
+    lat: 51.5074, lng: -0.1278, radius: 15, sourceLimit: 60, kind: EVERY_KIND, workIds: [],
+  });
+
+  for (const root of ["Q11424", "Q5398426", "Q7725634"]) {
+    assert.ok(query.includes(`wd:${root}`), `asks about ${root}`);
+  }
+  // A single LIMIT over the union is spent in branch order: measured live, 60 rows came
+  // back and all 60 were films. Each branch carries the FULL budget — a third each was
+  // measured too, and it starved the merged list to 5 places where film alone returned 11.
+  assert.equal((query.match(/LIMIT 60/g) ?? []).length, WORK_KINDS.length);
+  assert.ok(query.includes('BIND("book" AS ?workKind)'));
+});
+
+test("every kind is asked the same question a single kind is asked", () => {
+  const query = buildLocationsSparql({
+    lat: 0, lng: 0, radius: 5, sourceLimit: 12, kind: EVERY_KIND, workIds: [],
+  });
+  assert.equal((query.match(/LIMIT 12/g) ?? []).length, WORK_KINDS.length);
+  // And the outer cap has to hold all three branches, or it re-imposes the starvation.
+  assert.ok(query.includes(`LIMIT ${12 * WORK_KINDS.length}`));
+});
+
+// A title search names ONE work, and a work is of one kind.
+test("a work list under every kind is refused rather than guessed", () => {
+  assert.throws(() => buildLocationsSparql({
+    lat: 0, lng: 0, radius: 5, sourceLimit: 10, kind: EVERY_KIND, workIds: ["Q1"],
+  }), /kind of its own/);
+});
+
+// P915 is "the camera was here" and P840 is "the story is set here". The union must not
+// blur them.
+test("each row keeps the relation of the branch that matched it", () => {
+  const rows = [
+    {
+      work: { value: "http://www.wikidata.org/entity/Q1" }, workLabel: { value: "A Film" },
+      location: { value: "http://www.wikidata.org/entity/Q10" }, locationLabel: { value: "A Street" },
+      coord: { value: "Point(-0.1 51.5)" }, workKind: { value: "film" },
+    },
+    {
+      work: { value: "http://www.wikidata.org/entity/Q2" }, workLabel: { value: "A Novel" },
+      location: { value: "http://www.wikidata.org/entity/Q11" }, locationLabel: { value: "A Square" },
+      coord: { value: "Point(-0.2 51.6)" }, workKind: { value: "book" },
+    },
+  ];
+
+  const places = normalizeWikidataLocations(rows, { kind: EVERY_KIND });
+  assert.deepEqual(places.map((place) => [place.kind, place.relation_label]), [
+    ["film", "Filming location"],
+    ["book", "Story setting"],
+  ]);
+  assert.deepEqual(places.map((place) => place.relation_property), ["P915", "P840"]);
+});
+
+test("a row whose branch is unreadable is dropped, never labelled as a film", () => {
+  const rows = [{
+    work: { value: "http://www.wikidata.org/entity/Q1" }, workLabel: { value: "Untyped" },
+    location: { value: "http://www.wikidata.org/entity/Q10" }, locationLabel: { value: "Somewhere" },
+    coord: { value: "Point(-0.1 51.5)" },
+  }];
+  assert.deepEqual(normalizeWikidataLocations(rows, { kind: EVERY_KIND }), []);
+});
+
+// Asking for every kind still has to end with one: which property holds a work's places is
+// a fact about the work, not about the search.
+test("a title search under every kind resolves the kind the work turned out to be", () => {
+  const seriesEntity = { id: "Q9", claims: { P31: [{ mainsnak: { datavalue: { value: { id: "Q5398426" } } } }] } };
+  assert.equal(resolveWorkKind(seriesEntity, new Map(), EVERY_KIND), "series");
+  assert.equal(resolveWorkKind(seriesEntity, new Map(), "film"), null);
+  assert.equal(workMatchesTypeGraph(seriesEntity, new Map(), EVERY_KIND), true);
+});
+
+test("the set is named the way a reader would name it", () => {
+  assert.equal(workKindLabel(EVERY_KIND), "work");
+  assert.equal(workKindLabel(EVERY_KIND, { plural: true }), "works");
+  assert.equal(workKindLabel("series", { plural: true }), "series");
+  assert.equal(workKindLabel("book"), "book");
+});
+
+// Five works fit in the panel. With three kinds merged the five biggest were all series
+// and books: measured on London, "every kind" returned 6 places and not one film, where
+// film alone returned 11.
+test("the five-work cap is shared between kinds instead of taken by the biggest", () => {
+  const place = (kind, work, n) => Array.from({ length: n }, (_, i) => ({
+    kind, work_wikidata_id: work, loc_wikidata_id: `${work}-${i}`, work_title: work,
+  }));
+  const locations = [
+    ...place("series", "S1", 9), ...place("series", "S2", 8), ...place("series", "S3", 7),
+    ...place("book", "B1", 6), ...place("book", "B2", 5),
+    ...place("film", "F1", 4), ...place("film", "F2", 3),
+  ];
+
+  const unbalanced = rankNearbyLocations(locations, { limit: 30 });
+  assert.deepEqual([...new Set(unbalanced.map((row) => row.kind))].sort(), ["book", "series"]);
+
+  const balanced = rankNearbyLocations(locations, { limit: 30, balanced: true });
+  assert.deepEqual([...new Set(balanced.map((row) => row.kind))].sort(), ["book", "film", "series"]);
+  // Biggest first within each kind, and the turns go in kind order.
+  assert.deepEqual([...new Set(balanced.map((row) => row.work_wikidata_id))], ["F1", "S1", "B1", "F2", "S2"]);
+});
+
+// A kind with nothing here yields its turn rather than holding a slot empty.
+test("a kind that is absent costs the others nothing", () => {
+  const place = (kind, work, n) => Array.from({ length: n }, (_, i) => ({
+    kind, work_wikidata_id: work, loc_wikidata_id: `${work}-${i}`,
+  }));
+  const balanced = rankNearbyLocations([
+    ...place("film", "F1", 3), ...place("film", "F2", 2), ...place("film", "F3", 2),
+    ...place("book", "B1", 4),
+  ], { limit: 30, balanced: true });
+
+  assert.deepEqual([...new Set(balanced.map((row) => row.work_wikidata_id))], ["F1", "B1", "F2", "F3"]);
 });
