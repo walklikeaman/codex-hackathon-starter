@@ -131,3 +131,54 @@ export function writeFilterParams(params, filters) {
 }
 
 export { KEYS as FILTER_KEYS };
+
+// ---------------------------------------------------------------------------------------
+//
+// What the reset control may touch, and what it has to say (#240).
+//
+// "Reset 3 filters" named a number and none of the filters, and the controls that set them
+// sat behind a closed disclosure — so the reader had to remember what they had narrowed.
+// Worse, three of the eight flags it counted are LAYER switches: pressing it turned back on
+// map layers the reader had deliberately turned off. A layer answers "what is drawn"; a
+// filter answers "what is kept". They are both in the URL, and only one of them is a thing
+// a reset should undo.
+
+const NARROWING = Object.freeze(["mineOnly", "minRating", "minImdb", "kinds", "workId"]);
+
+// The filters that narrow the map, in the order they are shown. Layers are excluded on
+// purpose — see above.
+export function narrowingFilters(filters) {
+  const active = new Set(activeFilters(filters));
+  return NARROWING.filter((key) => active.has(key));
+}
+
+const KIND_NAMES = Object.freeze({ film: "Films", series: "Series", book: "Books" });
+
+// A chip's words. Each one says what is kept, in the reader's terms, so the row reads as
+// the answer to "why is the map smaller than I expected".
+export function filterChipLabel(key, filters, { workTitle = null } = {}) {
+  const state = { ...FILTER_DEFAULTS, ...(filters ?? {}) };
+  switch (key) {
+    case "mineOnly":
+      return "My films";
+    case "minRating":
+      return `Mine ${Number(state.minRating)}/10+`;
+    case "minImdb":
+      return `IMDb ${Number(Number(state.minImdb).toFixed(1))}+`;
+    case "kinds":
+      return (Array.isArray(state.kinds) ? state.kinds : [])
+        .map((kind) => KIND_NAMES[kind] ?? kind)
+        .join(" + ") || "Some kinds";
+    case "workId":
+      // The title when we have it. "One work" is the honest fallback for a link opened
+      // before the works list has arrived — never the raw id.
+      return workTitle ? String(workTitle) : "One work";
+    default:
+      return null;
+  }
+}
+
+// The single value one chip's × puts back.
+export function clearedFilter(key) {
+  return Object.hasOwn(FILTER_DEFAULTS, key) ? FILTER_DEFAULTS[key] : undefined;
+}

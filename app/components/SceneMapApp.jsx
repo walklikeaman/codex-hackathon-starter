@@ -78,7 +78,8 @@ import {
   filmsInViewLabel,
 } from "../lib/films-in-view.mjs";
 import {
-  FILTER_DEFAULTS, activeFilterCount, filtersFromParams, writeFilterParams,
+  FILTER_DEFAULTS, clearedFilter, filterChipLabel, filtersFromParams,
+  narrowingFilters, writeFilterParams,
 } from "../lib/filter-url.mjs";
 import { EMPTY_REASON, labelledPlaces, notableEmptyReason, notableHere } from "../lib/notable-here.mjs";
 import {
@@ -1436,20 +1437,27 @@ export default function SceneMapApp() {
     candidates: candidatesOn, studioLots: studioLotsOn, graphLayer: graphLayerOn,
   }), [mineOnly, minRating, minImdb, graphKinds, graphWorkId, candidatesOn, studioLotsOn, graphLayerOn]);
 
-  const activeCount = useMemo(() => activeFilterCount(filters), [filters]);
+  // The filters that NARROW the map — what the chips show and what a reset may undo. The
+  // layer switches are deliberately not among them: see [[filter-url]] narrowingFilters.
+  const narrowing = useMemo(() => narrowingFilters(filters), [filters]);
 
-  // One control puts every filter back, because six controls that can each empty the map
-  // need one that undoes all of them. It is only rendered when something is on.
-  const resetFilters = useCallback(() => {
-    setMineOnly(FILTER_DEFAULTS.mineOnly);
-    setMinRating(FILTER_DEFAULTS.minRating);
-    setMinImdb(FILTER_DEFAULTS.minImdb);
-    setGraphKinds(FILTER_DEFAULTS.kinds);
-    setGraphWorkId(FILTER_DEFAULTS.workId);
-    setCandidatesOn(FILTER_DEFAULTS.candidates);
-    setStudioLotsOn(FILTER_DEFAULTS.studioLots);
-    setGraphLayerOn(FILTER_DEFAULTS.graphLayer);
+  // One filter back to its default, from its own chip.
+  const clearFilter = useCallback((key) => {
+    const value = clearedFilter(key);
+    if (value === undefined) return;
+    if (key === "mineOnly") setMineOnly(value);
+    else if (key === "minRating") setMinRating(value);
+    else if (key === "minImdb") setMinImdb(value);
+    else if (key === "kinds") setGraphKinds(value);
+    else if (key === "workId") setGraphWorkId(value);
   }, []);
+
+  // Every narrowing filter back at once. It used to switch the LAYERS back on as well, so a
+  // reader who had hidden the queue on purpose found it drawn again by a button that said
+  // it was resetting filters.
+  const resetFilters = useCallback(() => {
+    for (const key of ["mineOnly", "minRating", "minImdb", "kinds", "workId"]) clearFilter(key);
+  }, [clearFilter]);
 
   const chooseBasemap = useCallback((id) => {
     setBasemapId(layerById(id).id);
@@ -1629,8 +1637,8 @@ export default function SceneMapApp() {
     filmsHere,
     summary: graphSummary,
     candidatesOn,
-    activeFilters: activeCount,
-  }) : null), [graphLayerOn, notable, filmsHere, graphSummary, candidatesOn, activeCount]);
+    activeFilters: narrowing.length,
+  }) : null), [graphLayerOn, notable, filmsHere, graphSummary, candidatesOn, narrowing]);
 
 
   // Which pins have earned a name. The same ranking the list above uses, spent on the map:
@@ -2982,10 +2990,32 @@ export default function SceneMapApp() {
         </div>
 
 
-        {activeCount > 0 && (
-          <button type="button" className="reset-filters" onClick={resetFilters}>
-            Reset {activeCount} filter{activeCount === 1 ? "" : "s"}
-          </button>
+        {/* One chip per filter, each saying what it keeps and undone by its own ×. It was
+            one button reading "Reset 3 filters" — a number, none of the filters, and the
+            controls that set them behind a closed disclosure. */}
+        {narrowing.length > 0 && (
+          <div className="filter-chips" role="group" aria-label="Filters narrowing the map">
+            {narrowing.map((key) => {
+              const label = filterChipLabel(key, filters, {
+                workTitle: graphWorks.find((work) => work.work_id === graphWorkId)?.title ?? null,
+              });
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className="filter-chip"
+                  onClick={() => clearFilter(key)}
+                  aria-label={`Remove filter: ${label}`}
+                >
+                  <span>{label}</span>
+                  <X size={13} aria-hidden="true" />
+                </button>
+              );
+            })}
+            {narrowing.length > 1 && (
+              <button type="button" className="filter-chips-clear" onClick={resetFilters}>Clear all</button>
+            )}
+          </div>
         )}
 
         {/* What this place is known for, above everything the reader would have to ask for.
