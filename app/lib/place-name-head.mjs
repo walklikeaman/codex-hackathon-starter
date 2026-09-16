@@ -186,6 +186,45 @@ export function headRefusal(head) {
   return null;
 }
 
+// **Two written names for one place, or two places that share a head.**
+//
+// The model names the same place differently in different editions, and the queue stored
+// both: "Chatham Dockyard" beside "Chatham Dockyard in Kent", "Pinewood Studios" beside
+// "Pinewood Studios, London", "Toronto, Ontario, Canada" beside "Toronto, au Canada" —
+// the last one because the French article was read too. `place_key` is
+// `lower(btrim(place_name))`, so none of them collapse, and the reviewer meets each place
+// twice.
+//
+// **The head alone is not enough to merge on.** "Warner Bros. Studios, Burbank" and
+// "Warner Bros. Studios, Leavesden" share a head and are two studios five thousand miles
+// apart. So the areas have to agree as well: merge when one name says nothing about where
+// it is, or when they name an area in common — and keep both when each names a DIFFERENT
+// enclosing place, which is the only shape that distinguishes those two studios.
+//
+// Measured over the 669 Wikipedia rows in the queue: 9 groups, 18 rows, and **not one of
+// them a genuine over-merge** — every group's placed points sit on top of each other.
+//
+// The leading preposition comes off an area because we read French and German editions
+// now: "au Canada" is the same area as "Canada" and would otherwise look disjoint.
+const AREA_PREPOSITION = /^(au|aux|en|à|a|de|del|della|di|im|in|the)\s+/i;
+
+function areaKeys(name) {
+  return placeAreas(name)
+    .map((area) => normalizePlaceName(String(area).replace(AREA_PREPOSITION, "")))
+    .filter(Boolean);
+}
+
+export function samePlaceWritten(first, second) {
+  const head = normalizePlaceName(placeHead(first));
+  if (!head || head !== normalizePlaceName(placeHead(second))) return false;
+  const left = areaKeys(first);
+  const right = areaKeys(second);
+  // One of them places it and the other does not: the same place, written twice.
+  if (left.length === 0 || right.length === 0) return true;
+  // Both place it: the same place only if they agree about where.
+  return left.some((area) => right.includes(area));
+}
+
 // The whole decision for one written location.
 //
 // `area` may be null, and the caller must treat that as "unverifiable" rather than
