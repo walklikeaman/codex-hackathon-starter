@@ -102,6 +102,7 @@ import {
 } from "../lib/library-view.mjs";
 import { describedFilms } from "../lib/place-note.mjs";
 import { getSupabaseBrowserClient } from "../lib/supabase-browser.mjs";
+import { EVERY_KIND, workKindLabel } from "../lib/location-search.mjs";
 import { filmLocationImageKey } from "../lib/tmdb-images.mjs";
 import {
   TOUR_BUDGETS,
@@ -918,7 +919,10 @@ export default function SceneMapApp() {
   const [mapZoom, setMapZoom] = useState(opened?.zoom ?? null);
   const [citySearchStatus, setCitySearchStatus] = useState("");
   const [workQuery, setWorkQuery] = useState("");
-  const [workKind, setWorkKind] = useState("film");
+  // Every kind, not films. The select offered Film / Series / Book and no way to stop
+  // choosing, so this panel showed film locations ONLY and said so nowhere: a first-time
+  // visitor could not see a single series or book place and was never told one existed.
+  const [workKind, setWorkKind] = useState(EVERY_KIND);
   const [locationsStatus, setLocationsStatus] = useState("");
   const locationRequestId = useRef(0);
   const preserveViewportContext = useRef(false);
@@ -1185,7 +1189,7 @@ export default function SceneMapApp() {
     locationRequestId.current = requestId;
 
     async function loadLocations() {
-      setLocationsStatus(`Finding mapped ${workKind} locations in this map area…`);
+      setLocationsStatus(`Finding mapped ${workKindLabel(workKind)} locations in this map area…`);
       try {
         const params = new URLSearchParams({
           lat: String(browseCenter[0]),
@@ -1207,8 +1211,13 @@ export default function SceneMapApp() {
 
         applyLocationResults(nextLocations, { preserveContext });
         setLocationsStatus(nextLocations.length
-          ? `${nextLocations.length} verified places found nearby.`
-          : `No mapped ${workKind} locations found nearby. Search for a title to check the whole city.`);
+          // The set is named on success too. It used to be named only on FAILURE, so the
+          // one message that could have revealed the hidden filter was the one nobody
+          // reads when things work.
+          ? `${nextLocations.length} verified places found nearby · ${workKind === EVERY_KIND
+            ? "films, series and books"
+            : `${workKindLabel(workKind, { plural: true })} only`}`
+          : `No mapped ${workKindLabel(workKind)} locations found nearby. Search for a title to check the whole city.`);
       } catch (error) {
         if (cancelled || requestId !== locationRequestId.current) return;
         if (liveLocations !== null && !preserveContext) applyLocationResults([]);
@@ -2332,7 +2341,7 @@ export default function SceneMapApp() {
     setTimedTour(null);
     setTimedTourStatus("idle");
     setTimedTourMessage("");
-    setLocationsStatus(`Finding mapped ${workKind} locations in ${name}…`);
+    setLocationsStatus(`Finding mapped ${workKindLabel(workKind)} locations in ${name}…`);
     invalidateRoute();
   }
 
@@ -2436,7 +2445,7 @@ export default function SceneMapApp() {
           + (elsewhere > 0 ? `, and ${elsewhere} elsewhere.` : "."),
         );
       } else {
-        setLocationsStatus(`No verified ${workKind} locations are mapped for “${query}” anywhere yet.`);
+        setLocationsStatus(`No verified ${workKindLabel(workKind)} locations are mapped for “${query}” anywhere yet.`);
       }
 
       if (!matchedWork || nextLocations.length >= 3) return;
@@ -2854,6 +2863,9 @@ export default function SceneMapApp() {
             value={workKind}
             onChange={(event) => changeWorkKind(event.target.value)}
           >
+            {/* First and default: the question a visitor arrives with is "what was shot
+                around here", not "what films were shot around here". */}
+            <option value={EVERY_KIND}>All</option>
             <option value="film">Film</option>
             <option value="series">Series</option>
             <option value="book">Book</option>
