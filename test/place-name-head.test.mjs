@@ -13,6 +13,7 @@ import {
   headRefusal,
   placeArea,
   placeHead,
+  samePlaceWritten,
   splitPlacePhrase,
 } from "../app/lib/place-name-head.mjs";
 
@@ -288,4 +289,47 @@ test("a chosen place is the only anchor; a refusal offers all of them", () => {
   assert.equal(anchorsFrom({ place: null, reason: "ambiguous_homonyms", candidates: [{ lat: 1, lng: 2 }, { lat: 9, lng: 9 }] }).length, 2);
   assert.deepEqual(anchorsFrom({ place: null, reason: "no_candidate", candidates: [] }), []);
   assert.deepEqual(anchorsFrom(null), []);
+});
+
+
+// --- one place written twice ------------------------------------------------------------
+
+test("the same place named two ways is one place", () => {
+  // The model names a place differently in different editions and the queue kept both:
+  // place_key is lower(btrim(place_name)), so none of these collapse and the reviewer
+  // meets each place twice. Measured over the 669 Wikipedia rows: 9 such groups, 18 rows.
+  for (const [first, second] of [
+    ["Chatham Dockyard", "Chatham Dockyard in Kent"],
+    ["Cinecittà Studios", "Cinecittà Studios, Rome"],
+    ["Pinewood Studios", "Pinewood Studios, London"],
+    ["Santa Cruz, California", "Santa Cruz"],
+    ["Culver City", "Culver City, California"],
+  ]) {
+    assert.equal(samePlaceWritten(first, second), true, `${first} / ${second}`);
+    assert.equal(samePlaceWritten(second, first), true, "and the other way round");
+  }
+});
+
+test("a French edition's area is the same area", () => {
+  // We read French and German editions now, so "au Canada" and "Canada" must not look
+  // like two different enclosing places.
+  assert.equal(samePlaceWritten("Toronto, Ontario, Canada", "Toronto, au Canada"), true);
+  assert.equal(samePlaceWritten("Rome, Italy", "Rome, en Italie"), false, "a different WORD is still different");
+});
+
+test("a shared head is not a shared place", () => {
+  // The guard that stops this becoming a merge-everything rule. Two studios of one company
+  // five thousand miles apart share a head and name different enclosing places, and that
+  // difference is the only thing that distinguishes them.
+  assert.equal(samePlaceWritten("Warner Bros. Studios, Burbank", "Warner Bros. Studios, Leavesden"), false);
+  assert.equal(samePlaceWritten("St Johns College, Cambridge", "St Johns College, Oxford"), false);
+  assert.equal(samePlaceWritten("Somerset House", "Wrotham Park"), false);
+});
+
+test("one name saying nothing about where it is merges with one that does", () => {
+  // The common shape: an English article gives the bare name and a French one appends the
+  // county. Silence is not disagreement.
+  assert.equal(samePlaceWritten("Chatham Dockyard", "Chatham Dockyard in Kent"), true);
+  // But two that both speak and disagree are kept apart.
+  assert.equal(samePlaceWritten("Chatham Dockyard in Kent", "Chatham Dockyard in Ontario"), false);
 });

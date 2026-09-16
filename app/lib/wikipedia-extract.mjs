@@ -15,6 +15,8 @@
 
 import { z } from "zod";
 
+import { samePlaceWritten } from "./place-name-head.mjs";
+
 import { MAX_QUOTE_WORDS, quoteRejection } from "./wikipedia-source.mjs";
 import { normalizePlaceName } from "./place-dedup.mjs";
 
@@ -288,7 +290,10 @@ export function namesAnAgentNotAPlace(name, sentence) {
 export function acceptExtraction(parsed, { prose, article }) {
   const accepted = [];
   const rejected = [];
-  const seen = new Set();
+  // The names already kept, not a set of keys: two written forms of one place do not
+  // produce the same key, and comparing the FORMS is the only way to notice. See
+  // `samePlaceWritten`.
+  const kept = [];
 
   for (const location of parsed?.locations ?? []) {
     const name = String(location?.place_name ?? "").trim();
@@ -301,7 +306,7 @@ export function acceptExtraction(parsed, { prose, article }) {
     // drops this item and nothing else.
     const relation = relationForRole(location.place_role);
     if (!relation) { drop("role_not_accepted"); continue; }
-    if (seen.has(key)) { drop("duplicate"); continue; }
+    if (kept.some((earlier) => samePlaceWritten(earlier, name))) { drop("duplicate"); continue; }
     // Beyond the cap the extras are dropped, not the answer. They arrive in article
     // order, so what survives is what the prose introduced first.
     if (accepted.length >= MAX_LOCATIONS_PER_ARTICLE) { drop("over_limit"); continue; }
@@ -333,7 +338,7 @@ export function acceptExtraction(parsed, { prose, article }) {
       continue;
     }
 
-    seen.add(key);
+    kept.push(name);
     accepted.push({
       place_name: name,
       area_hint: String(location.area_hint ?? "").trim().slice(0, 160) || null,

@@ -43,6 +43,7 @@ import {
 } from "../app/lib/wikipedia-extract.mjs";
 import { WIKIDATA_LICENSE } from "../app/lib/geocode-wikidata.mjs";
 import { createGeocoder } from "../app/lib/geocode-client.mjs";
+import { samePlaceWritten } from "../app/lib/place-name-head.mjs";
 import { normalizePlaceName } from "../app/lib/place-dedup.mjs";
 import { createModelClient, createThrottle, parseStructured } from "../app/lib/model-client.mjs";
 
@@ -180,7 +181,10 @@ async function main() {
     // Whichever edition mentioned a place first keeps its citation — the sentence and
     // the article it came from must stay together.
     const accepted = [];
-    const seen = new Set();
+    // Across editions as well as within one. The French article calls Toronto
+    // "Toronto, au Canada" and the English one "Toronto, Ontario, Canada"; keyed on the
+    // written string they are two places, and the reviewer meets the city twice.
+    const kept = [];
     const credits = new Map();
 
     for (const language of languages) {
@@ -232,9 +236,8 @@ async function main() {
       const result = acceptExtraction(extraction.parsed, { prose, article: { title, revid } });
       let fresh = 0;
       for (const location of result.accepted) {
-        const key = normalizePlaceName(location.place_name);
-        if (seen.has(key)) continue;
-        seen.add(key);
+        if (kept.some((earlier) => samePlaceWritten(earlier, location.place_name))) continue;
+        kept.push(location.place_name);
         accepted.push({ ...location, language });
         fresh += 1;
       }
