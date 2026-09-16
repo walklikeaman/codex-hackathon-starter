@@ -96,3 +96,66 @@ export function labelledPlaces(films, { limit = 8 } = {}) {
 
   return labels;
 }
+
+// Why the list is empty, said out loud (#240).
+//
+// "Known for" was rendered only when it had rows, so an empty one UNMOUNTED — and the panel
+// around it kept talking. Measured on the second design review: three of five loads over
+// Los Angeles drew a black map, the section vanished, and the panel still read "3 places
+// from 3 films in Los Angeles" while the console count degraded to the bare word "layers".
+// Nothing anywhere said something was wrong. `?imdb=8` reproduced the same silence on a map
+// that had drawn perfectly well.
+//
+// Those are five different situations with five different fixes, and an empty section
+// cannot tell them apart. So the reason is decided here, in the order a reader could act
+// on it, and the first one that holds is the one that is said.
+export const EMPTY_REASON = Object.freeze({
+  loading: "loading",
+  queue_hidden: "queue_hidden",
+  zoomed_out: "zoomed_out",
+  filtered_out: "filtered_out",
+  nothing_here: "nothing_here",
+  unranked: "unranked",
+});
+
+export function notableEmptyReason({
+  notable = [],
+  filmsHere = [],
+  summary = null,
+  candidatesOn = true,
+  activeFilters = 0,
+} = {}) {
+  if (Array.isArray(notable) && notable.length > 0) return null;
+
+  // Checked first because every later answer is a claim about what the map DREW, and a map
+  // that has not answered yet has drawn nothing — including on a failed tile load, which is
+  // the case that used to look exactly like an empty city.
+  if (!summary) {
+    return { code: EMPTY_REASON.loading, text: "The map hasn't answered yet." };
+  }
+  if (!candidatesOn) {
+    return {
+      code: EMPTY_REASON.queue_hidden,
+      text: "Unchecked places are hidden, and almost everything here is one.",
+    };
+  }
+  if (summary.clustered) {
+    return { code: EMPTY_REASON.zoomed_out, text: "Zoom in to see what this place is known for." };
+  }
+
+  const drawn = Array.isArray(filmsHere) ? filmsHere.length : 0;
+  if (drawn === 0) {
+    // A filter that emptied the map is a different sentence from a place we hold nothing
+    // for — one is undone by a button, the other by moving the map.
+    return activeFilters > 0
+      ? { code: EMPTY_REASON.filtered_out, text: "Nothing here passes your filters." }
+      : { code: EMPTY_REASON.nothing_here, text: "We hold nothing in this part of the map yet." };
+  }
+
+  // Films are drawn, and none of them has enough ratings to rank. Saying "nothing here"
+  // would be false: the pins are on screen.
+  return {
+    code: EMPTY_REASON.unranked,
+    text: `${drawn} ${drawn === 1 ? "film is" : "films are"} here, none rated by enough people to rank.`,
+  };
+}

@@ -4316,3 +4316,25 @@ figcaption a {
   gap: 0.3rem;
   font-size: 0.74rem;
 }
+
+/* "Known for" with nothing in it says why, instead of disappearing while the panel around it
+   keeps asserting content. Quiet, because it is a status and not an alarm. */
+.notable-here.is-empty .notable-empty {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  color: rgba(236, 232, 225, 0.72);
+}
+.notable-here .notable-empty-action {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent, #f0a83c);
+  font: inherit;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
