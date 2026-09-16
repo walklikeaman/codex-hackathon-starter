@@ -144,11 +144,17 @@ function GraphLayer({
   const [openPoint, setOpenPoint] = useState(null);
   const requestRef = useRef(null);
   const timerRef = useRef(null);
+  const lastQueryRef = useRef(null);
 
   const load = useCallback(async () => {
     if (!map) return;
     const query = viewportQuery(map.getBounds(), map.getZoom(), { workId, kinds, candidates: showCandidates });
     if (!query) return;
+    // The question already asked, and answered or still being answered. The layer asks on
+    // mount AND on the `moveend` the opening pan fires a moment later — the same view both
+    // times — so every page load paid for /api/map/points twice.
+    if (query === lastQueryRef.current) return;
+    lastQueryRef.current = query;
 
     requestRef.current?.abort();
     const controller = new AbortController();
@@ -156,7 +162,8 @@ function GraphLayer({
 
     try {
       const response = await fetch(`/api/map/points?${query}`, { signal: controller.signal });
-      if (!response.ok) return;
+      // A failed answer is not an answer: forget the query so the next move asks again.
+      if (!response.ok) { lastQueryRef.current = null; return; }
       const body = await response.json();
       setData({
         features: Array.isArray(body.features) ? body.features : [],
@@ -186,6 +193,8 @@ function GraphLayer({
         nearest: body.nearest ?? [],
       });
     } catch (error) {
+      // Aborted or failed, the question was not answered — the next event may ask it again.
+      if (lastQueryRef.current === query) lastQueryRef.current = null;
       if (error?.name !== "AbortError") console.error("graph layer failed", error);
     }
   }, [map, workId, kinds, showCandidates, onSummary]);
@@ -202,6 +211,10 @@ function GraphLayer({
       map.off("moveend", schedule);
       clearTimeout(timerRef.current);
       requestRef.current?.abort();
+      // Cleared HERE, synchronously, not in the aborted request's catch. The next effect
+      // runs before that catch does, and would otherwise see its own query still marked as
+      // asked, skip it, and leave the map empty once the abort landed.
+      lastQueryRef.current = null;
     };
   }, [map, load]);
 

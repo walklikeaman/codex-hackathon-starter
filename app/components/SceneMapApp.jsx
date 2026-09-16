@@ -2423,7 +2423,12 @@ export default function SceneMapApp() {
 
   function refreshVisibleMap({ center, radiusKm, zoom }) {
     preserveViewportContext.current = true;
-    setBrowseCenter(center);
+    // Only a CHANGE is a new question. The map reports its view on load and again after the
+    // opening pan, with the same centre both times; a fresh array is a new dependency to
+    // React, so /api/locations went out twice for one unchanged view on every page load.
+    setBrowseCenter((current) => (
+      Array.isArray(current) && current[0] === center[0] && current[1] === center[1] ? current : center
+    ));
     setBrowseRadius(radiusKm);
     if (Number.isFinite(zoom)) setMapZoom(zoom);
     // The title deliberately SURVIVES a viewport change. It used to be cleared here,
