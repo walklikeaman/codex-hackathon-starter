@@ -83,11 +83,15 @@ test("nothing in view is said, not left blank", () => {
 test("the label states films AND places, because they are different numbers", () => {
   // Printing one of them makes "we hold little here" and "you are zoomed too far out" look
   // identical, which is the bug the place card already fixed once.
+  const at = (name, films, coordinates) => ({ ...point(name, films), geometry: { type: "Point", coordinates } });
   const films = filmsInView([
-    point("A", [{ work_id: "a", title: "Heat" }, { work_id: "b", title: "Collateral" }]),
-    point("B", [{ work_id: "a", title: "Heat" }]),
+    at("A", [{ work_id: "a", title: "Heat" }, { work_id: "b", title: "Collateral" }], [-118.25, 34.05]),
+    at("B", [{ work_id: "a", title: "Heat" }], [-118.30, 34.10]),
   ]);
-  assert.equal(filmsInViewLabel(films), "2 films · 3 places in view");
+  // TWO places, not three. Summing each film's places counts pin A once for Heat and once
+  // for Collateral — which is how the panel came to read "1,255 places" beside a console
+  // that correctly said 414.
+  assert.equal(filmsInViewLabel(films), "2 films at 2 places in view");
 });
 
 test("the list opens on posters, and both modes are real", () => {

@@ -1215,7 +1215,10 @@ export default function SceneMapApp() {
           // The set is named on success too. It used to be named only on FAILURE, so the
           // one message that could have revealed the hidden filter was the one nobody
           // reads when things work.
-          ? `${nextLocations.length} verified places found nearby · ${workKind === EVERY_KIND
+          // Not "verified". This list mixes Wikidata statements with our own queue, and the
+          // layer toggle below counted 0 places checked by us in the same view — the word
+          // claimed a review that had not happened.
+          ? `${nextLocations.length} places found nearby · ${workKind === EVERY_KIND
             ? "films, series and books"
             : `${workKindLabel(workKind, { plural: true })} only`}`
           : `No mapped ${workKindLabel(workKind)} locations found nearby. Search for a title to check the whole city.`);
@@ -2500,8 +2503,8 @@ export default function SceneMapApp() {
       if (requestId !== locationRequestId.current) return;
       if (!discoveryResponse.ok) {
         setLocationsStatus(nextLocations.length
-          ? `${nextLocations.length} verified ${nextLocations.length === 1 ? "place" : "places"} for ${matchedTitle}. More research is unavailable right now.`
-          : `No verified places for ${matchedTitle} in ${cityName}; more research is unavailable right now.`);
+          ? `${nextLocations.length} sourced ${nextLocations.length === 1 ? "place" : "places"} for ${matchedTitle}. More research is unavailable right now.`
+          : `No sourced places for ${matchedTitle} in ${cityName}; more research is unavailable right now.`);
         return;
       }
 
@@ -2525,7 +2528,7 @@ export default function SceneMapApp() {
         : "";
       setLocationsStatus((merged.length > nextLocations.length
         ? `${merged.length} sourced places for ${matchedTitle}: Wikidata plus cited web research.`
-        : `${nextLocations.length || "No"} verified places for ${matchedTitle}; no additional sourced places were found.`)
+        : `${nextLocations.length || "No"} sourced places for ${matchedTitle}; no more were found.`)
         + unplacedNote);
     } catch (error) {
       if (requestId !== locationRequestId.current) return;
@@ -3101,7 +3104,11 @@ export default function SceneMapApp() {
                   : `${graphSummary.candidateCount ?? 0} unchecked`}
             </span>
           </summary>
-        <section className="graph-layer-panel" aria-label="Grounded places layer">
+        {/* Two words for the two stores, and only two. The panel used "verified", "grounded",
+            "checked", "unchecked" and "candidates" for two ideas, beside "points", "pins" and
+            "places" for one — the review counted seven numbers and five nouns describing a
+            single map. Checked means checked BY US; unchecked means a source named it. */}
+        <section className="graph-layer-panel" aria-label="Checked places layer">
           {/* The work list follows the kind filter, so it can only ever offer works
               that actually have a place to fly to under the current filter. */}
           <button
@@ -3111,12 +3118,12 @@ export default function SceneMapApp() {
             onClick={() => setGraphLayerOn((on) => !on)}
           >
             <Layers size={16} aria-hidden="true" />
-            Grounded places
+            Checked places
             {graphLayerOn && graphSummary ? (
               <span className="graph-count">
                 {graphSummary.clustered
                   ? `${graphSummary.count} cluster${graphSummary.count === 1 ? "" : "s"}`
-                  : `${graphSummary.count} point${graphSummary.count === 1 ? "" : "s"}`}
+                  : `${graphSummary.count} place${graphSummary.count === 1 ? "" : "s"}`}
               </span>
             ) : null}
           </button>
@@ -3270,12 +3277,12 @@ export default function SceneMapApp() {
                   onClick={() => setCandidatesOn((on) => !on)}
                 >
                   <Layers size={15} aria-hidden="true" />
-                  Unchecked candidates
+                  Unchecked places
                   {candidatesOn && graphSummary ? (
                     <span className="graph-count">
                       {graphSummary.clustered
-                        ? `${graphSummary.candidateCount} clusters`
-                        : `${graphSummary.candidateCount} pins`}
+                        ? `${graphSummary.candidateCount} cluster${graphSummary.candidateCount === 1 ? "" : "s"}`
+                        : `${graphSummary.candidateCount} place${graphSummary.candidateCount === 1 ? "" : "s"}`}
                     </span>
                   ) : null}
                 </button>

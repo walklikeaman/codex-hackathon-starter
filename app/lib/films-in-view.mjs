@@ -79,10 +79,30 @@ export function filmsInView(features) {
 // What the panel says above the list. Films and places are two different numbers and the
 // panel has printed only one of them before: "we hold little here" and "you are zoomed too
 // far out" look identical without both.
+// Distinct PLACES, not film-place rows (#240).
+//
+// It summed `place_count` across films, which counts a pin once per film listed at it. On
+// one Los Angeles viewport the panel read "626 films · 1,255 places in view" while the
+// console beside it said "414 unchecked" and the layer toggle said "414 pins" — the same map
+// in three numbers and three nouns, and 1,255 against 414 reads as the product contradicting
+// itself. There were 414 places. Griffith Observatory holding 39 films is one place.
+export function distinctPlaceCount(films) {
+  const seen = new Set();
+  for (const film of Array.isArray(films) ? films : []) {
+    for (const place of Array.isArray(film?.places) ? film.places : []) {
+      const key = Number.isFinite(place?.lat) && Number.isFinite(place?.lng)
+        ? `${place.lat},${place.lng}`
+        : `name:${place?.name ?? ""}`;
+      seen.add(key);
+    }
+  }
+  return seen.size;
+}
+
 export function filmsInViewLabel(films) {
   const list = Array.isArray(films) ? films : [];
   if (list.length === 0) return "No films in view";
-  const places = list.reduce((sum, film) => sum + film.place_count, 0);
+  const places = distinctPlaceCount(list);
   return `${list.length} film${list.length === 1 ? "" : "s"}`
-    + ` · ${places} place${places === 1 ? "" : "s"} in view`;
+    + ` at ${places} place${places === 1 ? "" : "s"} in view`;
 }
