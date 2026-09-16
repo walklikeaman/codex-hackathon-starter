@@ -145,10 +145,21 @@ const NOTHING_ON_SELECT = () => {};
 // because the pin count and the film count move together.
 const EMPTY_FILMS = Object.freeze([]);
 
+// How many posters show before "Show all". The grid used to be a 300 px box with its own
+// scrollbar inside the scrolling panel, holding up to 60 posters — 2,363 px of content in a
+// 300 px window with no visible edge, so a reader scrolling the panel hit a region that
+// scrolled something else. It grows in place now, and the panel is the only scroller.
+const POSTERS_FIRST = 12;
+const ROWS_FIRST = 20;
+
 const FilmsInView = memo(function FilmsInView({ films, mode, onMode, onHighlight }) {
+  const [expanded, setExpanded] = useState(false);
   if (!films.length) return null;
 
   const cap = mode === VIEW_MODES.posters ? 60 : 120;
+  const first = mode === VIEW_MODES.posters ? POSTERS_FIRST : ROWS_FIRST;
+  const shown = expanded ? cap : Math.min(first, cap);
+  const total = Math.min(films.length, cap);
 
   return (
     <div className="films-here">
@@ -173,7 +184,7 @@ const FilmsInView = memo(function FilmsInView({ films, mode, onMode, onHighlight
 
       {mode === VIEW_MODES.posters ? (
         <div className="films-here-grid">
-          {films.slice(0, cap).map((film) => (
+          {films.slice(0, shown).map((film) => (
             <a
               key={film.work_id ?? film.title}
               className={`films-here-card${film.on_a_lot_only ? " is-lot" : ""}`}
@@ -195,10 +206,15 @@ const FilmsInView = memo(function FilmsInView({ films, mode, onMode, onHighlight
               <span className="films-here-count">{film.place_count}</span>
             </a>
           ))}
+          {total > shown && (
+            <button type="button" className="films-here-more" onClick={() => setExpanded(true)}>
+              Show all {total}
+            </button>
+          )}
         </div>
       ) : (
         <ul className="films-here-list">
-          {films.slice(0, cap).map((film) => (
+          {films.slice(0, shown).map((film) => (
             <li
               key={film.work_id ?? film.title}
               onMouseEnter={() => onHighlight?.(film)}
@@ -214,6 +230,13 @@ const FilmsInView = memo(function FilmsInView({ films, mode, onMode, onHighlight
               {film.on_a_lot_only && <span className="films-here-lot">studio lot</span>}
             </li>
           ))}
+          {total > shown && (
+            <li className="films-here-more-row">
+              <button type="button" className="films-here-more" onClick={() => setExpanded(true)}>
+                Show all {total}
+              </button>
+            </li>
+          )}
         </ul>
       )}
 
@@ -1647,7 +1670,10 @@ export default function SceneMapApp() {
   // Which pins have earned a name. The same ranking the list above uses, spent on the map:
   // a label is scarce on purpose, because a thousand of them is the same as none — they
   // collide, they cover the streets, and the eye has nowhere to land.
-  const pinLabels = useMemo(() => labelledPlaces(filmsHere, { limit: 8 }), [filmsHere]);
+  // Spent on the SAME films the list names. It ranked all of `filmsHere` with its own cap,
+  // so the map labelled eight films while "Known for" listed five — three names on the
+  // streets that the panel beside them never mentioned, from one ranking read twice.
+  const pinLabels = useMemo(() => labelledPlaces(notable, { limit: 8 }), [notable]);
 
   // The coordinates of the film under the pointer, as the same "lat,lng" keys the pin layer
   // uses. A Set rather than a list: a film holds up to 96 places at one address in this data
@@ -3084,262 +3110,6 @@ export default function SceneMapApp() {
           </section>
         )}
 
-        {/* The layers console, behind a disclosure and closed by default.
-
-            It was 45% of the panel — 1,220 px of 2,715 — and it was the FIRST thing a
-            first-time visitor met, answering none of the questions they arrived with. It is
-            an operator's console, and operators can open it. What stays visible is the one
-            line that says what the map is currently drawing. */}
-        <details className="layers-console" open={layersConsoleOpen} onToggle={(event) => setLayersConsoleOpen(event.currentTarget.open)}>
-          <summary className="layers-console-summary">
-            <Layers size={15} aria-hidden="true" />
-            <span>What the map is drawing</span>
-            <span className="layers-console-count">
-              {/* It fell back to the bare word "layers" whenever the count was zero or the
-                  map had not answered — which read as a label, not as "nothing drawn". */}
-              {!graphSummary
-                ? "loading…"
-                : graphSummary.clustered
-                  ? "zoom in"
-                  : `${graphSummary.candidateCount ?? 0} unchecked`}
-            </span>
-          </summary>
-        {/* Two words for the two stores, and only two. The panel used "verified", "grounded",
-            "checked", "unchecked" and "candidates" for two ideas, beside "points", "pins" and
-            "places" for one — the review counted seven numbers and five nouns describing a
-            single map. Checked means checked BY US; unchecked means a source named it. */}
-        <section className="graph-layer-panel" aria-label="Checked places layer">
-          {/* The work list follows the kind filter, so it can only ever offer works
-              that actually have a place to fly to under the current filter. */}
-          <button
-            className={`graph-toggle${graphLayerOn ? " is-on" : ""}`}
-            type="button"
-            aria-pressed={graphLayerOn}
-            onClick={() => setGraphLayerOn((on) => !on)}
-          >
-            <Layers size={16} aria-hidden="true" />
-            Checked places
-            {graphLayerOn && graphSummary ? (
-              <span className="graph-count">
-                {graphSummary.clustered
-                  ? `${graphSummary.count} cluster${graphSummary.count === 1 ? "" : "s"}`
-                  : `${graphSummary.count} place${graphSummary.count === 1 ? "" : "s"}`}
-              </span>
-            ) : null}
-          </button>
-
-          {graphLayerOn && (
-            <>
-              {/* The legend used to be here and is now ON THE MAP, collapsed behind one
-                  button — reading it used to mean opening the panel that covers the thing
-                  it explains. See `.map-key` in the map stage above. */}
-              <div className="graph-filters">
-                <div className="kind-chips" role="group" aria-label="Filter by kind">
-                  {["film", "series", "book"].map((kind) => {
-                    const on = graphKinds.includes(kind);
-                    return (
-                      <button
-                        key={kind}
-                        type="button"
-                        aria-pressed={on}
-                        className={`kind-chip${on ? " is-on" : ""}`}
-                        onClick={() => {
-                          // Changing the kind can orphan the selected work, so clear it.
-                          setGraphWorkId("");
-                          setGraphKinds((current) =>
-                            current.includes(kind)
-                              ? current.filter((k) => k !== kind)
-                              : [...current, kind],
-                          );
-                        }}
-                      >
-                        {kindLabel(kind)}
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* The cover strip was 442 px tall and 24 targets, and in a Los Angeles
-                    view it showed Skyfall, Notting Hill, Roman Holiday and The Third Man —
-                    the London demo set, in a city they have nothing to do with. A panel that
-                    offers films from somewhere else is not a browsing aid, it is a claim that
-                    the map does not know where it is. */}
-
-                <label className="work-filter">
-                  <span className="visually-hidden">Show one work</span>
-                  <select
-                    value={graphWorkId}
-                    onChange={(event) => setGraphWorkId(event.target.value)}
-                  >
-                    <option value="">Whole library ({graphWorks.length})</option>
-                    {graphWorks.map((work) => (
-                      <option key={work.work_id} value={work.work_id}>
-                        {work.title} ({work.place_count})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              {(() => {
-                const selected = graphWorks.find((work) => work.work_id === graphWorkId);
-                if (!selected) return null;
-                const ratings = selected.ratings ?? [];
-                return (
-                  <article className="work-card">
-                    {selected.poster_url && (
-                      <img alt="" className="work-card-poster" src={selected.poster_url} />
-                    )}
-                    <div className="work-card-body">
-                      <strong>{selected.title}</strong>
-                      <span className="work-card-meta">
-                        {kindLabel(selected.kind)} · {selected.place_count} places
-                      </span>
-                      {ratings.length > 0 ? (
-                        <ul className="rating-row">
-                          {ratings.map((rating) => {
-                            const label = RATING_LABELS[rating.source] ?? rating.source;
-                            const chip = (
-                              <>
-                                <span className="rating-source">{label}</span>
-                                <span className="rating-score">{rating.display}</span>
-                              </>
-                            );
-                            return (
-                              <li key={rating.source} className={`rating-chip is-${rating.source}`}>
-                                {/* A score links back to where it came from; without a
-                                    link it is just a number we ask people to trust. */}
-                                {rating.url ? (
-                                  <a href={rating.url} rel="noreferrer noopener" target="_blank">
-                                    {chip}
-                                  </a>
-                                ) : chip}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      ) : (
-                        <span className="work-card-meta">No ratings yet</span>
-                      )}
-                    </div>
-                  </article>
-                );
-              })()}
-
-              {graphSummary?.count === 0 && graphSummary?.nearest?.length > 0 && (
-                <div className="graph-nearest">
-                  <p className="graph-note">Nothing grounded in this view. Nearest:</p>
-                  <ul>
-                    {graphSummary.nearest.map((place) => (
-                      <li key={place.place_id}>
-                        <button
-                          type="button"
-                          className="nearest-jump"
-                          onClick={() => setMapCenter([place.lat, place.lng])}
-                        >
-                          {place.name} · {place.distance_km} km
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {graphSummary?.truncated && (
-                <p className="graph-note">
-                  Showing the first {graphSummary.count} — zoom in for the rest.
-                </p>
-              )}
-
-              {/* Everything on screen, as a list.
-                  The map answers "what happened at THIS point" when a pin is clicked; this
-                  answers the other half — what is in this view — which is the question
-                  somebody asks while panning across a city. It updates as the map moves,
-                  and it lists what was DRAWN, so the studio-lot and library switches above
-                  narrow it too. */}
-              <FilmsInView
-                films={candidatesOn ? filmsHere : EMPTY_FILMS}
-                mode={filmsViewMode}
-                onMode={setFilmsViewMode}
-                onHighlight={setHighlightedFilm}
-              />
-
-              {/* What the map may draw beyond the graph.
-                  The graph holds 70 places in the world and the queue holds 32,148
-                  located rows, so for most of the planet — Los Angeles included — this
-                  switch is the difference between an empty map and the product. It stays
-                  a switch rather than a default because the two are not the same claim,
-                  and the wording under it says which is which. */}
-              <div className="candidate-filters">
-                <button
-                  type="button"
-                  className={`graph-toggle${candidatesOn ? " is-on" : ""}`}
-                  aria-pressed={candidatesOn}
-                  onClick={() => setCandidatesOn((on) => !on)}
-                >
-                  <Layers size={15} aria-hidden="true" />
-                  Unchecked places
-                  {candidatesOn && graphSummary ? (
-                    <span className="graph-count">
-                      {graphSummary.clustered
-                        ? `${graphSummary.candidateCount} cluster${graphSummary.candidateCount === 1 ? "" : "s"}`
-                        : `${graphSummary.candidateCount} place${graphSummary.candidateCount === 1 ? "" : "s"}`}
-                    </span>
-                  ) : null}
-                </button>
-
-                {candidatesOn && (
-                  <>
-                    <p className="graph-note">
-                      Named by our sources and not checked by us. Drawn hollow — each pin
-                      links to whoever said it.
-                    </p>
-
-                    <label className="candidate-switch">
-                      <input
-                        type="checkbox"
-                        checked={studioLotsOn}
-                        onChange={(event) => setStudioLotsOn(event.target.checked)}
-                      />
-                      {/* The Los Angeles question, as a switch. 212 of the 5,266 rows
-                          there sit inside a studio lot: real pins for scenes set
-                          somewhere else, and not somewhere a visitor can walk. */}
-                      Studio lots and backlots
-                    </label>
-
-                    {/* "Only my films" used to live here as a SECOND switch, three levels
-                        deep, governing the pins while another one governed the chips. It is
-                        one switch now and it sits at the top of the panel, where a reader
-                        can see whether their list is loaded at all. */}
-
-                    {graphSummary?.candidatesTruncated && (
-                      <p className="graph-note">
-                        More here than one response can carry — showing{" "}
-                        {graphSummary.candidateCount}. Zoom in for the rest.
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {graphSummary?.fictional?.length > 0 && (
-                <div className="fictional-strip">
-                  <p className="fictional-title">
-                    Fictional — not on the map ({graphSummary.fictional.length})
-                  </p>
-                  <ul>
-                    {graphSummary.fictional.map((place) => (
-                      <li key={place.place_id ?? place.wikidata_id}>{place.name}</li>
-                    ))}
-                  </ul>
-                  <p className="graph-note">
-                    These places exist only in the story, so they are never given a coordinate.
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </section>
-        </details>
 
 
         {/* The map's own answer to "show me only what I have seen".
@@ -3730,6 +3500,268 @@ export default function SceneMapApp() {
             )}
           </div>
         )}
+        {/* The layers console, behind a disclosure and closed by default.
+
+            It was 45% of the panel — 1,220 px of 2,715 — and it was the FIRST thing a
+            first-time visitor met, answering none of the questions they arrived with. It is
+            an operator's console, and operators can open it. What stays visible is the one
+            line that says what the map is currently drawing.
+
+            And it sits LAST, after the route. It was mid-panel, so opening it inserted
+            ~750 px between "Known for" and everything a visitor actually reads — the list,
+            the tour, the route — which is a smaller version of the very problem the
+            disclosure was introduced to solve. */}
+        <details className="layers-console" open={layersConsoleOpen} onToggle={(event) => setLayersConsoleOpen(event.currentTarget.open)}>
+          <summary className="layers-console-summary">
+            <Layers size={15} aria-hidden="true" />
+            <span>What the map is drawing</span>
+            <span className="layers-console-count">
+              {/* It fell back to the bare word "layers" whenever the count was zero or the
+                  map had not answered — which read as a label, not as "nothing drawn". */}
+              {!graphSummary
+                ? "loading…"
+                : graphSummary.clustered
+                  ? "zoom in"
+                  : `${graphSummary.candidateCount ?? 0} unchecked`}
+            </span>
+          </summary>
+        {/* Two words for the two stores, and only two. The panel used "verified", "grounded",
+            "checked", "unchecked" and "candidates" for two ideas, beside "points", "pins" and
+            "places" for one — the review counted seven numbers and five nouns describing a
+            single map. Checked means checked BY US; unchecked means a source named it. */}
+        <section className="graph-layer-panel" aria-label="Checked places layer">
+          {/* The work list follows the kind filter, so it can only ever offer works
+              that actually have a place to fly to under the current filter. */}
+          <button
+            className={`graph-toggle${graphLayerOn ? " is-on" : ""}`}
+            type="button"
+            aria-pressed={graphLayerOn}
+            onClick={() => setGraphLayerOn((on) => !on)}
+          >
+            <Layers size={16} aria-hidden="true" />
+            Checked places
+            {graphLayerOn && graphSummary ? (
+              <span className="graph-count">
+                {graphSummary.clustered
+                  ? `${graphSummary.count} cluster${graphSummary.count === 1 ? "" : "s"}`
+                  : `${graphSummary.count} place${graphSummary.count === 1 ? "" : "s"}`}
+              </span>
+            ) : null}
+          </button>
+
+          {graphLayerOn && (
+            <>
+              {/* The legend used to be here and is now ON THE MAP, collapsed behind one
+                  button — reading it used to mean opening the panel that covers the thing
+                  it explains. See `.map-key` in the map stage above. */}
+              <div className="graph-filters">
+                <div className="kind-chips" role="group" aria-label="Filter by kind">
+                  {["film", "series", "book"].map((kind) => {
+                    const on = graphKinds.includes(kind);
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        aria-pressed={on}
+                        className={`kind-chip${on ? " is-on" : ""}`}
+                        onClick={() => {
+                          // Changing the kind can orphan the selected work, so clear it.
+                          setGraphWorkId("");
+                          setGraphKinds((current) =>
+                            current.includes(kind)
+                              ? current.filter((k) => k !== kind)
+                              : [...current, kind],
+                          );
+                        }}
+                      >
+                        {kindLabel(kind)}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* The cover strip was 442 px tall and 24 targets, and in a Los Angeles
+                    view it showed Skyfall, Notting Hill, Roman Holiday and The Third Man —
+                    the London demo set, in a city they have nothing to do with. A panel that
+                    offers films from somewhere else is not a browsing aid, it is a claim that
+                    the map does not know where it is. */}
+
+                <label className="work-filter">
+                  <span className="visually-hidden">Show one work</span>
+                  <select
+                    value={graphWorkId}
+                    onChange={(event) => setGraphWorkId(event.target.value)}
+                  >
+                    <option value="">Whole library ({graphWorks.length})</option>
+                    {graphWorks.map((work) => (
+                      <option key={work.work_id} value={work.work_id}>
+                        {work.title} ({work.place_count})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              {(() => {
+                const selected = graphWorks.find((work) => work.work_id === graphWorkId);
+                if (!selected) return null;
+                const ratings = selected.ratings ?? [];
+                return (
+                  <article className="work-card">
+                    {selected.poster_url && (
+                      <img alt="" className="work-card-poster" src={selected.poster_url} />
+                    )}
+                    <div className="work-card-body">
+                      <strong>{selected.title}</strong>
+                      <span className="work-card-meta">
+                        {kindLabel(selected.kind)} · {selected.place_count} places
+                      </span>
+                      {ratings.length > 0 ? (
+                        <ul className="rating-row">
+                          {ratings.map((rating) => {
+                            const label = RATING_LABELS[rating.source] ?? rating.source;
+                            const chip = (
+                              <>
+                                <span className="rating-source">{label}</span>
+                                <span className="rating-score">{rating.display}</span>
+                              </>
+                            );
+                            return (
+                              <li key={rating.source} className={`rating-chip is-${rating.source}`}>
+                                {/* A score links back to where it came from; without a
+                                    link it is just a number we ask people to trust. */}
+                                {rating.url ? (
+                                  <a href={rating.url} rel="noreferrer noopener" target="_blank">
+                                    {chip}
+                                  </a>
+                                ) : chip}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <span className="work-card-meta">No ratings yet</span>
+                      )}
+                    </div>
+                  </article>
+                );
+              })()}
+
+              {graphSummary?.count === 0 && graphSummary?.nearest?.length > 0 && (
+                <div className="graph-nearest">
+                  <p className="graph-note">Nothing grounded in this view. Nearest:</p>
+                  <ul>
+                    {graphSummary.nearest.map((place) => (
+                      <li key={place.place_id}>
+                        <button
+                          type="button"
+                          className="nearest-jump"
+                          onClick={() => setMapCenter([place.lat, place.lng])}
+                        >
+                          {place.name} · {place.distance_km} km
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {graphSummary?.truncated && (
+                <p className="graph-note">
+                  Showing the first {graphSummary.count} — zoom in for the rest.
+                </p>
+              )}
+
+              {/* Everything on screen, as a list.
+                  The map answers "what happened at THIS point" when a pin is clicked; this
+                  answers the other half — what is in this view — which is the question
+                  somebody asks while panning across a city. It updates as the map moves,
+                  and it lists what was DRAWN, so the studio-lot and library switches above
+                  narrow it too. */}
+              <FilmsInView
+                films={candidatesOn ? filmsHere : EMPTY_FILMS}
+                mode={filmsViewMode}
+                onMode={setFilmsViewMode}
+                onHighlight={setHighlightedFilm}
+              />
+
+              {/* What the map may draw beyond the graph.
+                  The graph holds 70 places in the world and the queue holds 32,148
+                  located rows, so for most of the planet — Los Angeles included — this
+                  switch is the difference between an empty map and the product. It stays
+                  a switch rather than a default because the two are not the same claim,
+                  and the wording under it says which is which. */}
+              <div className="candidate-filters">
+                <button
+                  type="button"
+                  className={`graph-toggle${candidatesOn ? " is-on" : ""}`}
+                  aria-pressed={candidatesOn}
+                  onClick={() => setCandidatesOn((on) => !on)}
+                >
+                  <Layers size={15} aria-hidden="true" />
+                  Unchecked places
+                  {candidatesOn && graphSummary ? (
+                    <span className="graph-count">
+                      {graphSummary.clustered
+                        ? `${graphSummary.candidateCount} cluster${graphSummary.candidateCount === 1 ? "" : "s"}`
+                        : `${graphSummary.candidateCount} place${graphSummary.candidateCount === 1 ? "" : "s"}`}
+                    </span>
+                  ) : null}
+                </button>
+
+                {candidatesOn && (
+                  <>
+                    <p className="graph-note">
+                      Named by our sources and not checked by us. Drawn hollow — each pin
+                      links to whoever said it.
+                    </p>
+
+                    <label className="candidate-switch">
+                      <input
+                        type="checkbox"
+                        checked={studioLotsOn}
+                        onChange={(event) => setStudioLotsOn(event.target.checked)}
+                      />
+                      {/* The Los Angeles question, as a switch. 212 of the 5,266 rows
+                          there sit inside a studio lot: real pins for scenes set
+                          somewhere else, and not somewhere a visitor can walk. */}
+                      Studio lots and backlots
+                    </label>
+
+                    {/* "Only my films" used to live here as a SECOND switch, three levels
+                        deep, governing the pins while another one governed the chips. It is
+                        one switch now and it sits at the top of the panel, where a reader
+                        can see whether their list is loaded at all. */}
+
+                    {graphSummary?.candidatesTruncated && (
+                      <p className="graph-note">
+                        More here than one response can carry — showing{" "}
+                        {graphSummary.candidateCount}. Zoom in for the rest.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {graphSummary?.fictional?.length > 0 && (
+                <div className="fictional-strip">
+                  <p className="fictional-title">
+                    Fictional — not on the map ({graphSummary.fictional.length})
+                  </p>
+                  <ul>
+                    {graphSummary.fictional.map((place) => (
+                      <li key={place.place_id ?? place.wikidata_id}>{place.name}</li>
+                    ))}
+                  </ul>
+                  <p className="graph-note">
+                    These places exist only in the story, so they are never given a coordinate.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </section>
+        </details>
+
         <p className="source-notices">
           {/* Terms-required wording, shown once however many images are on screen. */}
           {requiredNotices([normalizeAttribution({ source: "tmdb" })]).map((notice) => (

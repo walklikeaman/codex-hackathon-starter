@@ -3832,13 +3832,25 @@ figcaption a {
 
 /* Posters for browsing. The tile is initials until a poster is fetched — a broken image
    would be worse than the tile, which is the rule the film chips already follow. */
+/* No scroller of its own. It was a 300 px box holding 2,363 px of posters inside a panel
+   that already scrolls — see POSTERS_FIRST. */
 .films-here-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
   gap: 0.4rem;
-  max-height: 300px;
-  overflow-y: auto;
 }
+.films-here-more {
+  grid-column: 1 / -1;
+  min-height: 32px;
+  border: 1px solid rgba(247, 183, 51, 0.3);
+  border-radius: 8px;
+  background: none;
+  color: var(--accent, #f0a83c);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.films-here-more:hover { background: rgba(247, 183, 51, 0.08); }
 .films-here-card {
   position: relative;
   display: grid;
@@ -3888,10 +3900,10 @@ figcaption a {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 300px;
-  overflow-y: auto;
   font-size: 0.78rem;
 }
+.films-here-list .films-here-more-row { display: block; margin-top: 0.35rem; }
+.films-here-list .films-here-more { width: 100%; }
 .films-here-list li {
   display: flex;
   align-items: baseline;
