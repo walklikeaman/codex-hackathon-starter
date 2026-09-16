@@ -934,7 +934,9 @@ export default function SceneMapApp() {
   // flies to the active location at zoom 14, so a demo pin left selected steals the map
   // from the address that was opened: `/?city=los-angeles` landed the reader in Notting
   // Hill, under a header reading "Los Angeles".
-  const [activeLocation, setActiveLocation] = useState(opened ? null : fallbackLocations[0]);
+  // Nothing open until the reader opens something. It used to start on the demo pin, and
+  // the sheet it opened was the first thing a new visitor saw instead of the map.
+  const [activeLocation, setActiveLocation] = useState(null);
   const [filmImageState, setFilmImageState] = useState({
     locationId: fallbackLocations[0].id,
     url: null,
@@ -1156,12 +1158,17 @@ export default function SceneMapApp() {
     return () => window.clearTimeout(timeout);
   }, [accountUser, cloudReady, library, supabase]);
 
-  function applyLocationResults(nextLocations, { preserveContext = false } = {}) {
+  // `openFirst` is for a question that NAMED something — a title search. A browse, a page
+  // load or a city change asked about an area, and opening the first place in it is a
+  // card nobody requested: the second design review measured it covering 55% of a phone's
+  // first screen, so the panel a visitor was meant to meet first was a 40 px strip behind a
+  // sheet about Forrest Gump.
+  function applyLocationResults(nextLocations, { preserveContext = false, openFirst = false } = {}) {
     const nextFilms = worksFromLocations(nextLocations);
     setLiveLocations(nextLocations);
     setSelectedFilms(nextFilms.map((film) => film.id));
     setActiveLocation((currentLocation) => {
-      if (!preserveContext) return nextLocations[0] ?? null;
+      if (!preserveContext) return openFirst ? nextLocations[0] ?? null : null;
       return nextLocations.some((location) => location.id === currentLocation?.id)
         ? currentLocation
         : null;
@@ -1699,12 +1706,14 @@ export default function SceneMapApp() {
   );
 
 
+  // A card filtered out from under the reader closes. It used to open the next place
+  // instead — turning "only my films" on opened a sheet about a film nobody had picked.
   useEffect(() => {
-    if (!mineOnly) return;
-    if (!visibleLocations.some((location) => location.id === activeLocation?.id)) {
-      setActiveLocation(visibleLocations[0] ?? null);
+    if (!mineOnly || !activeLocation) return;
+    if (!visibleLocations.some((location) => location.id === activeLocation.id)) {
+      setActiveLocation(null);
     }
-  }, [activeLocation?.id, mineOnly, visibleLocations]);
+  }, [activeLocation, mineOnly, visibleLocations]);
 
   // Places and films counted apart (#160). The panel used to say only how many rows it was
   // listing, so "we hold little here" and "you are zoomed too far out" looked identical.
@@ -2445,7 +2454,7 @@ export default function SceneMapApp() {
       const nextLocations = locationsFromApi(payload.locations ?? []);
       const matchedWork = payload.matched_work;
       const matchedTitle = matchedWork?.label ?? nextLocations[0]?.film ?? query;
-      applyLocationResults(nextLocations);
+      applyLocationResults(nextLocations, { openFirst: true });
 
       // A title is not a question about the city on screen. Searching "Notting Hill"
       // while looking at Paris used to return an empty map — not because the film's
@@ -2518,7 +2527,7 @@ export default function SceneMapApp() {
         );
         if (!duplicate) merged.push(location);
       }
-      applyLocationResults(merged);
+      applyLocationResults(merged, { openFirst: true });
       // Places the research named but could not pin down. Saying so is the difference
       // between "found one" and "found three, could place one" — only one is true, and
       // silence here reads as the wrong one.
