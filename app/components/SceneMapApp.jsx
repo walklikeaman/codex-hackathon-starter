@@ -1637,6 +1637,14 @@ export default function SceneMapApp() {
   }, [browseCenter, mapZoom, cityName, filters]);
 
   const filmsHere = useMemo(() => filmsInView(candidatesDrawn), [candidatesDrawn]);
+  // Unchecked places the map actually DREW, after "only my films" and the IMDb bar have run
+  // in the browser. The console and the layer toggle counted the server's response instead:
+  // on production with `imdb=8&kind=film` they read "323" beside "38 films at 87 places in
+  // view" — the filter had worked, and the two numbers describing it disagreed by 236.
+  const drawnUnchecked = useMemo(
+    () => candidatesDrawn.filter((feature) => !feature.properties?.cluster).length,
+    [candidatesDrawn],
+  );
 
   // How many of the reader's own films are on the map RIGHT NOW.
   //
@@ -3532,7 +3540,7 @@ export default function SceneMapApp() {
                 ? "loading…"
                 : graphSummary.clustered
                   ? "zoom in"
-                  : `${graphSummary.candidateCount ?? 0} unchecked`}
+                  : `${drawnUnchecked} unchecked`}
             </span>
           </summary>
         {/* Two words for the two stores, and only two. The panel used "verified", "grounded",
@@ -3713,7 +3721,7 @@ export default function SceneMapApp() {
                     <span className="graph-count">
                       {graphSummary.clustered
                         ? `${graphSummary.candidateCount} cluster${graphSummary.candidateCount === 1 ? "" : "s"}`
-                        : `${graphSummary.candidateCount} place${graphSummary.candidateCount === 1 ? "" : "s"}`}
+                        : `${drawnUnchecked} place${drawnUnchecked === 1 ? "" : "s"}`}
                     </span>
                   ) : null}
                 </button>
