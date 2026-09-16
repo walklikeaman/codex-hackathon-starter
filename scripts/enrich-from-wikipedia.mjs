@@ -62,6 +62,12 @@ const KIND = arg("kind", null);
 // Re-read works that have already been attempted. For when the extractor itself has
 // changed and the old verdicts are worth revisiting — not for ordinary runs.
 const AGAIN = process.argv.includes("--again");
+
+// Extraction outcomes that say nothing about the article and so leave the work open.
+const TRANSIENT_EXTRACTION = new Set(["request_failed", "rate_limited"]);
+// How many network failures in a row mean "offline" rather than "one bad request".
+const OUTAGE_AFTER_FAILURES = 6;
+const OUTAGE_PROBE_MS = 30_000;
 const LANGUAGES = Number.parseInt(arg("languages", ""), 10) || MAX_LANGUAGES_PER_WORK;
 
 const headers = { "User-Agent": USER_AGENT, "Accept-Encoding": "gzip" };
@@ -168,11 +174,53 @@ async function main() {
     Object.assign(entities.entities, page?.entities ?? {});
   }
 
+  // The stamp's own write can fail, and on the run that exposed this it did, silently,
+  // hundreds of times. Now it says so.
+  async function stamp(work) {
+    if (DRY_RUN) return;
+    const { error: stampError } = await db.from("works")
+      .update({ wikipedia_enriched_at: new Date().toISOString() }).eq("id", work.id);
+    if (stampError) console.log(`   stamp failed: ${stampError.message} — the next run will ask again`);
+  }
+
+  // **An outage is waited out rather than marched through.** Consecutive network failures
+  // mean the machine is offline — asleep, or its connection gone — and every work visited
+  // meanwhile is a work read from nowhere. After a run of them, stop and probe until the
+  // network answers, rather than burning through the catalogue in a stretch of 185 works
+  // that cannot be read.
+  let consecutiveNetworkFailures = 0;
+  function heardFromTheNetwork() { consecutiveNetworkFailures = 0; }
+  async function waitOutAnOutage(failure) {
+    if (!/fetch failed|terminated|ECONN|ENOTFOUND|ETIMEDOUT|socket|network/i.test(String(failure?.message ?? ""))) return;
+    consecutiveNetworkFailures += 1;
+    if (consecutiveNetworkFailures < OUTAGE_AFTER_FAILURES) return;
+    console.log(`   ${consecutiveNetworkFailures} network failures in a row — waiting for the network`);
+    for (let waited = 0; ; waited += OUTAGE_PROBE_MS) {
+      await sleep(OUTAGE_PROBE_MS);
+      try {
+        const probe = await fetch("https://en.wikipedia.org/w/api.php?action=query&meta=siteinfo&format=json",
+          { headers, signal: AbortSignal.timeout(15_000) });
+        if (probe.ok) {
+          console.log(`   network back after ${Math.round((waited + OUTAGE_PROBE_MS) / 1000)}s`);
+          heardFromTheNetwork();
+          return;
+        }
+      } catch { /* still down */ }
+    }
+  }
+
   for (const work of works) {
     console.log(`\n${work.title}`);
     const entity = entities.entities?.[work.wikidata_id];
     const languages = languagesForWork(entity, { limit: LANGUAGES });
-    if (languages.length === 0) { console.log("   no article in any edition we read — skipped"); continue; }
+    if (languages.length === 0) {
+      console.log("   no article in any edition we read — skipped");
+      // A real verdict, not a failure: the article does not exist in any edition we read,
+      // and asking again tomorrow will say the same. Before, this `continue` sat above the
+      // stamp, so these works were selected again on every run and never left the queue.
+      await stamp(work);
+      continue;
+    }
     console.log(`   editions: ${languages.join(", ")}`);
 
     // One accepted list per work, merged across editions. Reading more than one is not
@@ -186,6 +234,9 @@ async function main() {
     // written string they are two places, and the reviewer meets the city twice.
     const kept = [];
     const credits = new Map();
+    // Set when an edition could not be READ, as opposed to read and found wanting. A work
+    // with any such edition is not stamped, so the next run asks again.
+    let unreadEdition = false;
 
     for (const language of languages) {
       const title = articleTitleFromEntity(entity, language);
@@ -195,6 +246,8 @@ async function main() {
         toc = await wikimedia(buildTocUrl(title, language));
       } catch (failure) {
         console.log(`   ${language}: ${failure.message}`);
+        unreadEdition = true;
+        await waitOutAnOutage(failure);
         continue;
       }
 
@@ -202,7 +255,18 @@ async function main() {
       if (!section) { console.log(`   ${language}: no production section`); continue; }
 
       const revid = toc.parse?.revid;
-      const raw = await wikimedia(buildSectionUrl(title, section.index, language));
+      // Guarded like the table of contents above it. It was not, and a network error here
+      // would have thrown out of the loop and ended a two-day run on whatever work it hit.
+      let raw;
+      try {
+        raw = await wikimedia(buildSectionUrl(title, section.index, language));
+      } catch (failure) {
+        console.log(`   ${language}: section ${failure.message}`);
+        unreadEdition = true;
+        await waitOutAnOutage(failure);
+        continue;
+      }
+      heardFromTheNetwork();
       const prose = cleanWikitext(raw.parse?.wikitext ?? "");
       console.log(`   ${language}: "${section.line}" → ${prose.length} chars (rev ${revid})`);
 
@@ -230,6 +294,10 @@ async function main() {
       if (!extraction.ok) {
         console.log(`   ${language}: extraction ${extraction.reason}`
           + (extraction.detail ? `: ${extraction.detail}` : ""));
+        // A dropped connection or a rate limit says nothing about the article. A refusal
+        // or a truncated answer does — asking the same model the same thing again is not
+        // a retry, it is a repeat — so only the first kind leaves the work open.
+        if (TRANSIENT_EXTRACTION.has(extraction.reason)) unreadEdition = true;
         continue;
       }
 
@@ -246,10 +314,19 @@ async function main() {
         + (result.rejected.length ? `, ${result.rejected.length} dropped` : ""));
     }
 
-    // Stamped before the write and before any `continue`, so a work that yielded nothing
-    // is still recorded as read. The alternative retries every barren work on every pass
-    // and never reaches the rest of the catalogue.
-    if (!DRY_RUN) await db.from("works").update({ wikipedia_enriched_at: new Date().toISOString() }).eq("id", work.id);
+    // **Stamped only when every edition was actually read.**
+    //
+    // A work that yielded nothing is still recorded as read — the alternative retries every
+    // barren work on every pass and never reaches the rest of the catalogue. But "yielded
+    // nothing" and "could not be read" are different, and this used to treat them the same.
+    //
+    // Measured on the first long run, 16.09: of 802 works attempted, **575 had every
+    // edition fail with `fetch failed`**, in unbroken stretches of 185, 123 and 95 — the
+    // machine asleep, not a flaky API. Only 3 were stamped as done, and only by luck: the
+    // same outage took the database down, so the stamp failed too. Had Wikimedia failed
+    // alone, all 575 would have been recorded as read and never asked about again.
+    if (!unreadEdition) await stamp(work);
+    else console.log("   not stamped: an edition could not be read, so the next run asks again");
 
     if (accepted.length === 0) continue;
 
