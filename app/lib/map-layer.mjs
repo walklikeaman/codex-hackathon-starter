@@ -132,6 +132,13 @@ export function clusterStyle(count, { hasStudio = false } = {}) {
 // Leaflet bounds → the query the endpoint expects. Longitude is passed through as
 // west/east without sorting: Leaflet reports a date-line-crossing viewport that way and
 // the API reads it as a crossing window, not as its complement.
+const COORDINATE_DECIMALS = 5;
+
+function roundCoordinate(value) {
+  const factor = 10 ** COORDINATE_DECIMALS;
+  return Math.round(value * factor) / factor;
+}
+
 export function viewportQuery(bounds, zoom, { workId = null, kinds = null, candidates = false } = {}) {
   if (!bounds) return null;
   const west = bounds.getWest?.() ?? bounds.west;
@@ -151,10 +158,15 @@ export function viewportQuery(bounds, zoom, { workId = null, kinds = null, candi
   const params = new URLSearchParams({
     // Leaflet can report longitudes outside [-180,180] after wrapping; clamp so the
     // API's own validation doesn't reject a legitimate viewport.
-    west: String(Math.max(-180, Math.min(180, west))),
-    east: String(Math.max(-180, Math.min(180, east))),
-    south: String(Math.max(-90, Math.min(90, south))),
-    north: String(Math.max(-90, Math.min(90, north))),
+    //
+    // And round to five decimals (~1 m). MapLibre reports the same view twice with bounds
+    // differing in the 13th decimal — measured on production, `west=-118.3473980957035`
+    // then `-118.34739809570293` 1.3 s apart — so the same question went out as two
+    // different URLs: two requests, and two edge-cache misses where one would have hit.
+    west: String(roundCoordinate(Math.max(-180, Math.min(180, west)))),
+    east: String(roundCoordinate(Math.max(-180, Math.min(180, east)))),
+    south: String(roundCoordinate(Math.max(-90, Math.min(90, south)))),
+    north: String(roundCoordinate(Math.max(-90, Math.min(90, north)))),
     z: String(Math.round(zoom ?? CLUSTER_BELOW_ZOOM)),
   });
   if (workId) params.set("workId", workId);

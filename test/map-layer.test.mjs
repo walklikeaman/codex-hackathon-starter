@@ -184,3 +184,12 @@ test("a viewport with no area is refused, not queried", async () => {
   // A real viewport still works.
   assert.ok(viewportQuery({ west: -118.45, east: -118.15, south: 34.0, north: 34.2 }, 14));
 });
+
+// MapLibre reports one view twice with bounds differing in the 13th decimal. Measured on
+// production: the same question went out as two URLs 1.3 s apart.
+test("the same view in float noise is the same query", () => {
+  const first = viewportQuery(bounds(-118.3473980957035, 34.0276958929109, -118.22380190429737, 34.0916920265052), 13, { candidates: true });
+  const second = viewportQuery(bounds(-118.34739809570293, 34.02769589291046, -118.2238019042968, 34.091692026504774), 13, { candidates: true });
+  assert.equal(first, second);
+  assert.equal(new URLSearchParams(first).get("west"), "-118.3474");
+});
