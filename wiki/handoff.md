@@ -133,6 +133,17 @@ day. `isQueryServiceLag` now asks the body which lag it is: the query service's 
 again once without `maxlag`, replication lag still waits. **Check `error.type` before
 obeying a lag.**
 
+**The same incident has a second face, and there it is real.** `/api/cities/suggest` is
+SPARQL against that very query service, so while the ingest was being refused over a lag it
+does not care about, the city half of the search box was genuinely degraded: the deploy's
+own smoke step printed `{"query":"lond","suggestions":[],"unavailable":true}` after **6.3
+seconds** (20.09, 23:14 UTC). Re-measured a minute later it answered London `Q84` with its
+coordinates, `x-vercel-cache: MISS`. So `unavailable: true` in a smoke log is the graceful
+fallback doing its job under a slow WDQS, not a broken endpoint — probe
+`query.wikidata.org` before chasing it through the route. It is also the one place where a
+Wikidata query-service incident costs the demo something, because films are answered from
+our own tables and cities are not.
+
 **"Could not be read" is not "read and found empty."** Of 802 works attempted on 16.09,
 **575 had every edition fail with `fetch failed`** in unbroken stretches of 185, 123 and 95
 — the laptop asleep. Only 3 were wrongly stamped, and only because the outage took the
