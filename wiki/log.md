@@ -43,7 +43,17 @@ a loop would only hide it.
 
 Live at the restart, and quoted with its time because the queue is a snapshot: **5,216
 works unstamped** (20.09, 23:00 UTC), unchanged from the handoff's count, so nothing was
-lost and nothing was redone.
+lost and nothing was redone. Sixteen minutes later, with the fix in: **5,212**, and the log
+reading `Revenge → editions: en, fr, de → "Production" → 2186 chars`. The run is reading and
+the stamp is landing.
+
+**The incident had a second face and there it was real.** `/api/cities/suggest` is SPARQL
+against the same query service, so while the ingest was being refused over a lag it does not
+care about, the city half of the search box was genuinely degraded — the deploy's own smoke
+step printed `{"query":"lond","suggestions":[],"unavailable":true}` after 6.3s (23:14 UTC),
+and a minute later the endpoint answered London `Q84` with coordinates on a cache MISS.
+Nothing to fix: that is the fallback working. Worth knowing so the next session does not
+read `unavailable: true` in a smoke log as a broken route.
 
 ## [2026-09-12] ingest | Fandom had produced no pins at all, and two halves of it were not talking
 
