@@ -10,6 +10,8 @@ import {
   ratingRows,
   ratingsFromOmdb,
   rottenTomatoesUrl,
+  scoreInSourceScale,
+  sourceScale,
   sortRatings,
 } from "../app/lib/work-ratings.mjs";
 
@@ -145,4 +147,27 @@ test("ratingRows shapes exactly what the table stores", () => {
     votes: 768360,
     source_url: "https://www.imdb.com/title/tt1074638/",
   });
+});
+
+// The two scales were mixed in one column for months: 5,495 IMDb rows at 1.7–9.5 beside
+// Rotten Tomatoes at 65–99, in a field documented as 0..100. Any cross-source comparison
+// put every IMDb row below every RT row, and nothing said so.
+test("a stored score comes back in the scale its source states", () => {
+  assert.equal(scoreInSourceScale("imdb", 88), 8.8);
+  assert.equal(scoreInSourceScale("tmdb", 75), 7.5);
+  assert.equal(scoreInSourceScale("rotten_tomatoes", 92), 92);
+  assert.equal(scoreInSourceScale("metacritic", 81), 81);
+});
+
+test("a missing score stays missing rather than becoming a zero", () => {
+  assert.equal(scoreInSourceScale("imdb", null), null);
+  assert.equal(scoreInSourceScale("imdb", undefined), null);
+  assert.equal(scoreInSourceScale("imdb", ""), null);
+  assert.equal(scoreInSourceScale("imdb", "banana"), null);
+  assert.equal(scoreInSourceScale("imdb", 0), 0);
+});
+
+test("an unknown source is assumed to be on the stored scale, never rescaled by guess", () => {
+  assert.equal(sourceScale("something_new"), 100);
+  assert.equal(scoreInSourceScale("something_new", 64), 64);
 });
