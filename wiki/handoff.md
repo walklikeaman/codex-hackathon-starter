@@ -20,8 +20,8 @@ production: empty for **0 of 24** famous titles, median 1.3 s.
 
 | | |
 |---|---|
-| main | `7c8b4e8` — "a work that could not be read is not a work that was read (#261)" |
-| tests | **1,565 pass, 0 fail**, `node --test test/*.test.mjs`, zero network |
+| main | `ad358a5` — "a licensed second source, ingested (#264)"; `7c8b4e8` is what the rest of this table was measured against |
+| tests | **1,577 pass, 0 fail**, `node --test test/*.test.mjs`, zero network (1,565 before the two ratings PRs) |
 | works | 7,063 · **5,480 now carry a `wikidata_id`** (was 28 before the backfill of 12.09) |
 | enriched from Wikipedia | **264 of 5,480**. `works.wikipedia_enriched_at` is the progress marker; 5,216 remain |
 | queue | 45,249 rows. `moviemaps` 30,135 · `reelstreets` 8,062 · `movielocations` 5,578 · **`wikipedia` 1,172** · **`fandom` 239** · `open_plaques` 53 · `permit_record` 10 |
@@ -29,17 +29,42 @@ production: empty for **0 of 24** famous titles, median 1.3 s.
 
 ## Where the ingest pipelines stand, and how to restart them
 
-**Nothing is running.** The 5,500-work enrichment was started 16.09 and is gone — the
-machine restarted, `/tmp/enrich-full.log` with it. Nothing was lost: every work is stamped
-as it finishes.
+**Running again since 20.09, 23:03 UTC.** The 16.09 run died with the machine and
+`/tmp/enrich-full.log` went with `/tmp`. Nothing was lost — every work is stamped as it
+finishes, and the live count of unstamped works was still exactly **5,216** when the new
+run started, so the restart resumed rather than repeated.
 
 ```bash
-node --env-file=.env.local scripts/enrich-from-wikipedia.mjs --limit 5500 > ~/enrich.log 2>&1 &
+nohup bash scripts/enrich-loop.sh --limit 5500 >> ~/enrich.log 2>&1 &
 ```
+
+**Start it through the loop, not directly.** The run was always resumable and nothing ever
+resumed it, which is the whole of the 16.09 loss.
+[scripts/enrich-loop.sh](scripts/enrich-loop.sh) runs the script again every two minutes
+until it prints its own `Nothing to enrich.`, finds the env file by asking which one holds a
+`service_role` key for `quvxxqxowathrcyshhwj` rather than by path, and stops itself if ten
+runs in a row die inside ninety seconds — that pattern is a broken configuration, and
+looping on it only hides it. The restart it was written for arrived within the hour:
+Wikidata's replicas were ~500s behind, five maxlag retries are 30+60+90+120+150s, and a lag
+deeper than that throws on the FIRST request, before a single work has been read.
+
+**That env file is deliberately not the one in the repository root, and using the root one
+costs a run.** The main clone's `.env.local` is the July team file: the two public Supabase
+values, `OPENAI_API_KEY`, `TMDB_API_KEY` — no service key and no
+`MODEL_REQUESTS_PER_MINUTE`. A run started with it dies in two seconds on *"Missing:
+SUPABASE_SERVICE_ROLE_KEY"*, which is the good outcome; the bad one is the near miss behind
+it, because `OPENAI_API_KEY` alone makes `model-client` choose **OpenAI `gpt-5-nano`**
+instead of the OpenRouter model every row so far was extracted with, and nothing would have
+said the source had changed mid-catalogue. The file that carries the service key,
+`OPENROUTER_API_KEY` and `MODEL_REQUESTS_PER_MINUTE=18` lives in the
+`glorymap-modules-integration-2296ab` worktree at chmod 600 — so the rate ceiling comes from
+the file and does not need exporting. Before trusting any service key, decode its own `ref`
+claim and check it reads `quvxxqxowathrcyshhwj`: a key from the other project on this
+account connects and writes just as happily.
 
 **Write the log somewhere that survives a reboot**, not `/tmp`. And never pipe a long run
 through `tail` — it buffers everything until the process ends, which is exactly when you
-stop needing it.
+stop needing it. `~/enrich.log` is appended to, with a dated header per run.
 
 Pace, measured: **1.4 works/min** at `MODEL_REQUESTS_PER_MINUTE=18`, so the remaining 5,216
 are about **60 hours**. The model is not the bottleneck; the 5-second Wikidata gap and the
@@ -267,9 +292,13 @@ use are different: they forbid the act, not the profit.
 
 ## Keys and secrets
 
-`.env.local` in the main clone holds the two public Supabase values, `OPENAI_*` and
-`TMDB_API_KEY`. **It does NOT hold `SUPABASE_SERVICE_ROLE_KEY`** — writes to the queue
-went through the Supabase MCP (`execute_sql`, which runs as `postgres`).
+**There are two `.env.local` files and only one of them can run a script.** The main
+clone's holds the two public Supabase values, `OPENAI_*` and `TMDB_API_KEY`, and **does NOT
+hold `SUPABASE_SERVICE_ROLE_KEY`** — writes from that clone went through the Supabase MCP
+(`execute_sql`, which runs as `postgres`). The one the ingest scripts actually use is
+`.claude/worktrees/glorymap-modules-integration-2296ab/.env.local`: service key,
+`OPENROUTER_API_KEY`, `MODEL_REQUESTS_PER_MINUTE=18`. See the restart section above for why
+pointing `--env-file` at the wrong one is worse than an error.
 
 - **`SUPABASE_SERVICE_ROLE_KEY` was printed to a terminal and appeared in a screenshot
   shared into a chat. Rotation was recommended and never confirmed.**
@@ -322,9 +351,12 @@ and `work_creators` hold zero rows, and filling them is a source problem, not a 
 
 ## Next, 20.09, in the order I would take it
 
-1. **Restart the enrichment and let it finish.** 5,216 works, ~60 hours, nothing to decide.
-   It is the largest untapped thing in the project by a wide margin: 264 works have produced
-   463 placed rows, so the rest is worth roughly nine thousand more.
+1. ~~**Restart the enrichment**~~ — **done, 20.09 23:03 UTC, and it is running now.** 5,216
+   works, ~60 hours, nothing to decide. It is the largest untapped thing in the project by a
+   wide margin: 264 works have produced 463 placed rows, so the rest is worth roughly nine
+   thousand more. What is left is to check on it — `tail -5 ~/enrich.log`, and
+   `ps -eo pid,etime,command | grep -E 'enrich-loop|enrich-from-wikipedia'` — and to start it
+   the same way after the next reboot.
 2. **Or narrow it first.** 1,642 works have a Los Angeles row and LA is the demo city;
    running those alone is ~20 hours and every row lands where the jury looks. There is no
    `--city` flag yet — it would be a join on the queue.
