@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   apiError,
   isRetryableApiError,
+  isQueryServiceLag,
+  withoutMaxlag,
   MAX_DATABASE_LAG_SECONDS,
   MAX_RETRY_ATTEMPTS,
   retryAfterMs,
@@ -237,6 +239,42 @@ test("we ask for maxlag, so we must be able to honour the answer", () => {
     assert.match(url, new RegExp(`maxlag=${MAX_DATABASE_LAG_SECONDS}`));
   }
   assert.equal(isRetryableApiError({ error: { code: "maxlag" } }), true);
+});
+
+test("the query service lagging is not this job's lag", () => {
+  // Measured 20.09: wbgetentities refused with queryserviceLag 31,650 — nearly nine hours
+  // — and the identical request without maxlag answered in full. Wikidata folds the SPARQL
+  // service's lag into maxlag so that EDITS let it catch up; this run makes none, and the
+  // entity JSON it reads does not come from there. Five retries are 30+60+90+120+150s, and
+  // they would have been spent on the entity batch that precedes the first work.
+  const queryService = {
+    error: { code: "maxlag", info: "Waiting for wdqs1013: 527.5 seconds lagged.",
+             host: "wdqs1013", lag: 527.5, type: "wikibase-queryservice", queryserviceLag: 31650 },
+  };
+  assert.equal(isQueryServiceLag(queryService), true);
+
+  // Replication lag says the READ would be stale, and is still obeyed.
+  assert.equal(isQueryServiceLag({ error: { code: "maxlag", info: "Waiting for db1183: 6.2 seconds lagged." } }), false);
+  assert.equal(isQueryServiceLag({ error: { code: "readonly", type: "wikibase-queryservice" } }), false);
+  assert.equal(isQueryServiceLag({}), false);
+  assert.equal(isQueryServiceLag(null), false);
+
+  // Both are retryable; what differs is whether the wait is the answer.
+  assert.equal(isRetryableApiError(queryService), true);
+});
+
+test("asking again without maxlag happens once, never in a circle", () => {
+  const asked = buildEntitiesUrl(["Q4941"]);
+  const again = withoutMaxlag(asked);
+  assert.ok(again && !again.includes("maxlag"));
+  // Everything else about the request survives — it is the same question.
+  assert.match(again, /action=wbgetentities/);
+  assert.match(again, /ids=Q4941/);
+
+  // The second call is the caller's stop sign: nothing left to drop.
+  assert.equal(withoutMaxlag(again), null);
+  assert.equal(withoutMaxlag("not a url"), null);
+  assert.equal(withoutMaxlag(null), null);
 });
 
 test("the lag threshold reflects a read job, and still backs off from an incident", () => {

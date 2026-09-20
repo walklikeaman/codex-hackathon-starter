@@ -310,6 +310,36 @@ export function isRetryableApiError(payload) {
   return typeof code === "string" && RETRYABLE_API_ERRORS.has(code);
 }
 
+// **A maxlag refusal can be about a service this project never asks anything of.**
+// Wikidata folds the Query Service's lag into `maxlag` so that EDITS back off and let
+// SPARQL catch up. We make no edits, and `wbgetentities` reads the entity out of the
+// MediaWiki database, which serves it in full whether or not WDQS is behind.
+//
+// Measured 20.09, and it is why this exists: `queryserviceLag` was **31,650 seconds** —
+// nearly nine hours — while the identical request with `maxlag` removed answered
+// immediately and completely. Honouring that number would have parked a sixty-hour run
+// until the next day, and the five retries (30+60+90+120+150s) would have run out on the
+// entity batch that happens BEFORE the first work is read, so the run would have ended
+// having done nothing at all.
+//
+// Replication lag is a different answer and is still obeyed: it carries no `type`, or a
+// type naming the database, and it means the read itself would be stale.
+export function isQueryServiceLag(payload) {
+  return payload?.error?.code === "maxlag"
+    && payload?.error?.type === "wikibase-queryservice";
+}
+
+// The same request, minus the politeness that did not apply to it. Returns null when
+// there was no `maxlag` to drop, which is the caller's signal that it has already asked
+// this way once and must not loop.
+export function withoutMaxlag(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return null; }
+  if (!parsed.searchParams.has("maxlag")) return null;
+  parsed.searchParams.delete("maxlag");
+  return parsed.toString();
+}
+
 // How long to wait, taken from the response rather than guessed. Wikimedia sends
 // Retry-After with a maxlag breach and with 429/503, and it is the source of truth.
 export function retryAfterMs(response, fallbackMs = 5000) {

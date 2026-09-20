@@ -44,9 +44,8 @@ resumed it, which is the whole of the 16.09 loss.
 until it prints its own `Nothing to enrich.`, finds the env file by asking which one holds a
 `service_role` key for `quvxxqxowathrcyshhwj` rather than by path, and stops itself if ten
 runs in a row die inside ninety seconds — that pattern is a broken configuration, and
-looping on it only hides it. The restart it was written for arrived within the hour:
-Wikidata's replicas were ~500s behind, five maxlag retries are 30+60+90+120+150s, and a lag
-deeper than that throws on the FIRST request, before a single work has been read.
+looping on it only hides it. The restart it was written for arrived within the hour — see
+the maxlag trap below, which is also now fixed at the source.
 
 **That env file is deliberately not the one in the repository root, and using the root one
 costs a run.** The main clone's `.env.local` is the July team file: the two public Supabase
@@ -120,6 +119,19 @@ between 03.08 and 12.09: a migration dropped the default on `source_license`, th
 never set it, and every work failed with the error logged per work and the run continuing
 past it, exit code zero. If a source has not grown, check its last `created_at` before
 believing it is merely quiet.
+
+**A `maxlag` refusal can be about a service this project never reads.** The restart on
+20.09 was turned away on its FIRST request — the entity batch that runs before any work is
+read — by *"Waiting for wdqs1013: 527.5 seconds lagged"*. The error body says which service:
+`"type":"wikibase-queryservice"`, `queryserviceLag` **31,650 seconds**, nearly nine hours.
+That is the SPARQL endpoint, and Wikidata folds its lag into `maxlag` so that EDITS back off
+and let it catch up. This job makes no edits, and `wbgetentities` reads the entity out of the
+MediaWiki database — the identical request with `maxlag` removed answered immediately and in
+full, which is the measurement that settled it. Five retries are 30+60+90+120+150s, so
+honouring it would have ended the run having done nothing, every two minutes, until the next
+day. `isQueryServiceLag` now asks the body which lag it is: the query service's is asked
+again once without `maxlag`, replication lag still waits. **Check `error.type` before
+obeying a lag.**
 
 **"Could not be read" is not "read and found empty."** Of 802 works attempted on 16.09,
 **575 had every edition fail with `fetch failed`** in unbroken stretches of 185, 123 and 95
