@@ -452,6 +452,16 @@ as results, live-GPS buddy tracking, AI-generated "lore", and a 1–5 safety sco
   cannot be chosen without this. It is one question and it unblocks the whole feature.
 - **`isRoutable`**: an unconfirmed stop is currently routed with a warning rather than
   refused. Whether it should harden into a refusal is a product call, not a technical one.
+- **4,614 rows the committed rules already call `verified` are still `pending`.** Measured
+  20.09, 23:23 UTC: `review-submissions.mjs --dry` over 45,278 queue rows returns **verified
+  4,704 · rejected 914 · pending 39,660**, and the live table holds **verified 90 · rejected
+  926 · pending 44,262**. So the rejecting half of that review was applied and the verifying
+  half never was — 3,095 of them on `wikidata_entity+cited_source` alone. Either that is a
+  deliberate stance (rejecting is safe, promoting a row to confirmed is a product claim) or
+  it is a run nobody finished, and the page cannot tell which. It is worth deciding on
+  purpose, because it is the difference between a map of candidates and a map: the writes
+  themselves are now mechanical, since the service key exists (see **Keys and secrets**) and
+  no longer has to go through the MCP.
 - **Rotating `SUPABASE_SERVICE_ROLE_KEY`** (see above) — recommended, never confirmed.
 - **Russian merge-commit subjects on `main`** — fixing them rewrites history.
 
