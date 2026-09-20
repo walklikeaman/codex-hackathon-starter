@@ -7,6 +7,44 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-21] ingest | The enrichment was resumable and nothing was resuming it
+
+**Object**: `scripts/enrich-loop.sh` (new), `wiki/handoff.md`
+**Scenario**: ingest · **Outcome**: ✅ the 5,216-work Wikipedia enrichment is running again,
+under a supervisor, from the env file that can actually write
+**Code changes**: this commit
+
+The run started on 16.09 was gone with the machine that rebooted under it, and the handoff
+said so. Restarting it found two things the handoff had wrong, both of the kind that cost an
+afternoon rather than a minute.
+
+**The env file named in the restart command cannot run the script.** `--env-file=.env.local`
+points at the main clone's July team file: two public Supabase values, `OPENAI_API_KEY`,
+`TMDB_API_KEY`. The run died in two seconds on *"Missing: SUPABASE_SERVICE_ROLE_KEY"* — and
+that was the lucky half. The unlucky half is that `OPENAI_API_KEY` is enough for
+`model-client` to choose OpenAI `gpt-5-nano`, so had the service key been there too, the
+catalogue would have carried on being extracted by a different model than the 264 works
+before it, and nothing anywhere would have said so. The file that works — service key,
+`OPENROUTER_API_KEY`, `MODEL_REQUESTS_PER_MINUTE=18` — lives in the
+`glorymap-modules-integration-2296ab` worktree. Its `ref` claim was decoded and checked
+against `quvxxqxowathrcyshhwj` before use, because a second Supabase project on this account
+would have accepted the writes silently.
+
+**Then Wikidata answered the first request with a ~500-second replica lag.** Five maxlag
+retries are 30+60+90+120+150s, the lag grew through all of them (489 → 508 → 529), and the
+sixth throws — on the entity batch that happens before any work is read, so the run would
+have ended having done nothing. That is the third distinct way this job has died with work
+left (reboot, laptop asleep, lagged replica) and the first two are already in the handoff.
+Each one is survived by running the script again, which is why `scripts/enrich-loop.sh` now
+does: retry every two minutes, stop only on the script's own `Nothing to enrich.`, choose
+the env file by which one holds a `service_role` key for this project, and give up after ten
+runs that die inside ninety seconds — because that shape is configuration, not weather, and
+a loop would only hide it.
+
+Live at the restart, and quoted with its time because the queue is a snapshot: **5,216
+works unstamped** (20.09, 23:00 UTC), unchanged from the handoff's count, so nothing was
+lost and nothing was redone.
+
 ## [2026-09-12] ingest | Fandom had produced no pins at all, and two halves of it were not talking
 
 **Object**: `scripts/ingest-fandom.mjs`, `scripts/geocode-submissions.mjs`,
