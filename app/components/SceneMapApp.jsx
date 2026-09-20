@@ -81,7 +81,9 @@ import {
   FILTER_DEFAULTS, clearedFilter, filterChipLabel, filtersFromParams,
   narrowingFilters, writeFilterParams,
 } from "../lib/filter-url.mjs";
-import { EMPTY_REASON, labelledPlaces, notableEmptyReason, notableHere } from "../lib/notable-here.mjs";
+import {
+  EMPTY_REASON, labelledPlaces, notableEmptyReason, notableHere, ratingOf,
+} from "../lib/notable-here.mjs";
 import {
   DEFAULT_SORT,
   IMDB_MAX,
@@ -3094,6 +3096,7 @@ export default function SceneMapApp() {
             <h2>Known for</h2>
             <ul>
               {notable.map((film) => {
+                const rating = ratingOf(film);
                 const place = (film.places ?? []).find(
                   (candidate) => Number.isFinite(candidate?.lat) && Number.isFinite(candidate?.lng));
                 return (
@@ -3116,7 +3119,16 @@ export default function SceneMapApp() {
                     >
                       <span className="notable-title">{film.title}</span>
                       {film.year ? <span className="notable-year">{film.year}</span> : null}
-                      <span className="notable-rating">{Number(film.imdb).toFixed(1)}</span>
+                      {/* The number, and whose it is. IMDb answers for 5,495 of the works
+                          on the map and TMDB for the 122 it has nothing on; a rating whose
+                          source is hidden is the same failure as a place without one. IMDb
+                          is unmarked because it is the default the filter above names. */}
+                      <span className="notable-rating">
+                        {rating.score.toFixed(1)}
+                        {rating.source !== "imdb" && (
+                          <small className="notable-rating-source">{RATING_LABELS[rating.source] ?? rating.source}</small>
+                        )}
+                      </span>
                     </button>
                     {/* A film seen only on a backlot is a different answer from one seen on
                         the street, and it is said before anybody walks. */}

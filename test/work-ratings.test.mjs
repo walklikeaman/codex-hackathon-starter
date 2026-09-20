@@ -12,6 +12,8 @@ import {
   rottenTomatoesUrl,
   scoreInSourceScale,
   sourceScale,
+  tmdbFindResult,
+  tmdbFindUrl,
   sortRatings,
 } from "../app/lib/work-ratings.mjs";
 
@@ -170,4 +172,51 @@ test("a missing score stays missing rather than becoming a zero", () => {
 test("an unknown source is assumed to be on the stored scale, never rescaled by guess", () => {
   assert.equal(sourceScale("something_new"), 100);
   assert.equal(scoreInSourceScale("something_new", 64), 64);
+});
+
+// TMDB by the IMDb id we already hold: a TMDB id is on 12 works of 7,063, an IMDb id on
+// 6,044. The licence is the point — IMDb's dataset is non-commercial, TMDB's is not.
+const FIND_RESPONSE = {
+  movie_results: [{ id: 155, title: "The Dark Knight", vote_average: 8.5, vote_count: 33012 }],
+  tv_results: [{ id: 1399, name: "Game of Thrones", vote_average: 8.4, vote_count: 22000 }],
+  person_results: [],
+};
+
+test("the find URL asks TMDB about an external id, and refuses a bad one", () => {
+  const url = new URL(tmdbFindUrl("tt0468569", { apiKey: "k" }));
+  assert.equal(url.pathname, "/3/find/tt0468569");
+  assert.equal(url.searchParams.get("external_source"), "imdb_id");
+  assert.equal(url.searchParams.get("api_key"), "k");
+  assert.equal(tmdbFindUrl("not-an-id"), null);
+  assert.equal(tmdbFindUrl(null), null);
+});
+
+// One IMDb id can appear in more than one result list. Reading "the first non-empty one"
+// would file a series as a film the first time TMDB indexed an episode.
+test("the kind we recorded decides which result list is read", () => {
+  assert.equal(tmdbFindResult(FIND_RESPONSE, "film").tmdbId, "155");
+  assert.equal(tmdbFindResult(FIND_RESPONSE, "series").tmdbId, "1399");
+  assert.equal(tmdbFindResult(FIND_RESPONSE, "book"), null);
+});
+
+test("a work TMDB does not hold is null, not an empty rating", () => {
+  assert.equal(tmdbFindResult({ movie_results: [] }, "film"), null);
+  assert.equal(tmdbFindResult({}, "film"), null);
+  assert.equal(tmdbFindResult(null, "film"), null);
+  assert.equal(tmdbFindResult({ movie_results: [{ id: 0 }] }, "film"), null);
+});
+
+test("a find result becomes a rating on the stored 0..100 scale, stated as TMDB states it", () => {
+  const found = tmdbFindResult(FIND_RESPONSE, "film");
+  const rating = ratingFromTmdb({ vote_average: found.voteAverage, vote_count: found.voteCount }, found.tmdbId);
+  assert.equal(rating.source, "tmdb");
+  assert.equal(rating.score, 85);
+  assert.equal(rating.display, "8.5/10");
+  assert.equal(rating.votes, 33012);
+  assert.equal(scoreInSourceScale("tmdb", rating.score), 8.5);
+});
+
+// An unrated work is not a zero-rated work.
+test("a TMDB record nobody has voted on yields no rating at all", () => {
+  assert.equal(ratingFromTmdb({ vote_average: 0, vote_count: 0 }, "155"), null);
 });

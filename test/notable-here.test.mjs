@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  EMPTY_REASON, MIN_VOTES, labelledPlaces, notability, notableEmptyReason, notableHere,
+  EMPTY_REASON, MIN_VOTES, labelledPlaces, notability, notableEmptyReason, notableHere, ratingOf,
 } from "../app/lib/notable-here.mjs";
 
 // Real rows from the Los Angeles set, so the ordering can be checked against what a person
@@ -172,4 +172,34 @@ test("the loading check comes before every claim about what was drawn", () => {
     notableEmptyReason({ summary: null, candidatesOn: false, activeFilters: 3 }).code,
     EMPTY_REASON.loading,
   );
+});
+
+// A second public source (#224). 897 of the 6,392 works on the map carry no IMDb rating at
+// all, and IMDb's dataset is non-commercial — so the fallback is a licence question as much
+// as a coverage one.
+const tmdbOnly = { title: "Unlisted by IMDb", tmdb: 8.4, tmdb_votes: 22000 };
+
+test("a film IMDb does not rate is ranked by TMDB instead of vanishing", () => {
+  assert.ok(notability(tmdbOnly) > 0);
+  assert.equal(ratingOf(tmdbOnly).source, "tmdb");
+  assert.deepEqual(notableHere([tmdbOnly]).map((film) => film.title), ["Unlisted by IMDb"]);
+});
+
+// Never averaged: two populations voting on two scales of habit, and a mean of them is a
+// number nobody published.
+test("IMDb answers when both are present, and says so", () => {
+  const both = { title: "Both", imdb: 7, imdb_votes: 500000, tmdb: 9.9, tmdb_votes: 10 };
+  assert.deepEqual(ratingOf(both), { score: 7, votes: 500000, source: "imdb" });
+  assert.equal(notability(both), 7 * Math.log10(500000));
+});
+
+test("the vote floor applies to whichever source answered", () => {
+  assert.equal(notability({ tmdb: 9.9, tmdb_votes: MIN_VOTES - 1 }), null);
+  assert.ok(notability({ tmdb: 9.9, tmdb_votes: MIN_VOTES }) > 0);
+});
+
+test("a film with neither rating has no rating, not a zero", () => {
+  assert.equal(ratingOf({ title: "Nothing" }), null);
+  assert.equal(ratingOf({ title: "Half", tmdb: 8 }), null);
+  assert.equal(notability({ title: "Nothing" }), null);
 });

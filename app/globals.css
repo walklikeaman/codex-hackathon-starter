@@ -4389,3 +4389,14 @@ figcaption a {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Whose number this is, when it is not IMDb's. Small and beside the score rather than under
+   it: the row is one line, and the source is a qualifier on the number, not a second fact. */
+.notable-rating-source {
+  margin-left: 0.25rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(236, 232, 225, 0.55);
+}

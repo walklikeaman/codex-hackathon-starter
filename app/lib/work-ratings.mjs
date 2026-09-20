@@ -177,3 +177,45 @@ export function ratingRows(workId, ratings) {
       source_url: rating.source_url ?? null,
     }));
 }
+
+// Finding a work in TMDB by the IMDb id we already hold (#224).
+//
+// **Why this route exists.** Every "Known for" list, every rating filter and every sort
+// rests on IMDb's published dataset, which is licensed for NON-COMMERCIAL use only. TMDB's
+// is not: it is free, licensed, attributed, and already integrated here for posters. The
+// obstacle was never the API, it was the key — a TMDB id is on 12 works of 7,063, while an
+// IMDb id is on 6,044. `/find/{imdb_id}?external_source=imdb_id` turns the id we have into
+// the record we want.
+//
+// The response is keyed by kind — `movie_results`, `tv_results`, and four more we do not
+// ask about — and a single IMDb id can appear in more than one. The kind we already
+// recorded decides which list to read; reading "the first non-empty one" would file a
+// television series as a film the first time TMDB indexed an episode.
+const TMDB_RESULTS_BY_KIND = Object.freeze({
+  film: "movie_results",
+  series: "tv_results",
+});
+
+export function tmdbFindUrl(imdbId, { apiKey } = {}) {
+  if (!isImdbId(imdbId)) return null;
+  const endpoint = new URL(`https://api.themoviedb.org/3/find/${imdbId}`);
+  endpoint.searchParams.set("external_source", "imdb_id");
+  if (apiKey) endpoint.searchParams.set("api_key", apiKey);
+  return endpoint.toString();
+}
+
+// The one record that matches the kind we asked about, or null. Null is an answer: TMDB
+// simply does not hold every work, and a book never will be there at all.
+export function tmdbFindResult(payload, kind = "film") {
+  const key = TMDB_RESULTS_BY_KIND[kind];
+  if (!key) return null;
+  const results = Array.isArray(payload?.[key]) ? payload[key] : [];
+  const match = results.find((row) => /^[1-9]\d*$/.test(String(row?.id ?? "")));
+  if (!match) return null;
+  return {
+    tmdbId: String(match.id),
+    voteAverage: Number.isFinite(Number(match.vote_average)) ? Number(match.vote_average) : null,
+    voteCount: Number.isInteger(match.vote_count) ? match.vote_count : null,
+    title: match.title ?? match.name ?? null,
+  };
+}
