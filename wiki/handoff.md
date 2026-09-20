@@ -1,4 +1,4 @@
-# Handoff — 2026-08-19, after the search box, the directory and the place card
+# Handoff — 2026-09-20, after the text sources learned to read
 
 Written because a session ended, not because the work did. `wiki/log.md` is the
 chronicle and `wiki/index.md` lists the concept pages. **This page is only the things
@@ -16,30 +16,42 @@ The owner's acceptance test for the demo, in his words: **a juror names their fa
 film, we type it in, and it is there — with no doubt that we have it.** Measured on
 production: empty for **0 of 24** famous titles, median 1.3 s.
 
-## State, in numbers (live, end of session)
+## State, in numbers (live, 20.09)
 
 | | |
 |---|---|
-| main | `e8d783a` — "The card in two tabs (#160)", deployed and verified on Production |
-| tests | 1,101, `node --test test/*.test.mjs`, zero network — **1,099 pass and 2 report `cancelled`**. Those two are in `artwork-api.test.mjs` ("Promise resolution is still pending but the event loop has already resolved"), they predate all of this week's work and they reproduce on a clean `main`: if you see 1,099/2, nothing is broken. |
-| works | 7,063 · **6,392 with at least one located place** (`catalogue_index`) |
-| queue | ~43,900 submissions · **90 verified, 914 rejected**, the rest pending ([[queue-review]]) |
-| geocoded by us | **1,063** from the gazetteer pass; ~11,500 pending rows still have no point, most because the venue is not in Wikidata at all |
-| surfaces | the map (`/`), the film card (`/work/<slug>--<uuid>`) and — since 19.08 — **the directory** (`/directory`, `/directory/films/<letter>`, `/city/<slug>`). That is all of them, and each now reaches the others: "Browse everything" on the map, "Browse the directory" on the card. |
-| graph vs queue | **92 facts across 15 works** in the graph against **6,392 works** in the queue. What a reader sees on a card for the other 6,377 is a labelled candidate ([[directory]]). |
+| main | `7c8b4e8` — "a work that could not be read is not a work that was read (#261)" |
+| tests | **1,565 pass, 0 fail**, `node --test test/*.test.mjs`, zero network |
+| works | 7,063 · **5,480 now carry a `wikidata_id`** (was 28 before the backfill of 12.09) |
+| enriched from Wikipedia | **264 of 5,480**. `works.wikipedia_enriched_at` is the progress marker; 5,216 remain |
+| queue | 45,249 rows. `moviemaps` 30,135 · `reelstreets` 8,062 · `movielocations` 5,578 · **`wikipedia` 1,172** · **`fandom` 239** · `open_plaques` 53 · `permit_record` 10 |
+| the two text sources | wikipedia **463 placed**, of which **36 are `author_place`** · fandom **11 placed** |
 
-**The map answers from three stores at once**, and this is the thing to understand before
-touching [app/api/locations/route.js](app/api/locations/route.js):
+## Where the ingest pipelines stand, and how to restart them
 
-1. **Wikidata statements** — P915 / P840, live, per work.
-2. **The inverted search** — places whose OWN article mentions the work
-   ([app/lib/inverted-places.mjs](app/lib/inverted-places.mjs)), live, geographic.
-3. **Our queue** — `location_submissions`, bridged by IMDb id and by title
-   ([app/lib/submission-places.mjs](app/lib/submission-places.mjs)). Everything from it
-   arrives as a **candidate**: hollow pin, a link to the source, and since 08.08 either
-   "not yet verified by us" or "Source checked" with the reason ([[queue-review]]). The
-   map reads *not rejected*, NOT *pending* — filtering on `pending` meant believing a row
-   deleted it. Nothing from the queue enters `places` or the graph.
+**Nothing is running.** The 5,500-work enrichment was started 16.09 and is gone — the
+machine restarted, `/tmp/enrich-full.log` with it. Nothing was lost: every work is stamped
+as it finishes.
+
+```bash
+node --env-file=.env.local scripts/enrich-from-wikipedia.mjs --limit 5500 > ~/enrich.log 2>&1 &
+```
+
+**Write the log somewhere that survives a reboot**, not `/tmp`. And never pipe a long run
+through `tail` — it buffers everything until the process ends, which is exactly when you
+stop needing it.
+
+Pace, measured: **1.4 works/min** at `MODEL_REQUESTS_PER_MINUTE=18`, so the remaining 5,216
+are about **60 hours**. The model is not the bottleneck; the 5-second Wikidata gap and the
+1-second Wikimedia pace are, and both are deliberate.
+
+Resuming is safe and needs no flags — the query selects `wikipedia_enriched_at is null`.
+`--again` re-reads works already attempted, for when the extractor itself has changed.
+
+**Fandom is finished as a source.** All 242 wikis in the Wikidata overlap were probed; four
+yield rows — `lotr`, `jamesbond`, `gameofthrones`, `ghostbusters` — and they are the default
+list. 150 of the 234 reachable wikis hold exactly one of our works. Do not go looking for
+more; [[fandom-discovery]] has the numbers.
 
 ## What is built and NOT wired up
 
@@ -64,7 +76,37 @@ filter, all three place modules, then the entire 30k-row ingest. **Before writin
 grep for its callers** (`grep -rn "from .*<module>" app/`); if the answer is zero, wire that
 before writing more.
 
-## Traps that cost real time, all found by measurement
+## Traps from this stretch, all found by measurement and none by reading
+
+**Every gate I wrote was wrong the first time, and only live data said so.** This is the
+single most useful thing on this page.
+
+| rule as first written | what 200 real rows said |
+|---|---|
+| a place must follow a locative preposition | would have thrown away **111 of 246** correct rows |
+| a city hint must match the immediate `P131` | **127** false refusals — the parent of Wildwood Regional Park is Ventura County, so "California" matches nothing |
+| the authorship vocabulary | one word short **three times** — `production was based`, a curly apostrophe, `sketches` vs `sketched` |
+| require the hint's most specific token | refuses Wildwood Regional Park and 126 like it |
+
+Write the rule, run it against the queue, count what it would drop, *then* ship it.
+
+**A pipeline can be dead and silent for weeks.** `enrich-from-wikipedia` wrote nothing
+between 03.08 and 12.09: a migration dropped the default on `source_license`, the script
+never set it, and every work failed with the error logged per work and the run continuing
+past it, exit code zero. If a source has not grown, check its last `created_at` before
+believing it is merely quiet.
+
+**"Could not be read" is not "read and found empty."** Of 802 works attempted on 16.09,
+**575 had every edition fail with `fetch failed`** in unbroken stretches of 185, 123 and 95
+— the laptop asleep. Only 3 were wrongly stamped, and only because the outage took the
+database down too so the stamp also failed. Fixed in #261: an unreadable edition leaves the
+work unstamped, and six network failures in a row make the run wait for the network.
+
+**The model beat the regex.** Of the four new rows one Fandom run produced, both good ones
+came from the model and both bad ones from my own parser. I had described the model as the
+risky half and the parser as the safe one; the data said the opposite.
+
+## Traps from earlier stretches, all found by measurement
 
 **Four services report failure inside a success.** Check the body before parsing:
 OpenRouter `/v1/responses` returns 200 and silently ignores the JSON schema (use
@@ -278,7 +320,26 @@ creative people with Wikipedia links. As of 08.08 the schema is no longer in the
 relation kinds instead of one vague `author_place`. What remains is **data**: `creators`
 and `work_creators` hold zero rows, and filling them is a source problem, not a rules one.
 
-## Next, in the order I would take it
+## Next, 20.09, in the order I would take it
+
+1. **Restart the enrichment and let it finish.** 5,216 works, ~60 hours, nothing to decide.
+   It is the largest untapped thing in the project by a wide margin: 264 works have produced
+   463 placed rows, so the rest is worth roughly nine thousand more.
+2. **Or narrow it first.** 1,642 works have a Los Angeles row and LA is the demo city;
+   running those alone is ~20 hours and every row lands where the jury looks. There is no
+   `--city` flag yet — it would be a join on the queue.
+3. **Review the queue.** 1,163 Wikipedia rows and 236 Fandom rows sit `pending` and nothing
+   on the map treats them as more than candidates. This is human work, not a script.
+4. **`head_unknown` is Fandom's ceiling** — 193 of 237 rows. Fandom names places like
+   "Gary Rowe's house" and "CMGN Hamburg Printing Factory", which no gazetteer holds. Do not
+   spend on it; the value of that source is the story-to-shoot pairing in its tables.
+5. **Two known-wrong things, both small.** `Clifton Village, Bristol` still resolves to
+   Clifton in Nottingham — the hint and the chain agree on "England", and the fix that would
+   catch it refuses 127 correct rows ([[geocoding-cascade]]). And `manoir Playboy` finds
+   nothing because Wikidata has no French label for it.
+
+## Next, as of 19.08 — superseded by the list above, kept for the reasoning
+
 
 **The critical path is closed.** The product had two surfaces and everything else was
 reachable only by dragging a map; it now has three, they link to each other, and the search
