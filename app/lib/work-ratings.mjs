@@ -51,6 +51,36 @@ export function metacriticUrl(mcPath) {
 // "7.8/10" → 78, "92%" → 92, "81/100" → 81. Returns null for anything unparseable
 // rather than a zero, because a missing rating and a rating of zero are not the same
 // claim and must not look alike.
+// What scale a source states its score in — the denominator it would print, not the one we
+// store. `work_ratings.score` is normalised 0..100 so sources can be compared; a reader who
+// wants to show "8.8" for IMDb has to come back down to 10.
+//
+// This exists because the two scales were mixed in one column for months: 5,495 IMDb rows
+// were written straight through at 1.7–9.5 while Rotten Tomatoes sat at 65–99 in the same
+// field. Any comparison across sources put every IMDb row below every RT row, and nothing
+// said so — the column's own comment claimed 0..100.
+const SOURCE_SCALE = Object.freeze({
+  imdb: 10,
+  tmdb: 10,
+  rotten_tomatoes: 100,
+  metacritic: 100,
+});
+
+export function sourceScale(source) {
+  return SOURCE_SCALE[source] ?? 100;
+}
+
+// A stored 0..100 score, back in the scale its source uses. Null stays null: a missing
+// rating and a rating of zero are not the same claim.
+export function scoreInSourceScale(source, storedScore) {
+  const score = Number(storedScore);
+  if (storedScore === null || storedScore === undefined || storedScore === "" || !Number.isFinite(score)) {
+    return null;
+  }
+  const scale = sourceScale(source);
+  return Math.round((score * scale) / 100 * 10) / 10;
+}
+
 export function normalizeScore(value) {
   if (typeof value !== "string") return null;
   const percent = value.match(/^(\d+(?:\.\d+)?)\s*%$/);
