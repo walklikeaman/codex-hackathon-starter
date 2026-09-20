@@ -29,6 +29,8 @@ import {
   languagesForWork,
   MAX_LANGUAGES_PER_WORK,
   isRetryableApiError,
+  isQueryServiceLag,
+  withoutMaxlag,
   MAX_RETRY_ATTEMPTS,
   MIN_REQUEST_GAP_MS,
   retryAfterMs,
@@ -88,6 +90,17 @@ async function wikimedia(url, attempt = 1) {
   // body, and only one of them is worth asking about again. We send maxlag=5 on every
   // request, so being told the replicas are behind is the API honouring that — not a
   // failure, and certainly not a reason to abandon the run.
+  // **A lagged Query Service is not a lagged read.** Asked again without `maxlag`, the
+  // very same request answers in full — see `isQueryServiceLag`. Done once per URL:
+  // `withoutMaxlag` answers null when there is nothing left to drop, so this cannot loop,
+  // and the attempt counter is left alone because no retry has been spent.
+  const withoutTheLagCheck = isQueryServiceLag(payload) ? withoutMaxlag(url) : null;
+  if (withoutTheLagCheck) {
+    console.log(`   ${apiError(payload)} — that is the query service, which this run never reads; asking again without maxlag`);
+    await sleep(MIN_REQUEST_GAP_MS);
+    return wikimedia(withoutTheLagCheck, attempt);
+  }
+
   if (isRetryableApiError(payload) && attempt <= MAX_RETRY_ATTEMPTS) {
     // Retry-After is a floor, not a promise. Repeating it unchanged against a lag that
     // is not moving just asks the same question five times; each attempt waits longer.
