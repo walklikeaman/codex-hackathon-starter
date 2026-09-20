@@ -40,14 +40,34 @@ function numberOrNull(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+// Which public rating this film is ranked by, and from where (#224).
+//
+// IMDb first, because it has the votes: 5,495 of the 6,392 works on the map carry one. The
+// other 897 had no public rating at all, so "Known for" could not see them however famous
+// they were — and IMDb's dataset is licensed for non-commercial use only, which makes a
+// second source a licence question rather than a nicety.
+//
+// Never averaged across sources. 8.8 on IMDb and 8.8 on TMDB are two different populations
+// voting on two different scales of habit; a mean of them is a number nobody published.
+// One source answers, and the row says which.
+export function ratingOf(film) {
+  const imdb = numberOrNull(film?.imdb);
+  const imdbVotes = numberOrNull(film?.imdb_votes);
+  if (imdb !== null && imdbVotes !== null) return { score: imdb, votes: imdbVotes, source: "imdb" };
+
+  const tmdb = numberOrNull(film?.tmdb);
+  const tmdbVotes = numberOrNull(film?.tmdb_votes);
+  if (tmdb !== null && tmdbVotes !== null) return { score: tmdb, votes: tmdbVotes, source: "tmdb" };
+
+  return null;
+}
+
 export function notability(film) {
-  const rating = numberOrNull(film?.imdb);
-  const votes = numberOrNull(film?.imdb_votes);
+  const rating = ratingOf(film);
+  if (rating === null) return null;
+  if (rating.votes < MIN_VOTES) return null;
 
-  if (rating === null || votes === null) return null;
-  if (votes < MIN_VOTES) return null;
-
-  return rating * Math.log10(votes);
+  return rating.score * Math.log10(rating.votes);
 }
 
 // The list itself. Ranked, capped, and honest about ties: two works with the same score
