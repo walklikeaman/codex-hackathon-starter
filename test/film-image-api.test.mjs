@@ -16,13 +16,36 @@ function filmImageRequest(overrides = {}, init = {}) {
   return new Request(`http://localhost/api/film-image?${params}`, init);
 }
 
-function wikidataResponse(bindings = [{
-  workLabel: { value: "A Clockwork Orange" },
-  locationLabel: { value: "HM Prison Wandsworth" },
-  tmdbId: { value: "185" },
-  image: { value: "https://commons.wikimedia.org/wiki/Special:FilePath/Test.jpg" },
-}]) {
-  return new Response(JSON.stringify({ results: { bindings } }), {
+// What Wikidata's entity API says about the pair. `null` is a pair Wikidata does not
+// state: the film exists, but not with this place as a filming location.
+const CLOCKWORK = {
+  workLabel: "A Clockwork Orange",
+  locationLabel: "HM Prison Wandsworth",
+  tmdbId: "185",
+  image: "Test.jpg",
+};
+
+function statement(value, rank = "normal") {
+  return { rank, mainsnak: { datavalue: { value } } };
+}
+
+function wikidataResponse(pair = CLOCKWORK) {
+  const entities = {
+    Q181086: {
+      id: "Q181086",
+      labels: { en: { value: pair?.workLabel ?? "A Clockwork Orange" } },
+      claims: {
+        P915: pair ? [statement({ id: "Q386707" })] : [],
+        P4947: [statement(pair?.tmdbId ?? "185")],
+      },
+    },
+    Q386707: {
+      id: "Q386707",
+      labels: { en: { value: pair?.locationLabel ?? "HM Prison Wandsworth" } },
+      claims: { P18: pair?.image ? [statement(pair.image)] : [] },
+    },
+  };
+  return new Response(JSON.stringify({ entities }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
@@ -37,10 +60,10 @@ function tmdbResponse(backdrops = [
   }), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
-function upstreamFetch({ bindings, backdrops } = {}) {
+function upstreamFetch({ pair, backdrops } = {}) {
   return async (url) => {
     const endpoint = new URL(url);
-    if (endpoint.hostname === "query.wikidata.org") return wikidataResponse(bindings);
+    if (endpoint.hostname === "www.wikidata.org") return wikidataResponse(pair);
     if (endpoint.hostname === "api.themoviedb.org") return tmdbResponse(backdrops);
     throw new Error(`Unexpected upstream ${endpoint.hostname}`);
   };
@@ -61,7 +84,7 @@ function handlerForMatch({
   onParse,
   onVerify,
   backdrops,
-  bindings,
+  pair,
   createFrameStore,
   fetchImpl,
   allowRequest,
@@ -74,7 +97,7 @@ function handlerForMatch({
       OPENAI_API_KEY: "openai-test-key",
       OPENAI_VISION_MODEL: "test-vision-model",
     },
-    fetchImpl: fetchImpl ?? upstreamFetch({ backdrops, bindings }),
+    fetchImpl: fetchImpl ?? upstreamFetch({ backdrops, pair }),
     allowRequest: allowRequest ?? (() => true),
     verifyToken: () => true,
     logError: logError ?? (() => {}),
@@ -181,7 +204,7 @@ test("film image API rejects an unverified film-location pair before paid matchi
       OPENAI_API_KEY: "openai-test-key",
       SCENE_MATCH_SIGNING_SECRET: "openai-test-key",
     },
-    fetchImpl: upstreamFetch({ bindings: [] }),
+    fetchImpl: upstreamFetch({ pair: null }),
     allowRequest: () => true,
   });
   const response = await handler(filmImageRequest({ token }));
@@ -300,11 +323,7 @@ test("film image API rejects a shortlisted image that fails exact final verifica
 
 test("film image API can associate representative frames with an explicit studio", async () => {
   const handler = handlerForMatch({
-    bindings: [{
-      workLabel: { value: "Test Film" },
-      locationLabel: { value: "Pinewood Studios" },
-      tmdbId: { value: "185" },
-    }],
+    pair: { workLabel: "Test Film", locationLabel: "Pinewood Studios", tmdbId: "185", image: null },
     outputParsed: {
       matches: [frameMatch({
         candidateIndex: 0,
@@ -564,4 +583,91 @@ test("a store that fails costs a live match, never the answer", async () => {
   assert.equal(second.status, 200);
   assert.equal(failingSave.calls.save.length, 1);
   assert.equal(logged.length, 2);
+});
+
+// --- a slow or refusing Wikidata (the cold-ask 502) --------------------------------------
+
+function flakyWikidata(firstAnswers) {
+  const answers = [...firstAnswers];
+  const calls = { wikidata: 0 };
+  const fetchImpl = async (url, init) => {
+    const endpoint = new URL(url);
+    if (endpoint.hostname === "www.wikidata.org") {
+      calls.wikidata += 1;
+      const next = answers.shift();
+      if (next === "timeout") {
+        const error = new Error("timed out");
+        error.name = "TimeoutError";
+        throw error;
+      }
+      if (typeof next === "number") {
+        return new Response("slow down", { status: next, headers: { "Retry-After": "0" } });
+      }
+      return wikidataResponse();
+    }
+    if (endpoint.hostname === "api.themoviedb.org") return tmdbResponse();
+    throw new Error(`Unexpected upstream ${endpoint.hostname}`);
+  };
+  return { fetchImpl, calls };
+}
+
+const ONE_FRAME = {
+  matches: [frameMatch({
+    candidateIndex: 1, confidence: "high", locationType: "building",
+    description: "The brick gate matches the verified prison location.",
+  })],
+};
+
+test("a Wikidata 429 or timeout is asked once more before the card is told anything", async () => {
+  for (const first of [429, 503, "timeout"]) {
+    const { fetchImpl, calls } = flakyWikidata([first]);
+    const handler = handlerForMatch({ fetchImpl, outputParsed: ONE_FRAME });
+    const response = await handler(filmImageRequest());
+    assert.equal(response.status, 200, `after ${first}`);
+    assert.equal(calls.wikidata, 2);
+    assert.equal((await response.json()).frames.length, 1);
+  }
+});
+
+// A 404 is an answer, not a bad moment: asking again would get the same one.
+test("a Wikidata refusal that is not transient is not retried", async () => {
+  const { fetchImpl, calls } = flakyWikidata([404]);
+  const handler = handlerForMatch({ fetchImpl, outputParsed: ONE_FRAME });
+  const response = await handler(filmImageRequest());
+  assert.equal(response.status, 502);
+  assert.equal(calls.wikidata, 1);
+});
+
+// The log used to say only "TimeoutError", which could not tell Wikidata from TMDB.
+test("when both attempts fail, the log names the upstream that failed", async () => {
+  const logged = [];
+  const { fetchImpl, calls } = flakyWikidata(["timeout", "timeout"]);
+  const handler = handlerForMatch({ fetchImpl, outputParsed: ONE_FRAME, logError: (...args) => logged.push(args) });
+  const response = await handler(filmImageRequest());
+
+  assert.equal(response.status, 502);
+  assert.equal(calls.wikidata, 2);
+  assert.equal(logged.length, 1);
+  assert.equal(logged[0][1].stage, "wikidata");
+  assert.match(logged[0][1].message, /wikidata: TimeoutError/);
+});
+
+test("the pair is checked against the entity API with a bounded reference photo", async () => {
+  const seen = [];
+  const handler = handlerForMatch({
+    fetchImpl: async (url, init) => {
+      seen.push(String(url));
+      return upstreamFetch()(url, init);
+    },
+    outputParsed: ONE_FRAME,
+    onParse: (body) => {
+      const images = body.input[0].content.filter((part) => part.type === "input_image").map((part) => part.image_url);
+      assert.equal(images[0], "https://commons.wikimedia.org/wiki/Special:FilePath/Test.jpg?width=800");
+    },
+  });
+  // An assertion failing inside onParse surfaces as the route's 502, so the status is
+  // what proves the reference-photo check above actually passed.
+  assert.equal((await handler(filmImageRequest())).status, 200);
+  assert.ok(seen.some((url) => url.startsWith("https://www.wikidata.org/w/api.php?action=wbgetentities")));
+  assert.ok(!seen.some((url) => url.includes("query.wikidata.org")));
 });

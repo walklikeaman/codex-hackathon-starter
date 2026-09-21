@@ -1,3 +1,4 @@
+import { commonsFileUrl } from "./image-budget.mjs";
 import { z } from "zod";
 
 export const MAX_TMDB_CANDIDATES = 24;
@@ -65,35 +66,68 @@ export function canonicalSceneImageQuery({ tmdbId, workId, locationId }, token =
   return params.toString();
 }
 
-export function buildWikidataSceneQuery({ workId, locationId }) {
+// The pair is checked against Wikidata's ENTITY API, not the SPARQL query service.
+//
+// It used to be one SPARQL query, and the card returned 502 on first asks: measured on
+// 2026-09-21, the same bounded query took 234 ms warm, 1–4 s cold, and ten cold queries
+// in a row hit a 30-second limit while the query service was under load. The route gave
+// it ten. wbgetentities answers the same question — does the film state this place as
+// a filming location, with this TMDB id, and what is the place's photo — from a
+// different backend: 12 cold pairs, median 555 ms, slowest 1.0 s.
+//
+// What changes is where the facts are read, not which facts count. SPARQL's `wdt:` means
+// TRUTHY statements — preferred ones if a property has any, otherwise normal ones, never
+// deprecated — and `truthyValues` below is that rule, so a pair the old query rejected
+// is still rejected.
+export function buildWikidataSceneEntitiesUrl({ workId, locationId }) {
   if (!/^Q[1-9]\d*$/.test(workId) || !/^Q[1-9]\d*$/.test(locationId)) {
     throw new Error("Wikidata ids must be canonical Q ids");
   }
-
-  return `
-SELECT ?workLabel ?locationLabel ?tmdbId ?image WHERE {
-  VALUES ?work { wd:${workId} }
-  VALUES ?location { wd:${locationId} }
-  ?work wdt:P915 ?location ;
-        wdt:P4947 ?tmdbId .
-  OPTIONAL { ?location wdt:P18 ?image . }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en" . }
-}
-LIMIT 1`;
+  const url = new URL("https://www.wikidata.org/w/api.php");
+  url.search = new URLSearchParams({
+    action: "wbgetentities",
+    ids: `${workId}|${locationId}`,
+    props: "claims|labels",
+    languages: "en",
+    format: "json",
+  }).toString();
+  return url;
 }
 
-export function parseWikidataSceneContext(payload, expected) {
-  const rows = payload?.results?.bindings;
-  if (!Array.isArray(rows)) return null;
+export function truthyValues(entity, property) {
+  const statements = Array.isArray(entity?.claims?.[property]) ? entity.claims[property] : [];
+  const ranked = statements.filter((statement) => statement?.rank !== "deprecated");
+  const preferred = ranked.filter((statement) => statement?.rank === "preferred");
+  return (preferred.length ? preferred : ranked)
+    .map((statement) => statement?.mainsnak?.datavalue?.value)
+    .filter((value) => value !== undefined && value !== null);
+}
 
-  const row = rows.find((candidate) => candidate.tmdbId?.value === expected.tmdbId);
-  if (!row) return null;
+function itemId(value) {
+  return typeof value === "string" ? value : value?.id ?? null;
+}
 
-  const rawImageUrl = row.image?.value?.replace(/^http:\/\//, "https://") ?? null;
+// The reference photo the model compares frames against. Bounded, because P18 names the
+// original upload and the model was being handed files measured at 5 MB (#198); 800 is
+// what the batch stage has always sent for the same comparison.
+const REFERENCE_WIDTH = 800;
+
+export function parseWikidataSceneEntities(payload, expected) {
+  const work = payload?.entities?.[expected.workId];
+  const location = payload?.entities?.[expected.locationId];
+  if (!work || !location || work.missing !== undefined || location.missing !== undefined) return null;
+
+  const filmedThere = truthyValues(work, "P915").map(itemId).includes(expected.locationId);
+  const sameFilm = truthyValues(work, "P4947").map(String).includes(String(expected.tmdbId));
+  if (!filmedThere || !sameFilm) return null;
+
+  const filename = truthyValues(location, "P18").find((value) => typeof value === "string");
+  const imageUrl = filename ? commonsFileUrl(filename, { width: REFERENCE_WIDTH }) : null;
   return {
-    filmTitle: row.workLabel?.value ?? expected.workId,
-    place: row.locationLabel?.value ?? expected.locationId,
-    locationImageUrl: isAllowedLocationImageUrl(rawImageUrl) ? rawImageUrl : null,
+    // The query service fell back to the id when there was no English label; so does this.
+    filmTitle: work.labels?.en?.value ?? expected.workId,
+    place: location.labels?.en?.value ?? expected.locationId,
+    locationImageUrl: isAllowedLocationImageUrl(imageUrl) ? imageUrl : null,
   };
 }
 

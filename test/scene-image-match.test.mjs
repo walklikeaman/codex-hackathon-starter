@@ -5,13 +5,14 @@ import {
   acceptedSceneImageMatch,
   acceptedSceneImageMatches,
   buildSceneImageContent,
-  buildWikidataSceneQuery,
+  buildWikidataSceneEntitiesUrl,
   canonicalSceneImageQuery,
   createSceneMatchRateLimiter,
   isAllowedLocationImageUrl,
   isStudioLocation,
   parseSceneImageRequest,
-  parseWikidataSceneContext,
+  parseWikidataSceneEntities,
+  truthyValues,
   sceneMatchClientId,
 } from "../app/lib/scene-image-match.mjs";
 
@@ -29,19 +30,28 @@ function validParams() {
   });
 }
 
-function wikidataPayload(overrides = {}) {
+function statement(value, rank = "normal") {
+  return { rank, mainsnak: { datavalue: { value } } };
+}
+
+function wikidataPayload({ p915 = [statement({ id: "Q386707" })], p4947 = [statement("185")], p18 = [statement("Test.jpg")], labels = true } = {}) {
   return {
-    results: {
-      bindings: [{
-        workLabel: { value: "A Clockwork Orange" },
-        locationLabel: { value: "HM Prison Wandsworth" },
-        tmdbId: { value: "185" },
-        image: { value: "http://commons.wikimedia.org/wiki/Special:FilePath/Test.jpg" },
-        ...overrides,
-      }],
+    entities: {
+      Q181086: {
+        id: "Q181086",
+        labels: labels ? { en: { value: "A Clockwork Orange" } } : {},
+        claims: { P915: p915, P4947: p4947 },
+      },
+      Q386707: {
+        id: "Q386707",
+        labels: labels ? { en: { value: "HM Prison Wandsworth" } } : {},
+        claims: { P18: p18 },
+      },
     },
   };
 }
+
+const EXPECTED = { tmdbId: "185", workId: "Q181086", locationId: "Q386707" };
 
 test("accepts only canonical TMDB and Wikidata ids", () => {
   const parsed = parseSceneImageRequest(validParams());
@@ -67,33 +77,61 @@ test("builds one canonical cache query and a bounded Wikidata pair query", () =>
     "tmdbId=185&workId=Q181086&locationId=Q386707&token=signed-capability&v=4",
   );
 
-  const query = buildWikidataSceneQuery(request);
-  assert.match(query, /VALUES \?work \{ wd:Q181086 \}/);
-  assert.match(query, /VALUES \?location \{ wd:Q386707 \}/);
-  assert.match(query, /wdt:P915 \?location/);
+  const url = buildWikidataSceneEntitiesUrl(request);
+  assert.equal(url.hostname, "www.wikidata.org");
+  assert.equal(url.searchParams.get("action"), "wbgetentities");
+  assert.equal(url.searchParams.get("ids"), "Q181086|Q386707");
   assert.throws(
-    () => buildWikidataSceneQuery({ workId: "Q1 } UNION {", locationId: "Q2" }),
+    () => buildWikidataSceneEntitiesUrl({ workId: "Q1|Q2", locationId: "Q2" }),
     /canonical Q ids/,
   );
 });
 
 test("uses only the canonical Wikidata pair to obtain matching context", () => {
-  const context = parseWikidataSceneContext(wikidataPayload(), {
-    tmdbId: "185",
-    workId: "Q181086",
-    locationId: "Q386707",
-  });
-
-  assert.deepEqual(context, {
+  assert.deepEqual(parseWikidataSceneEntities(wikidataPayload(), EXPECTED), {
     filmTitle: "A Clockwork Orange",
     place: "HM Prison Wandsworth",
-    locationImageUrl,
+    // Bounded: P18 names the original upload, measured at up to 7 MB (#198).
+    locationImageUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Test.jpg?width=800",
   });
-  assert.equal(parseWikidataSceneContext(wikidataPayload(), {
-    tmdbId: "999",
-    workId: "Q181086",
-    locationId: "Q386707",
-  }), null);
+  assert.equal(parseWikidataSceneEntities(wikidataPayload(), { ...EXPECTED, tmdbId: "999" }), null);
+});
+
+// The old SPARQL gate was `?work wdt:P915 ?location`. The entity API returns every
+// statement, so the pair must still pass only on what `wdt:` would have returned.
+test("a place counts only if the film states it as a filming location, truthily", () => {
+  assert.equal(parseWikidataSceneEntities(wikidataPayload({ p915: [] }), EXPECTED), null);
+  assert.equal(
+    parseWikidataSceneEntities(wikidataPayload({ p915: [statement({ id: "Q386707" }, "deprecated")] }), EXPECTED),
+    null,
+    "a deprecated statement is a statement Wikidata itself disowns",
+  );
+  assert.equal(
+    parseWikidataSceneEntities(wikidataPayload({
+      p915: [statement({ id: "Q1" }, "preferred"), statement({ id: "Q386707" })],
+    }), EXPECTED),
+    null,
+    "when a preferred statement exists, a normal one is not truthy",
+  );
+  assert.ok(parseWikidataSceneEntities(wikidataPayload({
+    p915: [statement({ id: "Q386707" }, "preferred"), statement({ id: "Q1" })],
+  }), EXPECTED));
+});
+
+test("truthy values follow the query service's rule exactly", () => {
+  const entity = { claims: { P1: [statement("a"), statement("b", "deprecated"), statement("c")] } };
+  assert.deepEqual(truthyValues(entity, "P1"), ["a", "c"]);
+  assert.deepEqual(truthyValues({ claims: { P1: [statement("a"), statement("b", "preferred")] } }, "P1"), ["b"]);
+  assert.deepEqual(truthyValues({}, "P1"), []);
+});
+
+test("a missing entity, a missing photo and a missing label are each handled", () => {
+  assert.equal(parseWikidataSceneEntities({ entities: { Q181086: { id: "Q181086", missing: "" } } }, EXPECTED), null);
+  assert.equal(parseWikidataSceneEntities(null, EXPECTED), null);
+  assert.equal(parseWikidataSceneEntities(wikidataPayload({ p18: [] }), EXPECTED).locationImageUrl, null);
+  const unlabelled = parseWikidataSceneEntities(wikidataPayload({ labels: false }), EXPECTED);
+  assert.equal(unlabelled.filmTitle, "Q181086");
+  assert.equal(unlabelled.place, "Q386707");
 });
 
 test("accepts only trusted HTTPS location image hosts", () => {

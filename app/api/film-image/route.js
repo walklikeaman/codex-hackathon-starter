@@ -13,13 +13,13 @@ import {
 import {
   acceptedSceneImageMatches,
   buildSceneImageContent,
-  buildWikidataSceneQuery,
+  buildWikidataSceneEntitiesUrl,
   canonicalSceneImageQuery,
   createSceneMatchRateLimiter,
   isStudioLocation,
   MAX_TMDB_CANDIDATES,
   parseSceneImageRequest,
-  parseWikidataSceneContext,
+  parseWikidataSceneEntities,
   SCENE_IMAGE_MATCH_VERSION,
   sceneImageMatchSchema,
   sceneMatchClientId,
@@ -30,7 +30,6 @@ import {
 } from "../../lib/scene-match-token.mjs";
 
 const TMDB_API_BASE_URL = "https://api.themoviedb.org/3";
-const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
 
 export const runtime = "nodejs";
 
@@ -64,6 +63,48 @@ function defaultCreateFrameStore(env) {
       if (error) throw new Error(`frame save failed: ${error.message}`);
     },
   };
+}
+
+// A fetch that tells the catch below WHICH upstream failed. The log used to record only
+// the error's name, and "TimeoutError" alone could not say whether Wikidata or TMDB had
+// run out of time — which is how a Wikidata problem went unattributed.
+class UpstreamError extends Error {
+  constructor(stage, detail) {
+    super(`${stage}: ${detail}`);
+    this.name = "UpstreamError";
+    this.stage = stage;
+  }
+}
+
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+// Measured: the entity API answered 12 cold pairs in at most 1.0 s. Six seconds is room
+// for a bad moment, and a second attempt is cheaper than a failed card.
+const WIKIDATA_BUDGET_MS = 6_000;
+const MAX_RETRY_WAIT_MS = 2_000;
+
+async function fetchUpstream(stage, fetchImpl, url, init, { request, timeoutMs, retries = 0 }) {
+  for (let attempt = 0; ; attempt += 1) {
+    let response = null;
+    try {
+      response = await fetchImpl(url, { ...init, signal: upstreamSignal(request, timeoutMs) });
+    } catch (error) {
+      // The reader closing the card is not an upstream failure and is not retried.
+      if (request.signal?.aborted || attempt >= retries) {
+        throw error?.name === "AbortError" && request.signal?.aborted
+          ? error
+          : new UpstreamError(stage, error?.name ?? "fetch failed");
+      }
+      continue;
+    }
+    if (response.ok) return response;
+    if (!RETRYABLE_STATUS.has(response.status) || attempt >= retries) {
+      throw new UpstreamError(stage, `status ${response.status}`);
+    }
+    // Wikidata's own 429 says how long to wait; honour it, within reason.
+    const retryAfter = Number(response.headers?.get?.("retry-after"));
+    const waitMs = Number.isFinite(retryAfter) ? Math.min(retryAfter * 1000, MAX_RETRY_WAIT_MS) : 250;
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
 }
 
 function upstreamSignal(request, timeoutMs) {
@@ -149,27 +190,15 @@ export function createFilmImageHandler({
     }
 
     try {
-      const wikidataEndpoint = new URL(WIKIDATA_ENDPOINT);
-      wikidataEndpoint.searchParams.set("query", buildWikidataSceneQuery(sceneRequest));
-      wikidataEndpoint.searchParams.set("format", "json");
-
-      const wikidataResponse = await fetchImpl(wikidataEndpoint, {
+      const wikidataResponse = await fetchUpstream("wikidata", fetchImpl, buildWikidataSceneEntitiesUrl(sceneRequest), {
         headers: {
-          Accept: "application/sparql-results+json",
+          Accept: "application/json",
           "User-Agent": "GloryMap/1.0 (location-specific film image matcher)",
         },
-        signal: upstreamSignal(request, 10_000),
         next: { revalidate: 86400 },
-      });
+      }, { request, timeoutMs: WIKIDATA_BUDGET_MS, retries: 1 });
 
-      if (!wikidataResponse.ok) {
-        throw new Error(`Wikidata responded with ${wikidataResponse.status}`);
-      }
-
-      const sceneContext = parseWikidataSceneContext(
-        await wikidataResponse.json(),
-        sceneRequest,
-      );
+      const sceneContext = parseWikidataSceneEntities(await wikidataResponse.json(), sceneRequest);
 
       if (!sceneContext) {
         return Response.json(
@@ -191,17 +220,12 @@ export function createFilmImageHandler({
       tmdbEndpoint.searchParams.set("include_image_language", "en,null");
       if (apiKey) tmdbEndpoint.searchParams.set("api_key", apiKey);
 
-      const tmdbResponse = await fetchImpl(tmdbEndpoint, {
+      const tmdbResponse = await fetchUpstream("tmdb", fetchImpl, tmdbEndpoint, {
         headers: accessToken
           ? { Accept: "application/json", Authorization: `Bearer ${accessToken}` }
           : { Accept: "application/json" },
-        signal: upstreamSignal(request, 10_000),
         next: { revalidate: 86400 },
-      });
-
-      if (!tmdbResponse.ok) {
-        throw new Error(`TMDB responded with ${tmdbResponse.status}`);
-      }
+      }, { request, timeoutMs: 10_000, retries: 1 });
 
       const payload = await tmdbResponse.json();
       const candidates = selectTmdbBackdrops(payload.backdrops, MAX_TMDB_CANDIDATES);
@@ -374,7 +398,9 @@ export function createFilmImageHandler({
       if (error?.name !== "AbortError") {
         logError("Location-specific film image request failed", {
           name: error?.name,
+          stage: error?.stage ?? "matcher",
           status: error?.status,
+          message: error?.name === "UpstreamError" ? error.message : undefined,
         });
       }
       return Response.json(
