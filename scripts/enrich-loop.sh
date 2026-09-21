@@ -72,6 +72,10 @@ if [ -z "${ENV_FILE:-}" ]; then
 fi
 ENV_FILE="${ENV_FILE:-}"
 [ -n "$ENV_FILE" ] || { echo "no .env.local with a SUPABASE_SERVICE_ROLE_KEY anywhere under $ROOT" >&2; exit 1; }
+
+# So that the installer can ask which file this would use instead of re-implementing the
+# question and drifting from the answer.
+if [ "${1:-}" = "--print-env-file" ]; then printf '%s\n' "$ENV_FILE"; exit 0; fi
 GAP_SECONDS="${GAP_SECONDS:-120}"
 # A run that dies faster than this did not do any work, so it is a configuration
 # problem rather than a passing one. Enough of those in a row and looping is just a
