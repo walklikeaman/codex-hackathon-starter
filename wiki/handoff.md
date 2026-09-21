@@ -14,7 +14,19 @@ in, the graveyard she took a name from. Every pin is source-backed and never inv
 
 The owner's acceptance test for the demo, in his words: **a juror names their favourite
 film, we type it in, and it is there — with no doubt that we have it.** Measured on
-production: empty for **0 of 24** famous titles, median 1.3 s.
+production in August: empty for **0 of 24** famous titles, median 1.3 s.
+
+**Re-run on 21.09, through the search box the juror would actually use.** 23 of 24 put the
+right film first, median **402 ms**. Eight show no verified places in the dropdown — Titanic,
+Pulp Fiction, Shawshank, Casablanca, Jurassic Park, Mamma Mia!, Parasite — and every one opens
+onto a card with 1–13 labelled candidates, which is what #272 meant to happen. **The one
+failure was Spirited Away**, one of the three titles the August fix was made on: it is not in
+our catalogue, and the box answered with seven look-alikes (The Sacred Spirit, Cast Away,
+Suspiria) and never said so, because its "not in our catalogue" note appeared only on zero
+rows. Fixed in #282 — `/api/search` returns `held`, the box says it first and offers a button
+to the live lookup, which puts the film in Japan. **The August list of 24 was never written down**;
+the one used on 21.09 is in `wiki/log.md` under that date, and it should be the fixed list from
+now on, because a test nobody can repeat exactly is a test that drifts.
 
 ## State, in numbers (live, 20.09)
 
