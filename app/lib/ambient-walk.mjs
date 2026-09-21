@@ -264,3 +264,12 @@ export function feedUrl(position) {
   });
   return `/api/map/points?${query}`;
 }
+
+// What a built trail says on arrival: the graph's sentence for THIS work at this place.
+// Not every film shot there — the walker chose a film, and a stop that lists five
+// others is a stop about something else. Null when the stop carries no sentence, and
+// then the arrival is silent rather than invented.
+export function trailStopText(stop) {
+  const sentence = typeof stop?.sentence === "string" ? stop.sentence.trim() : "";
+  return sentence ? sentenceEnd(sentence) : null;
+}

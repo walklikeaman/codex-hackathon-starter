@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Headphones, SkipForward, Square } from "lucide-react";
 
+import useTellingPlayer from "./useTellingPlayer.js";
 import useWakeLock from "./useWakeLock.js";
 import {
   QUIET_GAP_MS, feedNeedsRefresh, feedUrl, nearbyFromMapResponse, pickAmbient, tellingFor,
@@ -23,82 +24,39 @@ import {
 import { hasMovedEnough, isUsableFix } from "../lib/geo-trigger.mjs";
 import { ROAD_SAFETY_REMINDER } from "../lib/walk-mode.mjs";
 
-const SILENCE = "/silence.mp3";
-
 export default function AmbientGuide({ onPlace, onListeningChange }) {
   const [listening, setListening] = useState(false);
-  const [status, setStatus] = useState("idle");
   const [nearbyCount, setNearbyCount] = useState(null);
-  const [current, setCurrent] = useState(null);
   const [told, setTold] = useState(0);
   const [gpsWarning, setGpsWarning] = useState(false);
+  const player = useTellingPlayer({ gapMs: QUIET_GAP_MS });
 
-  const audioRef = useRef(null);
   const placesRef = useRef([]);
   const feedCentreRef = useRef(null);
   const feedAbortRef = useRef(null);
-  const tellAbortRef = useRef(null);
   const lastFixRef = useRef(null);
   const spokenRef = useRef([]);
-  const busyRef = useRef(false);
-  const quietUntilRef = useRef(0);
-  const objectUrlRef = useRef("");
+  const playerRef = useRef(player);
+  playerRef.current = player;
+  // A new arrow from the parent on every render; as a dependency of `tell` it would
+  // re-create the position watch on every map move.
+  const onPlaceRef = useRef(onPlace);
+  onPlaceRef.current = onPlace;
 
   useWakeLock(listening);
   useEffect(() => { onListeningChange?.(listening); }, [listening, onListeningChange]);
 
-  const releaseClip = useCallback(() => {
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-    objectUrlRef.current = "";
-  }, []);
-
-  const finishTelling = useCallback(() => {
-    busyRef.current = false;
-    quietUntilRef.current = Date.now() + QUIET_GAP_MS;
-    releaseClip();
-    setCurrent(null);
-    setStatus("listening");
-  }, [releaseClip]);
-
-  const tell = useCallback(async (place) => {
-    busyRef.current = true;
+  const tell = useCallback((place) => {
     // Recorded as told BEFORE anything is fetched: every fix that arrives while the
     // sentence is being prepared would otherwise pick the same place again.
     spokenRef.current = [...spokenRef.current, { id: place.id, position: place.position }];
-    setCurrent({ name: place.name, checked: place.checked });
-    setStatus("preparing");
-    onPlace?.(place);
-
-    const controller = new AbortController();
-    tellAbortRef.current = controller;
-    try {
-      const text = await tellingFor(place, { signal: controller.signal });
-      if (!text) { finishTelling(); return; }
-      const response = await fetch("/api/narration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, profileId: "neutral" }),
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new Error(`narration ${response.status}`);
-      const blob = await response.blob();
-      const audio = audioRef.current;
-      if (!audio || controller.signal.aborted) return;
-      releaseClip();
-      objectUrlRef.current = URL.createObjectURL(blob);
-      audio.src = objectUrlRef.current;
-      audio.onended = finishTelling;
-      audio.onerror = finishTelling;
-      setStatus("speaking");
-      setTold((count) => count + 1);
-      await audio.play();
-    } catch (error) {
-      if (error?.name === "AbortError") return;
-      // A place that failed is not retried: the walker has moved on, and a retry loop
-      // on one building is worse than one silence.
-      finishTelling();
-    }
-  }, [finishTelling, onPlace, releaseClip]);
+    onPlaceRef.current?.(place);
+    setTold((count) => count + 1);
+    playerRef.current.say({
+      meta: { name: place.name, checked: place.checked },
+      resolveText: (signal) => tellingFor(place, { signal }),
+    });
+  }, []);
 
   const refreshFeed = useCallback(async (position) => {
     const url = feedUrl(position);
@@ -131,10 +89,12 @@ export default function AmbientGuide({ onPlace, onListeningChange }) {
 
         if (feedNeedsRefresh(feedCentreRef.current, position.coords)) await refreshFeed(position.coords);
 
+        // Ambient tellings are never queued: a place passed while the guide was talking
+        // is behind the walker by the time it would be said.
         const hit = pickAmbient(placesRef.current, position, {
           spoken: spokenRef.current,
-          busy: busyRef.current,
-          quietUntil: quietUntilRef.current,
+          busy: playerRef.current.isBusy(),
+          quietUntil: playerRef.current.quietUntil(),
         });
         if (hit) tell(hit.place);
       },
@@ -145,49 +105,26 @@ export default function AmbientGuide({ onPlace, onListeningChange }) {
   }, [listening, refreshFeed, tell]);
 
   const start = () => {
-    // Inside the tap, and on the element every telling will reuse. This is the unlock.
-    const audio = audioRef.current ?? new Audio();
-    audioRef.current = audio;
-    // Left over from a previous listen, these would treat the silent clip's end as a
-    // telling finishing and start a quiet gap before anything was said.
-    audio.onended = null;
-    audio.onerror = null;
-    audio.src = SILENCE;
-    audio.play().catch(() => {});
+    // Inside the tap: this is the unlock.
+    player.unlock();
     spokenRef.current = [];
-    quietUntilRef.current = 0;
-    busyRef.current = false;
     feedCentreRef.current = null;
     lastFixRef.current = null;
     setTold(0);
     setNearbyCount(null);
-    setStatus("listening");
     setListening(true);
   };
 
   const stop = () => {
     setListening(false);
-    tellAbortRef.current?.abort();
     feedAbortRef.current?.abort();
-    audioRef.current?.pause();
-    busyRef.current = false;
-    releaseClip();
-    setCurrent(null);
-    setStatus("idle");
+    player.stop();
   };
 
-  const skip = () => {
-    tellAbortRef.current?.abort();
-    audioRef.current?.pause();
-    finishTelling();
-  };
+  useEffect(() => () => feedAbortRef.current?.abort(), []);
 
-  useEffect(() => () => {
-    tellAbortRef.current?.abort();
-    feedAbortRef.current?.abort();
-    audioRef.current?.pause();
-    releaseClip();
-  }, [releaseClip]);
+  const current = player.current;
+  const status = player.state;
 
   if (!listening) {
     return (
@@ -222,7 +159,7 @@ export default function AmbientGuide({ onPlace, onListeningChange }) {
             {status === "preparing" ? "Getting ready… · " : ""}
             {current.checked ? "Checked place" : "Listed by a source, not checked by us"}
           </small>
-          <button aria-label="Skip this place" className="walk-stop" onClick={skip} type="button">
+          <button aria-label="Skip this place" className="walk-stop" onClick={player.skip} type="button">
             <SkipForward size={14} />
           </button>
         </div>

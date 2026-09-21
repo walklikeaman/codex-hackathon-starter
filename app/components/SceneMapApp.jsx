@@ -1835,6 +1835,9 @@ export default function SceneMapApp() {
     const byNorm = new Map(
       trailPlaces.map((place) => [normalizePlaceName(place.name), {
         id: place.id, name: place.name, lat: place.lat, lng: place.lng,
+        // Without these the walkability check had nothing to read and failed every stop.
+        precision: place.precision, osm_building_id: place.osm_building_id,
+        sentence: place.sentence,
       }]),
     );
     return trailStops(
@@ -1853,13 +1856,16 @@ export default function SceneMapApp() {
     // them to an arbitrary point that no scene happened at.
     const walkable = trailStopList.filter(isWalkableStop);
     if (walkable.length > 0) return walkable;
+    // The same rule for the fallback. It was applied to the story trail only, so a
+    // film's list of places walked the reader to "London" — the city's centroid.
     return trailPlaces
-      .filter((place) => place.role === "on_location")
+      .filter((place) => place.role === "on_location" && isWalkableStop(place))
       .map((place, index) => ({
         id: place.id,
         sequence_index: index + 1,
         place: place.name,
         position: [place.lat, place.lng],
+        sentence: place.sentence ?? null,
       }));
   }, [trailStopList, trailPlaces]);
 

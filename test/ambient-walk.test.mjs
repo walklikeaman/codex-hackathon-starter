@@ -226,3 +226,11 @@ test("walked past a place every 70 m, the guide tells one at a time and breathes
     assert.ok(starts[index] - starts[index - 1] >= 15_000 + QUIET_GAP_MS);
   }
 });
+
+test("a trail stop says its own film's sentence, and nothing when it has none", async () => {
+  const { trailStopText } = await import("../app/lib/ambient-walk.mjs");
+  assert.equal(trailStopText({ sentence: "Notting Hill was filmed at Portobello Road" }), "Notting Hill was filmed at Portobello Road.");
+  assert.equal(trailStopText({ sentence: "  " }), null);
+  assert.equal(trailStopText({}), null);
+  assert.equal(trailStopText(null), null);
+});

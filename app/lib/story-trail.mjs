@@ -125,10 +125,18 @@ export function normalizeTrail(parsed) {
 // they are kept and labelled as AREAS rather than dropped.
 const WALKABLE_PRECISION = new Set(["point", "building", "street"]);
 
+// The same three, as /api/work spells them. That route hands the client the BADGE
+// (precisionBadge in work-profile.mjs), not the column — and this check read only the
+// column, so every stop the client built failed it: the story trail could never be
+// walked, and walk mode always fell back to a list that included city centroids. Read
+// both spellings rather than rely on every caller remembering which one it holds.
+const WALKABLE_BADGES = new Set(["exact point", "building", "street"]);
+
 export function isWalkableStop(stop) {
   if (!stop) return false;
   if (stop.osm_building_id) return true;
-  return WALKABLE_PRECISION.has(String(stop.geocode_precision ?? "").toLowerCase());
+  if (WALKABLE_PRECISION.has(String(stop.geocode_precision ?? "").toLowerCase())) return true;
+  return WALKABLE_BADGES.has(String(stop.precision ?? "").toLowerCase());
 }
 
 export function trailStops(scenes, placeByNorm) {
@@ -155,7 +163,12 @@ export function trailStops(scenes, placeByNorm) {
       position: [lat, lng],
       spoiler_tier: scene.spoiler_tier,
       geocode_precision: place.geocode_precision ?? null,
+      precision: place.precision ?? null,
       osm_building_id: place.osm_building_id ?? null,
+      // The graph's own sentence for this work at this place — what the guide says on
+      // arrival. Carried from the place, never from the scene: a scene beat is a model's
+      // reading of the plot, a place sentence is a sourced fact.
+      sentence: place.sentence ?? null,
     });
   }
   return stops;
