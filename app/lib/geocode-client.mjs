@@ -22,6 +22,9 @@ import {
   QUERY_GAP_MS,
   retryPlan,
   WIKIDATA_SPARQL,
+  hintTownTheChainDoesNotName,
+  isFarFromHintTown,
+  FAR_FROM_HINT_KM,
 } from "./geocode-wikidata.mjs";
 import { normalizePlaceName } from "./place-dedup.mjs";
 import { USER_AGENT } from "./wikipedia-source.mjs";
@@ -147,8 +150,64 @@ export function createGeocoder({ fetchImpl = fetch, sleep = wait, onNote = () =>
     // registered, not where the camera stood, and preferring it would have shifted
     // sixty-one correct pins by up to fourteen kilometres.
     await refuseInheritedPoints(resolved);
+    await refuseFarFromHintTown(resolved, areas);
     return resolved;
   };
+
+  // One more question, asked only of winners whose hint names a town their own chain is
+  // silent about — see `isFarFromHintTown`. On the first 925 placed Wikipedia rows that is
+  // 48, about one in twenty, so most calls ask nothing. Fails OPEN like the check above: a
+  // town we could not look up is a check we did not make, not a reason to drop a pin.
+  async function refuseFarFromHintTown(resolved, areas) {
+    if (!areas?.get) return;
+    const towns = new Map();
+    for (const [name, decision] of resolved) {
+      if (!decision?.place) continue;
+      const area = areas.get(name);
+      const town = hintTownTheChainDoesNotName(decision.place, area);
+      if (town) towns.set(name, { town, area });
+    }
+    if (towns.size === 0) return;
+
+    const lookups = [...new Set([...towns.values()].map(({ town }) => town))];
+    const found = new Map();
+    // Towns are asked in the hint's own spelling, which is English in what the extractor
+    // writes; the per-name language map belongs to the names, not to their hints.
+    const batches = batched(lookups);
+    for (const [index, batch] of batches.entries()) {
+      const query = buildGeocodeQuery(batch);
+      if (!query) continue;
+      try {
+        const response = await fetchImpl(WIKIDATA_SPARQL, {
+          method: "POST",
+          headers: {
+            "User-Agent": USER_AGENT,
+            Accept: "application/sparql-results+json",
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams({ query }),
+        });
+        if (!response.ok) {
+          onNote(`hint-town check ${response.status} → skipped for ${towns.size} winner(s)`);
+          return;
+        }
+        const grouped = groupByName((await response.json().catch(() => null))?.results?.bindings);
+        for (const town of batch) found.set(town, grouped.get(normalizePlaceName(town)) ?? []);
+      } catch (failure) {
+        onNote(`hint-town check unreachable: ${failure?.message ?? "network error"}`);
+        return;
+      }
+      if (index < batches.length - 1) await sleep(QUERY_GAP_MS);
+    }
+
+    for (const [name, { town, area }] of towns) {
+      const decision = resolved.get(name);
+      if (decision?.place && isFarFromHintTown(decision.place, found.get(town), area)) {
+        onNote(`${decision.place.wikidata_id} is over ${FAR_FROM_HINT_KM} km from any ${town} its hint could mean — refused`);
+        resolved.set(name, { place: null, reason: "far_from_hint_town", candidates: decision.candidates ?? [] });
+      }
+    }
+  }
 
   // Fails OPEN. A verification query that cannot run is a check we did not make, and
   // silently deleting every coordinate because of a network hiccup would be a far worse

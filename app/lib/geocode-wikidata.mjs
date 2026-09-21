@@ -13,6 +13,7 @@
 // worse than writing none — so every candidate must prove it is a geographic thing and
 // must survive a same-name rival before it is accepted.
 
+import { haversineKm } from "./geo.mjs";
 import { finiteOrNull } from "./numbers.mjs";
 import { normalizePlaceName } from "./place-dedup.mjs";
 
@@ -433,6 +434,65 @@ export function contradictsArea(place, area, knownCountries = []) {
   // matching the widest of them is still the hint and the candidate talking about the same
   // part of the world.
   return !tokens.some((token) => [...words].some((word) => word === token || word.includes(token) || token.includes(word)));
+}
+
+// **When the chain says nothing about the town the hint names, measure instead.**
+//
+// "Clifton Village", hint "Bristol, England", resolved to Clifton in Nottingham: the chain
+// holds England and so does the hint, so `contradictsArea` finds them agreeing on the widest
+// word. Requiring the hint's MOST SPECIFIC word to appear in the chain was tried, and it
+// refused Wildwood Regional Park and 126 correct rows like it — Wildwood's P131 is Ventura
+// County, so "Thousand Oaks" is simply absent. A name match cannot tell a chain that is
+// SILENT about a town from one that names a DIFFERENT one.
+//
+// Distance can. Measured on 21.09 over the 48 placed Wikipedia rows whose hint town is
+// missing from their chain: a model writes the nearest big name it knows, so a right
+// coordinate sits close to it — Pinewood in Iver is 29 km from "London", Phillips Academy in
+// Andover 30 km from "Cambridge", Warner Hollywood 10 km from "Burbank". Every row under
+// 80 km was a correct coordinate with a loose hint. Above 150 km sat Clifton (188), Saint
+// Francisville placed in Illinois for "Louisiana" (309) and Milton Academy placed in
+// Wisconsin for "Cambridge, Massachusetts" (704) — three wrong pins — and one right one,
+// Alamo Village in Brackettville, whose hint says Greenville (579): the price, paid once.
+//
+// Three guards keep it honest. The town is looked for only where the chain is silent. A
+// town that is itself an AREA — "British Columbia", a state — has no point to measure from,
+// so it cannot refuse anything. And a town is taken only if it agrees with the REST of the
+// hint, because American town names repeat: a Cambridge sits in Wisconsin too, a few miles
+// from the wrong Milton Academy, and would have excused it.
+export const FAR_FROM_HINT_KM = 150;
+
+export function hintTownTheChainDoesNotName(place, area) {
+  if (!place || !hintNamesAnAdministrativeArea(area)) return null;
+  const parts = String(area).split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  const town = parts[0];
+  const key = normalizeAreaWord(town);
+  if (key.length <= 2) return null;
+  const words = [place.name, ...(place.chain ?? [])].map(normalizeAreaWord).filter((word) => word.length > 2);
+  if (words.some((word) => word === key || word.includes(key) || key.includes(word))) return null;
+  return town;
+}
+
+export function isFarFromHintTown(place, townCandidates, area, farKm = FAR_FROM_HINT_KM) {
+  const lat = finiteOrNull(place?.lat);
+  const lng = finiteOrNull(place?.lng);
+  if (lat === null || lng === null) return false;
+  const rest = String(area ?? "").split(",").slice(1).join(",").trim();
+  // AGREES, not merely "does not contradict". A town whose own chain is too thin to disagree
+  // with anything cannot vouch for anything either: measured, "Windsor, Buckinghamshire"
+  // (a wrong hint — Windsor is in Berkshire) excluded the right Windsor for contradicting
+  // Buckinghamshire, and a far Windsor with a one-line chain slipped in and refused Leavesden.
+  const usable = (Array.isArray(townCandidates) ? townCandidates : []).filter((town) =>
+    finiteOrNull(town?.lat) !== null && finiteOrNull(town?.lng) !== null
+    && !isAreaNotAPoint(town)
+    && chainIsInformative(town) !== null
+    && (!rest || !contradictsArea(town, rest)));
+  // No town to measure from is no evidence, and the silence stays what it was.
+  if (usable.length === 0) return false;
+  // geo.mjs takes [lat, lng] pairs. Handed objects it returns NaN, and NaN > farKm is false —
+  // a check that could never refuse anything, and would have looked like one that passed.
+  const nearest = Math.min(...usable.map((town) => haversineKm([lat, lng], [town.lat, town.lng])));
+  return Number.isFinite(nearest) && nearest > farKm;
 }
 
 export function chooseCandidate(candidates, { near = null, area = null } = {}) {

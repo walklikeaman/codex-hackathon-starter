@@ -24,6 +24,9 @@ import {
   isPlaceType,
   retryPlan,
   sparqlLiteral,
+  FAR_FROM_HINT_KM,
+  hintTownTheChainDoesNotName,
+  isFarFromHintTown,
 } from "../app/lib/geocode-wikidata.mjs";
 
 const at = (lat, lng, extra = {}) => ({ wikidata_id: "Q1", name: "X", lat, lng, ...extra });
@@ -493,6 +496,77 @@ test("a hint that is prose or an informal region is not an area", () => {
   assert.equal(hintNamesAnAdministrativeArea("Bristol, England"), true);
   const megeve = withChain("Megève", ["Haute-Savoie", "France"], "France");
   assert.equal(contradictsArea(megeve, "French Alps"), false);
+});
+
+// --- when the chain is silent about the town, distance decides --------------------------
+
+const placed = (name, lat, lng, chain, country) => ({ name, lat, lng, chain: new Set(chain), country });
+const town = (name, lat, lng, chain, country, types = ["city"]) => ({ name, lat, lng, chain: new Set(chain), country, types: new Set(types) });
+
+test("Clifton is 188 km from the Bristol its hint names, and is refused", () => {
+  const clifton = placed("Clifton Village", 52.909, -1.19, ["City of Nottingham", "Nottinghamshire", "England", "United Kingdom"], "United Kingdom");
+  assert.equal(hintTownTheChainDoesNotName(clifton, "Bristol, England"), "Bristol");
+  const bristol = town("Bristol", 51.4545, -2.5879, ["Bristol", "England", "United Kingdom"], "United Kingdom");
+  assert.equal(isFarFromHintTown(clifton, [bristol], "Bristol, England"), true);
+});
+
+test("a loose hint near a right coordinate is left alone", () => {
+  // Pinewood Studios is in Iver; the model wrote "London". 29 km — the nearest big name.
+  const pinewood = placed("Pinewood Studios", 51.5496, -0.5363, ["Iver", "Buckinghamshire", "England", "United Kingdom"], "United Kingdom");
+  const london = town("London", 51.5072, -0.1276, ["Greater London", "England", "United Kingdom"], "United Kingdom");
+  assert.equal(isFarFromHintTown(pinewood, [london], "London, England"), false);
+  // Wildwood, whose chain skips Thousand Oaks for Ventura County: 5 km.
+  const wildwood = placed("Wildwood Regional Park", 34.2227, -118.9011, ["Ventura County", "California", "United States"], "United States");
+  const thousandOaks = town("Thousand Oaks", 34.1706, -118.8376, ["Ventura County", "California", "United States"], "United States");
+  assert.equal(isFarFromHintTown(wildwood, [thousandOaks], "Thousand Oaks, California"), false);
+});
+
+test("a chain that already names the town is never measured", () => {
+  const matthew = placed("The Matthew", 51.449, -2.598, ["Bristol", "England", "United Kingdom"], "United Kingdom");
+  assert.equal(hintTownTheChainDoesNotName(matthew, "Bristol, United Kingdom"), null);
+  // A one-part hint has no town more specific than itself; contradictsArea already reads it.
+  assert.equal(hintTownTheChainDoesNotName(matthew, "Bristol"), null);
+  // Prose is not an area.
+  assert.equal(hintTownTheChainDoesNotName(matthew, "Location of the house, Bristol"), null);
+});
+
+test("a town that is itself a region cannot refuse anything", () => {
+  // North Shore Studios is in North Vancouver; the hint names the province. A province's
+  // centroid is 586 km away and means nothing.
+  const northShore = placed("North Shore Studios", 49.32, -123.07, ["North Vancouver", "Canada"], "Canada");
+  const province = town("British Columbia", 53.7, -127.6, ["Canada"], "Canada", ["province of Canada"]);
+  assert.equal(isFarFromHintTown(northShore, [province], "British Columbia, Canada"), false);
+});
+
+test("a town only counts if it agrees with the rest of the hint", () => {
+  // Milton Academy was placed in Wisconsin for "Cambridge, Massachusetts". There is a
+  // Cambridge in Wisconsin a few miles away; it disagrees with "Massachusetts", so it cannot
+  // excuse the pin. The Massachusetts one is 1,400 km off.
+  const milton = placed("Milton Academy", 42.78, -89.0, ["Milton", "Rock County", "Wisconsin", "United States"], "United States");
+  const cambridgeWI = town("Cambridge", 43.003, -89.017, ["Dane County", "Wisconsin", "United States"], "United States");
+  const cambridgeMA = town("Cambridge", 42.3736, -71.1097, ["Middlesex County", "Massachusetts", "United States"], "United States");
+  assert.equal(isFarFromHintTown(milton, [cambridgeWI], "Cambridge, Massachusetts"), false, "no agreeing town: no evidence");
+  assert.equal(isFarFromHintTown(milton, [cambridgeWI, cambridgeMA], "Cambridge, Massachusetts"), true);
+});
+
+test("a town too thin to agree with the hint cannot testify against a pin", () => {
+  // Leavesden Studios, hint "Windsor, Buckinghamshire" — a wrong hint: Windsor is in
+  // Berkshire. The right Windsor contradicts "Buckinghamshire" and is set aside; a far
+  // Windsor whose chain says only "United Kingdom" cannot agree with anything, so it cannot
+  // refuse anything. Measured live: without this, Leavesden was refused.
+  const leavesden = placed("Leavesden Film Studios", 51.6917, -0.4194,
+    ["Abbots Langley", "Three Rivers", "Hertfordshire", "England", "United Kingdom"], "United Kingdom");
+  const windsorBerkshire = town("Windsor", 51.4817, -0.6136,
+    ["Royal Borough of Windsor and Maidenhead", "Berkshire", "England", "United Kingdom"], "United Kingdom", ["town"]);
+  const thinWindsor = town("Windsor", 54.58, -5.95, ["United Kingdom"], "United Kingdom", ["human settlement"]);
+  assert.equal(isFarFromHintTown(leavesden, [windsorBerkshire, thinWindsor], "Windsor, Buckinghamshire"), false);
+});
+
+test("no town found is no evidence", () => {
+  const clifton = placed("Clifton Village", 52.909, -1.19, ["City of Nottingham", "England", "United Kingdom"], "United Kingdom");
+  assert.equal(isFarFromHintTown(clifton, [], "Bristol, England"), false);
+  assert.equal(isFarFromHintTown(clifton, undefined, "Bristol, England"), false);
+  assert.equal(FAR_FROM_HINT_KM, 150);
 });
 
 test("a hint sharing only a wide ancestor is NOT caught, and that is the known limit", () => {

@@ -460,9 +460,18 @@ and `work_creators` hold zero rows, and filling them is a source problem, not a 
    holds just as readily as a fan wiki does. Where the pointless rows actually are, by
    source (21.09, 01:40): `reelstreets` **7,650** · `movielocations` **3,163** ·
    `wikipedia` **934** · `fandom` **226** · `moviemaps` **30**.
-5. **Two known-wrong things, both small.** `Clifton Village, Bristol` still resolves to
-   Clifton in Nottingham — the hint and the chain agree on "England", and the fix that would
-   catch it refuses 127 correct rows ([[geocoding-cascade]]). And `manoir Playboy` finds
+5. ~~`Clifton Village, Bristol` resolves to Clifton in Nottingham~~ — **fixed 21.09, by
+   distance rather than by name.** Requiring the hint's town in the chain refused 127
+   correct rows, because a chain can be SILENT about a town (Wildwood → Ventura County) as
+   well as name a different one, and names cannot tell those apart. Distance can: a model
+   writes the nearest big name it knows, so a right pin sits near it (Pinewood 29 km from
+   "London"). Now, only where the chain is silent, the geocoder looks up the hint's town —
+   point-like, agreeing with the rest of the hint — and refuses a winner more than 150 km
+   from all of them. Replayed on all 925 placed Wikipedia rows: **5 refusals** — Clifton,
+   Milton Academy placed in Wisconsin, Saint Francisville placed in Illinois (3 real errors),
+   Gare de Saulieu whose own source disagrees with itself by 257 km, and Alamo Village, a
+   right pin under a wrong hint (the price). It applies to NEW geocoding; the three wrong
+   rows already in the queue are still there, with Q-ids that only echo the geocoder. And `manoir Playboy` finds
    nothing because Wikidata has no French label for it.
 
 ## Next, as of 19.08 — superseded by the list above, kept for the reasoning
@@ -524,6 +533,16 @@ as results, live-GPS buddy tracking, AI-generated "lore", and a 1–5 safety sco
   cannot be chosen without this. It is one question and it unblocks the whole feature.
 - **`isRoutable`**: an unconfirmed stop is currently routed with a warning rather than
   refused. Whether it should harden into a refusal is a product call, not a technical one.
+- **472 Wikipedia rows carry a Q-id that only echoes our own geocoder** (21.09). The
+  resolver run that morning asks Wikidata "what entity sits at this coordinate under this
+  name" — and for a Wikipedia row the coordinate CAME from that entity, picked by our
+  geocoder by name. 472 of the 476 Q-ids written equal `geocode_source_id` exactly. The
+  review counts a Q-id as `wikidata_entity`, an independent second signal, so these rows
+  become `verified` on one source plus our own lookup — and a wrong geocode such as Clifton
+  Village becomes a verified wrong pin. 468 are still `pending`. Two ways out: the review
+  stops counting `wikidata_entity` when it equals the row's own `geocode_source_id` (fixes
+  every future run too), or the 472 are cleared. Recommended: the first. Whoever runs
+  `review-submissions --write` next should read this first.
 - **Rotating `SUPABASE_SERVICE_ROLE_KEY`** (see above) — recommended, never confirmed.
 - **Russian merge-commit subjects on `main`** — fixing them rewrites history.
 
