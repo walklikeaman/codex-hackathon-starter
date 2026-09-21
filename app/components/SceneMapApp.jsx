@@ -2954,6 +2954,7 @@ export default function SceneMapApp() {
           stops={walkStops}
           onNextStopChange={setNextStopId}
           onNarrate={(stop) => setMapCenter(stop.position)}
+          onAmbientPlace={(place) => setMapCenter(place.position)}
         />
       </section>
 

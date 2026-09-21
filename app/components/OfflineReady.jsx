@@ -18,7 +18,22 @@ export default function OfflineReady() {
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return undefined;
 
+    // Not under `next dev`. The worker keeps /_next/static/* cache-first, which is right
+    // in production, where every chunk name carries a content hash — and wrong in
+    // development, where the names never change and the worker went on serving the
+    // component as it was before the edit (while building #190, a new button "was not
+    // there"). An already-installed worker is removed, so a browser that met one recovers
+    // without anybody knowing to clear it. `next start` is production and keeps it, which
+    // is how offline behaviour is tested locally.
+    const development = process.env.NODE_ENV !== "production";
+
     const register = () => {
+      if (development) {
+        navigator.serviceWorker.getRegistrations()
+          .then((registrations) => registrations.forEach((registration) => registration.unregister()))
+          .catch(() => {});
+        return;
+      }
       navigator.serviceWorker.register("/sw.js").catch((error) => {
         // A refused registration is not a reason to break the map — it is a reason to say
         // so once, in the console, and carry on online-only.

@@ -3072,6 +3072,10 @@ figcaption a {
   bottom: calc(22px + env(safe-area-inset-bottom));
   z-index: 1000;
   max-width: min(340px, calc(100vw - 28px));
+  /* Listening and "walk this trail" can both be offered; they stack, never overlap. */
+  display: grid;
+  gap: 8px;
+  justify-items: center;
 }
 
 .walk-start,
@@ -3097,6 +3101,18 @@ figcaption a {
 .walk-start:hover { border-color: var(--accent); color: var(--accent); }
 
 .walk-active { display: grid; gap: 6px; padding: 12px 14px; }
+
+/* What is being said about, in the pin's own language: a solid outline for a checked
+   place, a dashed one for a listing we have not checked. While listening nobody is
+   looking at the map, so the outline has to be written as well as drawn (#190). */
+.walk-active small.ambient-checked,
+.walk-active small.ambient-unchecked {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+.walk-active small.ambient-unchecked { border-style: dashed; color: var(--muted); border-color: var(--muted); }
 .walk-active small { color: var(--muted); font-size: 0.76rem; }
 
 .walk-row {

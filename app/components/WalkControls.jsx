@@ -22,12 +22,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Footprints, Play, Square, Volume2 } from "lucide-react";
 
+import AmbientGuide from "./AmbientGuide.jsx";
 import useWakeLock from "./useWakeLock.js";
 import { advanceTriggers, hasMovedEnough, isUsableFix, playbackState, UNLOCK_PROMPT } from "../lib/geo-trigger.mjs";
 import { nextStop, ROAD_SAFETY_REMINDER, walkBanner } from "../lib/walk-mode.mjs";
 
-export default function WalkControls({ stops, onNarrate, onNextStopChange }) {
+export default function WalkControls({ stops, onNarrate, onNextStopChange, onAmbientPlace }) {
   const [walking, setWalking] = useState(false);
+  // Listening and walking a trail are two voices; only one may run.
+  const [listening, setListening] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [position, setPosition] = useState(null);
   const [accuracyWarning, setAccuracyWarning] = useState(false);
@@ -80,11 +83,15 @@ export default function WalkControls({ stops, onNarrate, onNextStopChange }) {
 
   const state = playbackState({ walking, unlocked });
 
-  if (!stops?.length) return null;
+  // No trail is no longer no walk: listening needs nothing chosen first (#190).
+  const hasTrail = Boolean(stops?.length);
 
   return (
     <div className="walk-controls" role="region" aria-label="Walk mode">
-      {!walking ? (
+      {!walking && (
+        <AmbientGuide onPlace={onAmbientPlace} onListeningChange={setListening} />
+      )}
+      {!hasTrail || listening ? null : !walking ? (
         <button className="walk-start" type="button" onClick={() => setWalking(true)}>
           <Footprints size={16} />
           <span>Walk this trail</span>
