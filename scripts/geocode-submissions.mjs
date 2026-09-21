@@ -3,6 +3,7 @@
 //
 //   node scripts/geocode-submissions.mjs --kind movielocations --limit 500
 //   node scripts/geocode-submissions.mjs --kind reelstreets --limit 2000 --sql out.sql
+//   node scripts/geocode-submissions.mjs --kind wikipedia --limit 2000 --write
 //
 // 13,637 rows have no coordinate and **not one of them has ever been through a
 // geocoder**: every located row in the queue got its point from the source it was scraped
@@ -18,8 +19,17 @@
 // The middle number is the tempting one and it is the wrong one. Rules and the failures
 // that produced them: app/lib/place-name-head.mjs.
 //
-// SQL rather than a direct write, like the other scripts here: this machine holds the
-// anon key and not `SUPABASE_SERVICE_ROLE_KEY`, so writes go through the Supabase MCP.
+// `--sql` emits the UPDATEs instead of running them, which was the only shape available
+// while this machine held the anon key and writes had to go through the Supabase MCP. It
+// still is the right shape when somebody wants to read 12,000 coordinates before they land.
+// `--write` is the other half, and it refuses to run without a real service key rather than
+// sending PATCHes that anon silently cannot apply — a write that returns 200 and changes
+// nothing is the worst of the three outcomes.
+//
+// **The cache is the reason a direct write matters.** The pass is ~1,320 WDQS queries and
+// close to two hours; `--sql` remembers nothing until somebody applies the file, so an
+// interrupted run asks the whole thing again. Written as it goes, an interruption costs
+// only what it had not yet asked.
 
 import fs from "node:fs";
 import process from "node:process";
@@ -36,11 +46,23 @@ const flag = (name, fallback = null) => (args.includes(name) ? args[args.indexOf
 const kind = flag("--kind");
 const limit = Number(flag("--limit", "500"));
 const sqlPath = flag("--sql");
+const WRITE = args.includes("--write");
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 if (!url || !key) {
   console.error("Set NEXT_PUBLIC_SUPABASE_URL and a Supabase key in the environment.");
+  process.exit(1);
+}
+// Anon can read this queue and cannot change it. PostgREST answers a refused PATCH with
+// 200 and an empty result, so without this check `--write` would report success over
+// nothing at all.
+if (WRITE && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("--write needs SUPABASE_SERVICE_ROLE_KEY; the anon key cannot change the queue.");
+  process.exit(1);
+}
+if (WRITE && sqlPath) {
+  console.error("--write and --sql are two answers to the same question; pick one.");
   process.exit(1);
 }
 
@@ -105,34 +127,116 @@ async function readCache() {
   return cache;
 }
 
-// Written as SQL alongside the coordinates, because this machine has the anon key and the
-// cache is service-role-write like the rest of the graph.
-function cacheStatements(decisions) {
-  const rows = [];
+// **One description of a learned name, and two ways to deliver it.** This was a single
+// function that could only produce SQL. Splitting it is what lets `--write` and `--sql`
+// carry the same rows rather than two spellings of the same row that drift apart — and a
+// cache whose two writers disagreed would be worse than no cache, because the disagreement
+// would only show up as a coordinate nobody could explain.
+function cacheEntries(decisions) {
+  const entries = [];
   for (const [name, decision] of decisions) {
-    const hit = cacheRow(name, decision);
     const norm = normalizePlaceName(name);
     if (!norm) continue;
+    const hit = cacheRow(name, decision);
     // Only what an anchor needs: a coordinate and an id per candidate. The label and the
     // population are the chooser's business and it has already had its say.
     const anchors = (decision?.candidates ?? [])
       .filter(Boolean)
       .map((candidate) => ({ wikidata_id: candidate.wikidata_id, lat: candidate.lat, lng: candidate.lng }));
-    const anchorJson = anchors.length > 0 ? quote(JSON.stringify(anchors)) + "::jsonb" : "null";
-    rows.push(hit
-      ? `(${quote(norm)}, ${hit.lat}, ${hit.lng}, 'wikidata', ${quote(hit.source_id ?? "")}, ${quote(hit.license)}, ${quote(hit.match_reason)}, ${anchorJson})`
-      : `(${quote(norm)}, null, null, 'wikidata', null, null, ${quote(decision?.reason ?? "no_candidate")}, ${anchorJson})`);
+    entries.push({
+      query_norm: norm,
+      // A null coordinate is a real answer — "we asked, and there is nothing to find" —
+      // and two thirds of this corpus answers that way.
+      lat: hit ? hit.lat : null,
+      lng: hit ? hit.lng : null,
+      source: "wikidata",
+      source_id: hit ? (hit.source_id ?? "") : null,
+      license: hit ? hit.license : null,
+      match_reason: hit ? hit.match_reason : (decision?.reason ?? "no_candidate"),
+      candidates: anchors.length > 0 ? anchors : null,
+    });
   }
-  if (rows.length === 0) return [];
+  return entries;
+}
+
+function cacheStatements(entries) {
+  if (entries.length === 0) return [];
+  const value = (entry) => "("
+    + [
+      quote(entry.query_norm),
+      entry.lat === null ? "null" : entry.lat,
+      entry.lng === null ? "null" : entry.lng,
+      "'wikidata'",
+      entry.source_id === null ? "null" : quote(entry.source_id),
+      entry.license === null ? "null" : quote(entry.license),
+      quote(entry.match_reason),
+      entry.candidates ? `${quote(JSON.stringify(entry.candidates))}::jsonb` : "null",
+    ].join(", ") + ")";
   const statements = [];
-  for (let i = 0; i < rows.length; i += 500) {
+  for (let i = 0; i < entries.length; i += 500) {
     statements.push(
       "insert into geocode_cache (query_norm, lat, lng, source, source_id, license, match_reason, candidates) values\n  "
-      + rows.slice(i, i + 500).join(",\n  ")
+      + entries.slice(i, i + 500).map(value).join(",\n  ")
       + "\non conflict (query_norm) do nothing;",
     );
   }
   return statements;
+}
+
+// The provenance a stored coordinate owes, built once for both deliveries. `areaName` sits
+// on the accepted record rather than on the split — reading it off `entry` wrote "inside
+// undefined" into the provenance of 64 real coordinates. The points were right and the note
+// that says WHY they were kept was empty, which is the half that makes a stored coordinate
+// arguable rather than merely present. The strength of the check travels with it: "inside
+// London" and "inside one of eleven places called London" are different claims, and a
+// reader must be able to tell them apart without re-running anything.
+function updateFor({ row, head, entry, areaName, verdict }) {
+  const among = verdict.considered > 1 ? ` (1 of ${verdict.considered} of that name)` : "";
+  return {
+    id: row.id,
+    patch: {
+      lat: head.lat,
+      lng: head.lng,
+      geocode_source: "wikidata",
+      geocode_source_id: head.wikidata_id ?? head.id ?? "",
+      geocode_license: WIKIDATA_LICENSE.name,
+      geocode_reason: `head ${JSON.stringify(entry.head)} inside ${JSON.stringify(areaName)}${among}`,
+    },
+  };
+}
+
+// **A write that changes nothing must not read as success.** PostgREST answers a PATCH that
+// matched no row with 200 and an empty body, and RLS refuses the same way, so the count of
+// rows that came back is the only honest measure of what happened. `lat is null` stays in
+// the filter for the same reason it is in the SQL: a row somebody has placed since the
+// batch was read is not ours to overwrite.
+async function writeEverything(updates, entries) {
+  const auth = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
+  let remembered = 0;
+  for (let i = 0; i < entries.length; i += 500) {
+    const chunk = entries.slice(i, i + 500);
+    const response = await fetch(`${url}/rest/v1/geocode_cache?on_conflict=query_norm`, {
+      method: "POST",
+      headers: { ...auth, Prefer: "return=minimal,resolution=ignore-duplicates" },
+      body: JSON.stringify(chunk),
+    });
+    if (!response.ok) throw new Error(`cache write failed: ${response.status} ${await response.text()}`);
+    remembered += chunk.length;
+  }
+
+  let applied = 0;
+  const failures = [];
+  for (const { id, patch } of updates) {
+    const response = await fetch(
+      `${url}/rest/v1/location_submissions?id=eq.${encodeURIComponent(id)}&lat=is.null`,
+      { method: "PATCH", headers: { ...auth, Prefer: "return=representation" }, body: JSON.stringify(patch) },
+    );
+    if (!response.ok) { failures.push(`${id}: ${response.status} ${(await response.text()).slice(0, 120)}`); continue; }
+    const changed = await response.json();
+    if (Array.isArray(changed) && changed.length === 1) applied += 1;
+    else failures.push(`${id}: matched no row — placed by somebody else since this batch was read`);
+  }
+  return { remembered, applied, failures };
 }
 
 // Ask only what the cache does not already answer, and fold the two together.
@@ -276,11 +380,23 @@ for (const [reason, count] of Object.entries(tally).sort((a, b) => b[1] - a[1]))
 }
 console.log(`  accepted = ${(100 * tally.accepted / Math.max(rows.length, 1)).toFixed(1)}% of the batch`);
 
-if (!sqlPath) {
+const learned = cacheEntries(new Map([...areaResult.asked, ...headResult.asked]));
+
+if (WRITE) {
+  const updates = accepted.map(updateFor);
+  const { remembered, applied, failures } = await writeEverything(updates, learned);
+  console.log(`\nplaced ${applied} of ${updates.length} rows · remembered ${remembered} names`);
+  if (failures.length > 0) {
+    console.log(`  ${failures.length} did not apply:`);
+    for (const failure of failures.slice(0, 10)) console.log(`   ${failure}`);
+    // A partial write is not a success, and a run that reported one would be believed.
+    process.exitCode = 1;
+  }
+} else if (!sqlPath) {
   for (const { row, head, entry } of accepted.slice(0, 10)) {
     console.log(`   ✓ ${entry.head} < ${entry.areas.join(" < ")} -> ${head.lat.toFixed(4)},${head.lng.toFixed(4)}`);
   }
-  console.log("\nNothing written. Pass --sql <path> to emit the UPDATEs.");
+  console.log("\nNothing written. Pass --write to apply, or --sql <path> to emit the UPDATEs.");
 } else {
   const out = [
     "-- Coordinates for queue rows that had none, from Wikidata (CC0).",
@@ -292,28 +408,19 @@ if (!sqlPath) {
     "--   where geocode_source = 'wikidata';",
     "",
   ];
-  for (const { row, head, entry, areaName, verdict } of accepted) {
-    // `areaName` sits on the accepted record, not on the split — reading it off `entry`
-    // wrote "inside undefined" into the provenance of 64 real coordinates. The points were
-    // right and the note that says WHY they were kept was empty, which is the half that
-    // makes a stored coordinate arguable rather than merely present.
-    // The strength of the check travels with it: "inside London" and "inside one of
-    // eleven places called London" are different claims, and a reader must be able to
-    // tell them apart without re-running anything.
-    const among = verdict.considered > 1 ? ` (1 of ${verdict.considered} of that name)` : "";
-    const reason = `head ${JSON.stringify(entry.head)} inside ${JSON.stringify(areaName)}${among}`;
+  for (const accept of accepted) {
+    const { id, patch } = updateFor(accept);
     out.push(
-      `update location_submissions set lat = ${head.lat}, lng = ${head.lng}, `
-      + `geocode_source = 'wikidata', geocode_source_id = ${quote(head.wikidata_id ?? head.id ?? "")}, `
-      + `geocode_license = ${quote(WIKIDATA_LICENSE.name)}, geocode_reason = ${quote(reason)} `
-      + `where id = ${quote(row.id)} and lat is null;`,
+      `update location_submissions set lat = ${patch.lat}, lng = ${patch.lng}, `
+      + `geocode_source = 'wikidata', geocode_source_id = ${quote(patch.geocode_source_id)}, `
+      + `geocode_license = ${quote(patch.geocode_license)}, geocode_reason = ${quote(patch.geocode_reason)} `
+      + `where id = ${quote(id)} and lat is null;`,
     );
   }
-  const learned = new Map([...areaResult.asked, ...headResult.asked]);
   const cacheSql = cacheStatements(learned);
   if (cacheSql.length > 0) {
     out.unshift(
-      `-- ${learned.size} names learned this run, remembered so the next one does not ask again.`,
+      `-- ${learned.length} names learned this run, remembered so the next one does not ask again.`,
       ...cacheSql,
       "",
     );
