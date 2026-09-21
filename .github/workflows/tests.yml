@@ -1,0 +1,38 @@
+# The tests, on every push and every pull request.
+#
+# They have always run — locally, by whoever remembered. #198 asked for a budget "checked
+# in CI", and the honest reading of that was that nothing here was checked in CI at all:
+# the only two workflows deploy. A budget nothing enforces is a comment.
+#
+# It reads no secrets and touches nothing outside the checkout, because every test in
+# test/*.test.mjs is offline by construction — the network lives in scripts/, which this
+# does not run.
+
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test

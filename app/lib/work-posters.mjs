@@ -13,8 +13,11 @@
 // Posters are studio art served by TMDB under their API terms — never scraped from
 // IMDb — and image.tmdb.org needs no key, so only the path is stored.
 
+import { sizesForSurface } from "./image-budget.mjs";
 import { POSTER_SIZES } from "./work-artwork.mjs";
-import { parseTmdbMovieId, tmdbImageUrl } from "./tmdb-images.mjs";
+import {
+  parseTmdbMovieId, tmdbImageUrl, tmdbSrcSetForSurface, tmdbUrlForSurface,
+} from "./tmdb-images.mjs";
 
 // TMDB uses different endpoints for films and series, and the same integer can be a
 // valid id in both. Keying by kind keeps "movie 1399" and "tv 1399" apart.
@@ -50,12 +53,23 @@ export function parsePosterQuery(searchParams) {
   return wanted;
 }
 
-// Both sizes, because the chip wants a thumbnail and the card wants a larger one, and
-// re-deriving the URL on the client would mean shipping the base URL and size rules there.
+// What the chip needs to draw one poster, decided here rather than on the client: the
+// client would otherwise have to ship the base URL and the size rules to re-derive it.
+//
+// The chip's tile is 28 CSS px in the desktop grid and about 84 in the five-column
+// scroller a phone gets, so it is the one surface in the product that genuinely needs
+// two files offered (#198). It used to ship w185 to both — right for the phone, 14 kB
+// where a desktop needs 5.
 export function posterEntry(posterPath) {
-  const thumb = tmdbImageUrl(posterPath, POSTER_SIZES.thumb);
+  const thumb = tmdbUrlForSurface(posterPath, "filmChip");
   const card = tmdbImageUrl(posterPath, POSTER_SIZES.card);
-  return thumb && card ? { thumb, card } : null;
+  if (!thumb || !card) return null;
+  return {
+    thumb,
+    thumb_srcset: tmdbSrcSetForSurface(posterPath, "filmChip"),
+    thumb_sizes: sizesForSurface("filmChip"),
+    card,
+  };
 }
 
 // Rows from our own `works` table → the response shape. Rows without a poster are

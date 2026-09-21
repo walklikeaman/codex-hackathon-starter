@@ -240,22 +240,34 @@ test("films and series are looked up together in one request", async () => {
 test("one slow lookup cannot hold back posters we already have", async () => {
   // The response waits for the slowest title, so an unresponsive TMDB would delay
   // artwork sitting in our own table. The slow one loses its poster, not everyone.
-  const { handler } = handlerWith({
-    rows: [{ kind: "film", tmdb_id: "509", poster_path: "/instant.jpg" }],
-    timeoutMs: 20,
-    fetchImpl: (url, init) => new Promise((_, reject) => {
-      init.signal.addEventListener("abort", () => {
-        const error = new Error("timed out");
-        error.name = "TimeoutError";
-        reject(error);
-      });
-    }),
-  });
-  const body = await (await handler(request("film=509,10528"))).json();
+  //
+  // The interval is not decoration. The only thing pending in this test is the route's
+  // own `AbortSignal.timeout`, whose timer is UNREF'd — so under Node 22 the test runner
+  // decides the event loop has resolved and cancels the test before the abort fires
+  // ("Promise resolution is still pending but the event loop has already resolved").
+  // Nothing is wrong with the route: in a running server there is always other work
+  // holding the loop open. Here there is not, so the test provides it.
+  const keepLoopAlive = setInterval(() => {}, 5);
+  try {
+    const { handler } = handlerWith({
+      rows: [{ kind: "film", tmdb_id: "509", poster_path: "/instant.jpg" }],
+      timeoutMs: 20,
+      fetchImpl: (url, init) => new Promise((_, reject) => {
+        init.signal.addEventListener("abort", () => {
+          const error = new Error("timed out");
+          error.name = "TimeoutError";
+          reject(error);
+        });
+      }),
+    });
+    const body = await (await handler(request("film=509,10528"))).json();
 
-  assert.match(body.posters["film:509"].thumb, /\/instant\.jpg$/);
-  assert.equal(body.posters["film:10528"], undefined);
-  assert.equal(body.unresolved.timeout, 1);
+    assert.match(body.posters["film:509"].thumb, /\/instant\.jpg$/);
+    assert.equal(body.posters["film:10528"], undefined);
+    assert.equal(body.unresolved.timeout, 1);
+  } finally {
+    clearInterval(keepLoopAlive);
+  }
 });
 
 test("every TMDB request carries an abort signal", async () => {

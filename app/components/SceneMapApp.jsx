@@ -73,6 +73,7 @@ import { libraryEntryFor, libraryRating, mergeLibraries, parseMediaCsv, upgradeL
 import { MEDIA_SOURCES, mediaSource, mediaSourceLabel } from "../lib/media-sources.mjs";
 import { citySlugFromName, mapUrlQuery, readMapUrl } from "../lib/map-url.mjs";
 import { workPath } from "../lib/work-url.mjs";
+import { commonsSrcSetForSurface, sizesForSurface } from "../lib/image-budget.mjs";
 import {
   DEFAULT_VIEW_MODE,
   VIEW_MODES,
@@ -339,7 +340,7 @@ const fallbackLocations = [
     description: "William walks through the changing seasons of Notting Hill, turning a street market into the film's emotional timeline.",
     position: [51.5156, -0.2057],
     backdrop: null,
-    now: "https://images.unsplash.com/photo-1555085634-25c3c9c10b6b?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1555085634-25c3c9c10b6b?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "blue-door",
@@ -350,7 +351,7 @@ const fallbackLocations = [
     description: "The private home behind the blue door anchors the romance in a real London neighborhood.",
     position: [51.5174, -0.1993],
     backdrop: null,
-    now: "https://images.unsplash.com/photo-1578269174936-2709b6aeb913?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1578269174936-2709b6aeb913?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "mi6",
@@ -361,7 +362,7 @@ const fallbackLocations = [
     description: "Bond's world is framed by the real MI6 headquarters on the river, one of modern spy cinema's clearest London signals.",
     position: [51.4874, -0.1247],
     backdrop: null,
-    now: "https://images.unsplash.com/photo-1529655683826-aba9b3e77383?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1529655683826-aba9b3e77383?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "national-gallery",
@@ -372,7 +373,7 @@ const fallbackLocations = [
     description: "Bond and Q meet in front of Turner's painting, setting the old-versus-new theme in a public landmark.",
     position: [51.5089, -0.1283],
     backdrop: null,
-    now: "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "kings-cross",
@@ -383,7 +384,7 @@ const fallbackLocations = [
     description: "The gateway to Hogwarts turns a busy railway station into a pilgrimage point for fans.",
     position: [51.532, -0.1233],
     backdrop: null,
-    now: "https://images.unsplash.com/photo-1590253230532-a67f6bc61c9e?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1590253230532-a67f6bc61c9e?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "leadenhall",
@@ -394,7 +395,7 @@ const fallbackLocations = [
     description: "Victorian arches stand in for the magical shopping street hidden inside ordinary London.",
     position: [51.5126, -0.0834],
     backdrop: null,
-    now: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1486299267070-83823f5448dd?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "st-pauls",
@@ -405,7 +406,7 @@ const fallbackLocations = [
     description: "The cathedral and surrounding streets sell the film's smoky, industrial version of London.",
     position: [51.5138, -0.0984],
     backdrop: null,
-    now: "https://images.unsplash.com/photo-1520986606214-8b456906c813?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1520986606214-8b456906c813?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "parliament",
@@ -416,7 +417,7 @@ const fallbackLocations = [
     description: "The detective story borrows Westminster's silhouette to make the conspiracy feel national.",
     position: [51.4995, -0.1248],
     backdrop: null,
-    now: "https://images.unsplash.com/photo-1496307653780-42ee777d4833?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1496307653780-42ee777d4833?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "south-bank",
@@ -427,7 +428,7 @@ const fallbackLocations = [
     description: "The ensemble romance uses the Thames walk to make separate lives feel connected by the same city.",
     position: [51.5066, -0.1162],
     backdrop: null,
-    now: "https://images.unsplash.com/photo-1505761671935-60b3a7427bad?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1505761671935-60b3a7427bad?auto=format&fit=crop&w=800&q=80",
   },
   {
     id: "somerset-house",
@@ -438,7 +439,7 @@ const fallbackLocations = [
     description: "A classic central London courtyard gives the film its polished winter-city texture.",
     position: [51.5111, -0.1171],
     backdrop: null,
-    now: "https://images.unsplash.com/photo-1577048982768-5cb3e7ddfa23?auto=format&fit=crop&w=1200&q=80",
+    now: "https://images.unsplash.com/photo-1577048982768-5cb3e7ddfa23?auto=format&fit=crop&w=800&q=80",
   },
 ].map((location) => ({ ...location, kind: "film", backdropVerified: false }));
 
@@ -3344,6 +3345,11 @@ export default function SceneMapApp() {
                       className="poster-tile poster-tile-art"
                       loading="lazy"
                       src={poster.thumb}
+                      // 28 px here, ~84 in the phone's scroller. Without `sizes` the
+                      // browser assumes the full viewport and takes the larger file on
+                      // every screen, which is the overspend wearing a srcset (#198).
+                      srcSet={poster.thumb_srcset ?? undefined}
+                      sizes={poster.thumb_srcset ? poster.thumb_sizes : undefined}
                       onError={() => setBrokenImages((current) => new Set(current).add(poster.thumb))}
                     />
                   ) : (
@@ -4084,7 +4090,16 @@ export default function SceneMapApp() {
               </figure>
               <figure>
                 {activeLocation.now ? (
-                  <img src={activeLocation.now} alt={`${activeLocation.place} today`} />
+                  <img
+                    src={activeLocation.now}
+                    alt={`${activeLocation.place} today`}
+                    // Half a 430 px sheet on a desktop, the whole sheet on a phone. A
+                    // Special:FilePath URL renders on demand, so the one URL stored on
+                    // the row can still offer both (#198).
+                    srcSet={commonsSrcSetForSurface(activeLocation.now, "placePhoto") ?? undefined}
+                    sizes={sizesForSurface("placePhoto")}
+                    loading="lazy"
+                  />
                 ) : (
                   <div className="image-placeholder">Place photo unavailable</div>
                 )}
@@ -4108,6 +4123,7 @@ export default function SceneMapApp() {
                   {activeFilmFrames.slice(1).filter((frame) => !brokenImages.has(frame.url)).map((frame) => (
                     <figure key={frame.url}>
                       <img
+                        loading="lazy"
                         src={frame.url}
                         alt={`Candidate frame from ${activeLocation.film} associated with ${frame.locationName}`}
                         onError={() => markImageBroken(frame.url)}

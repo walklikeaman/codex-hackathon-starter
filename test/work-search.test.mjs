@@ -69,7 +69,8 @@ test("formatSuggestions shapes a row for the dropdown", () => {
   assert.equal(row.kind_label, "Film");
   assert.equal(row.year, 2012);
   assert.equal(row.place_count, 16);
-  assert.equal(row.poster_thumb_url, "https://image.tmdb.org/t/p/w185/abc.jpg");
+  // 34 px in the dropdown, so w92 — not the w185 every poster used to get (#198).
+  assert.equal(row.poster_thumb_url, "https://image.tmdb.org/t/p/w92/abc.jpg");
   assert.deepEqual(row.match, { start: 0, end: 3 });
 });
 

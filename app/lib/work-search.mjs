@@ -6,7 +6,7 @@
 // normalising separately on each side is how the two quietly drift apart.
 
 import { normalizeWorkTitle } from "./content-graph.mjs";
-import { posterUrl, POSTER_SIZES } from "./work-artwork.mjs";
+import { posterUrlFor } from "./work-artwork.mjs";
 import { workPath } from "./work-url.mjs";
 
 export const MIN_QUERY_LENGTH = 1;
@@ -79,7 +79,8 @@ export function formatSuggestions(rows, normalizedQuery) {
     kind_label: KIND_LABELS[row.kind] ?? row.kind,
     year: Number.isInteger(row.year) ? row.year : null,
     place_count: row.place_count ?? 0,
-    poster_thumb_url: posterUrl(row.poster_path, POSTER_SIZES.thumb),
+    // 34 px in the dropdown (.search-suggestion img), the same on every screen.
+    poster_thumb_url: posterUrlFor(row.poster_path, "searchSuggestion"),
     // Where the film lives as a page. Carried here rather than rebuilt in the dropdown
     // so one function decides what a work's URL is — the slug is decorative and the
     // parser proves it, but only while every producer agrees on the shape.

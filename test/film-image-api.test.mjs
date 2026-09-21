@@ -262,9 +262,11 @@ test("film image API returns up to three distinct described frames", async () =>
   assert.equal(payload.frames.length, 2);
   assert.deepEqual(
     payload.frames.map((frame) => frame.image_url),
+    // The first frame is the card's backdrop and the rest are 180 px strip thumbnails,
+    // so they are not the same size (#198).
     [
       "https://image.tmdb.org/t/p/w780/matching.jpg",
-      "https://image.tmdb.org/t/p/w780/generic.jpg",
+      "https://image.tmdb.org/t/p/w400/generic.jpg",
     ],
   );
   assert.equal(payload.image_url, payload.frames[0].image_url);

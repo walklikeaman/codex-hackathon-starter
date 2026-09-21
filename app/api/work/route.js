@@ -16,8 +16,8 @@ import {
   sourceLinks,
 } from "../../lib/work-profile.mjs";
 import { selectWorkCandidates } from "../../lib/submission-places.mjs";
-import { posterUrl, POSTER_SIZES } from "../../lib/work-artwork.mjs";
-import { selectTmdbBackdrops, tmdbImageUrl } from "../../lib/tmdb-images.mjs";
+import { posterUrlFor, POSTER_SIZES } from "../../lib/work-artwork.mjs";
+import { selectTmdbBackdrops, tmdbImageUrl, tmdbUrlForSurface } from "../../lib/tmdb-images.mjs";
 
 export const runtime = "nodejs";
 
@@ -176,7 +176,10 @@ async function stillsFromTmdb({ kind, tmdbId }, { env, fetchImpl, timeoutMs, log
         const payload = await response.json();
         return selectTmdbBackdrops(textlessBackdrops(payload?.backdrops), MAX_PROFILE_STILLS)
           .map((image) => ({
-            url: tmdbImageUrl(image.file_path, "w780"),
+            // The grid column never exceeds ~190 CSS px on either surface that renders
+            // it, not 780 (#198). `full` is the link the caption offers, not something
+            // the grid loads.
+            url: tmdbUrlForSurface(image.file_path, "workStill"),
             full: tmdbImageUrl(image.file_path, "original"),
             width: image.width ?? null,
             height: image.height ?? null,
@@ -252,7 +255,7 @@ export function createWorkProfileHandler({
     const stills = classified.length > 0
       ? verified
         .map((row) => ({
-          url: tmdbImageUrl(row.file_path, "w780"),
+          url: tmdbUrlForSurface(row.file_path, "workStill"),
           full: tmdbImageUrl(row.file_path, "original"),
           width: row.width ?? null,
           height: row.height ?? null,
@@ -274,7 +277,8 @@ export function createWorkProfileHandler({
         ? {
           ...place,
           scene_frame: {
-            url: tmdbImageUrl(frame.file_path, "w780"),
+            // .place-scene-frame is 84x47, 64x36 on a phone (#198).
+            url: tmdbUrlForSurface(frame.file_path, "placeSceneFrame"),
             full: tmdbImageUrl(frame.file_path, "original"),
             evidence: frame.evidence,
           },
@@ -293,7 +297,8 @@ export function createWorkProfileHandler({
         tmdb_id: stillsKey.tmdbId,
         imdb_id: work?.imdb_id ?? null,
         wikidata_id: work?.wikidata_id ?? null,
-        poster: posterUrl(work?.poster_path, POSTER_SIZES.card),
+        // .work-profile-poster is 76 px wide, 56 on a phone (#198).
+        poster: posterUrlFor(work?.poster_path, "workProfilePoster"),
         in_graph: Boolean(work),
       },
       links: sourceLinks({ ...work, kind: stillsKey.kind, tmdb_id: stillsKey.tmdbId }),

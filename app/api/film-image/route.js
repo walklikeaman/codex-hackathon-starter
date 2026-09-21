@@ -5,6 +5,7 @@ import {
   parseTmdbMovieId,
   selectTmdbBackdrops,
   tmdbImageUrl,
+  tmdbUrlForSurface,
 } from "../../lib/tmdb-images.mjs";
 import {
   acceptedSceneImageMatches,
@@ -154,9 +155,13 @@ export function createFilmImageHandler({
 
       const payload = await tmdbResponse.json();
       const candidates = selectTmdbBackdrops(payload.backdrops, MAX_TMDB_CANDIDATES);
-      const candidateImageUrls = candidates
-        .map((candidate) => tmdbImageUrl(candidate.file_path))
-        .filter(Boolean);
+      // w780 is the size the VERIFIER sees. The reader is served something smaller
+      // below; a model judging whether a frame shows a particular street should not be
+      // handed the thumbnail the card renders.
+      const candidatePaths = candidates
+        .filter((candidate) => tmdbImageUrl(candidate.file_path))
+        .map((candidate) => candidate.file_path);
+      const candidateImageUrls = candidatePaths.map((path) => tmdbImageUrl(path));
       const sourceUrl = `https://www.themoviedb.org/movie/${tmdbId}/images/backdrops`;
 
       if (!candidateImageUrls.length) {
@@ -220,9 +225,8 @@ export function createFilmImageHandler({
         );
       }
 
-      const shortlistedImageUrls = acceptedMatches.map(
-        (match) => candidateImageUrls[match.candidateIndex],
-      );
+      const shortlistedPaths = acceptedMatches.map((match) => candidatePaths[match.candidateIndex]);
+      const shortlistedImageUrls = shortlistedPaths.map((path) => tmdbImageUrl(path));
       const verificationResponse = await openai.responses.parse(
         {
           model: env.OPENAI_VISION_MODEL || "gpt-5-nano",
@@ -274,8 +278,14 @@ export function createFilmImageHandler({
         );
       }
 
-      const frames = verifiedMatches.map((match) => ({
-        image_url: shortlistedImageUrls[match.candidateIndex],
+      // The first frame is the card's backdrop, behind a gradient, across a sheet up to
+      // 836 px wide; the rest are 180 px thumbnails in a horizontal strip. Sending one
+      // size for both meant every strip thumbnail cost 58 kB to paint 180 px (#198).
+      const frames = verifiedMatches.map((match, index) => ({
+        image_url: tmdbUrlForSurface(
+          shortlistedPaths[match.candidateIndex],
+          index === 0 ? "sheetHero" : "galleryFrame",
+        ),
         source_url: sourceUrl,
         location_name: sceneContext.place,
         location_type: studioLocation ? "studio" : match.locationType,
