@@ -42,7 +42,7 @@ const client = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVI
 });
 
 const COLUMNS = "id, work_id, place_name, lat, lng, source_kind, source_url, source_sentence,"
-  + " status, status_reason, wikidata_id, corroborated_by, place_id";
+  + " status, status_reason, wikidata_id, corroborated_by, place_id, geocode_source, geocode_source_id";
 
 async function readVerified() {
   const rows = [];

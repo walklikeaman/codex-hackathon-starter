@@ -533,16 +533,21 @@ as results, live-GPS buddy tracking, AI-generated "lore", and a 1–5 safety sco
   cannot be chosen without this. It is one question and it unblocks the whole feature.
 - **`isRoutable`**: an unconfirmed stop is currently routed with a warning rather than
   refused. Whether it should harden into a refusal is a product call, not a technical one.
-- **472 Wikipedia rows carry a Q-id that only echoes our own geocoder** (21.09). The
-  resolver run that morning asks Wikidata "what entity sits at this coordinate under this
-  name" — and for a Wikipedia row the coordinate CAME from that entity, picked by our
-  geocoder by name. 472 of the 476 Q-ids written equal `geocode_source_id` exactly. The
-  review counts a Q-id as `wikidata_entity`, an independent second signal, so these rows
-  become `verified` on one source plus our own lookup — and a wrong geocode such as Clifton
-  Village becomes a verified wrong pin. 468 are still `pending`. Two ways out: the review
-  stops counting `wikidata_entity` when it equals the row's own `geocode_source_id` (fixes
-  every future run too), or the 472 are cleared. Recommended: the first. Whoever runs
-  `review-submissions --write` next should read this first.
+- ~~**472 Wikipedia rows carry a Q-id that only echoes our own geocoder**~~ — **decided and
+  done 21.09: the review no longer counts it** (`echoesItsOwnGeocode` in
+  `submission-review.mjs`; both scripts now read `geocode_source` and `geocode_source_id`,
+  without which the rule cannot see an echo and silently counts it). Across the queue there
+  were 530 such rows, not 472 — 57 are MovieMaps rows our geocoder placed earlier and the
+  resolver later visited. Measured: **473 pending rows that the next `--write` would have
+  verified now stay pending**, Clifton Village among them; 12 already verified keep it on a
+  real second signal.
+- **41 places on the map stand only on that echo.** They were verified and promoted before
+  the rule existed, and `review-submissions --write` writes only `verified` and `rejected`,
+  so it will not take them back. Read by eye they are almost all right — Battersea Power
+  Station for Children of Men, Eastern State Penitentiary for Twelve Monkeys, the Millennium
+  Biltmore for Ghostbusters — and under-evidenced by this project's own two-signal standard.
+  Demoting them removes true pins from the map for a procedural reason; leaving them keeps
+  41 facts the rules would not grant today. The owner's call; nothing has been changed.
 - **Rotating `SUPABASE_SERVICE_ROLE_KEY`** (see above) — recommended, never confirmed.
 - **Russian merge-commit subjects on `main`** — fixing them rewrites history.
 

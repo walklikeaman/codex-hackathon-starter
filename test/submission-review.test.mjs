@@ -6,6 +6,7 @@ import {
   STATUS,
   blocker,
   disqualification,
+  echoesItsOwnGeocode,
   independentSources,
   reviewSubmission,
   statesSomething,
@@ -193,6 +194,48 @@ test("a Q-id plus a statement the source made verifies", () => {
   }));
   assert.equal(verdict.status, STATUS.verified);
   assert.deepEqual(verdict.signals, ["wikidata_entity", "cited_source"]);
+});
+
+test("a Q-id that only echoes our own geocode is not a second source", () => {
+  // Clifton Village, 21.09: our geocoder placed it in Nottingham for "Bristol" by looking
+  // the name up in Wikidata; the resolver then asked what sat at that point under that name
+  // and got the same entity back. 472 of 476 Wikipedia Q-ids written that day did exactly
+  // this. With it counted, one cited sentence became `verified`.
+  const echoed = row({
+    place_name: "Clifton Village",
+    source_kind: "wikipedia",
+    source_url: "https://en.wikipedia.org/w/index.php?oldid=1",
+    source_sentence: "Scenes were shot in Clifton Village.",
+    geocode_source: "wikidata",
+    geocode_source_id: "Q5133339",
+    wikidata_id: "Q5133339",
+  });
+  assert.equal(echoesItsOwnGeocode(echoed), true);
+  assert.ok(!submissionSignals(echoed).includes("wikidata_entity"));
+  assert.equal(reviewSubmission(echoed).status, STATUS.pending);
+  assert.equal(reviewSubmission(echoed).reason, "insufficient:cited_source");
+});
+
+test("a Q-id found independently of the coordinate still counts", () => {
+  // The coordinate came from the scraper, or from a different entity: then asking what sits
+  // there IS a second look.
+  const scraped = row({ wikidata_id: "Q207149", geocode_source: "moviemaps", geocode_source_id: "4d1" });
+  assert.equal(echoesItsOwnGeocode(scraped), false);
+  assert.ok(submissionSignals(scraped).includes("wikidata_entity"));
+  const different = row({ wikidata_id: "Q207149", geocode_source: "wikidata", geocode_source_id: "Q99" });
+  assert.equal(echoesItsOwnGeocode(different), false);
+  assert.ok(submissionSignals(different).includes("wikidata_entity"));
+});
+
+test("an echo with a real second signal still verifies on that signal", () => {
+  const corroborated = row({
+    geocode_source: "wikidata", geocode_source_id: "Q207149", wikidata_id: "Q207149",
+    source_sentence: "The chase was filmed at Alnwick Castle over three nights.",
+    corroborated_by: [{ source_kind: "reelstreets", submission_id: "x", place_name: "Alnwick Castle", distance_m: 30, gave_coordinate: true }],
+  });
+  const verdict = reviewSubmission(corroborated);
+  assert.equal(verdict.status, STATUS.verified);
+  assert.ok(!verdict.signals.includes("wikidata_entity"));
 });
 
 test("a Q-id plus corroboration from another site verifies", () => {
