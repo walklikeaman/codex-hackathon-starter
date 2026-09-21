@@ -120,10 +120,10 @@ async function liveMap() {
   const photos = rows.map((row) => row.commons_image).filter(Boolean);
   const unbounded = photos.filter((url) => !/[?&]width=\d+/.test(url));
   console.log(`  ${rows.length} places, ${photos.length} with a photo`);
-  console.log(
-    `  ${unbounded.length} of them carry NO width — each one is the full original upload`
-    + `${unbounded.length ? "  ← this is the #198 regression, and it is back" : ""}`,
-  );
+  console.log(unbounded.length
+    ? `  ${unbounded.length} carry NO width — each one is the full original upload`
+      + "  ← this is the #198 regression, and it is back"
+    : "  every one of them carries a width");
 
   const measured = await meanSize(photos.slice(0, 10).map((url) => url.replace(/^http:\/\//, "https://")));
   if (measured) {
@@ -169,6 +169,13 @@ function javascript() {
   const manifestPath = path.join(process.cwd(), ".next", "build-manifest.json");
   if (!fs.existsSync(manifestPath)) {
     console.log("  no .next here — run `npm run build` first");
+    return;
+  }
+  // `npm run dev` writes a .next too, and its chunks are unminified with the whole HMR
+  // client in them — measuring those would report a number four times the truth and
+  // blame it on the product. A production build writes BUILD_ID; a dev one does not.
+  if (!fs.existsSync(path.join(process.cwd(), ".next", "BUILD_ID"))) {
+    console.log("  this .next is a dev build — run `npm run build` to measure what ships");
     return;
   }
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
