@@ -521,8 +521,15 @@ as results, live-GPS buddy tracking, AI-generated "lore", and a 1–5 safety sco
 
 - **Coverage is thin by nature.** 78.7% of works in the queue have fewer than five places;
   39.8% have exactly one. Live sources add places to about two thirds of them.
-- The inverted search returns some **non-places with coordinates** — "Eurovision Young
-  Musicians 2018" for Harry Potter in Edinburgh.
+- ~~The inverted search returns some **non-places with coordinates**~~ — **fixed 21.09.**
+  "Eurovision Young Musicians 2018" was still a pin for Harry Potter in Edinburgh, 1.4 km
+  from the centre, carrying the coordinate of the hall the contest was held in. The page's
+  short description decides now, by its HEAD noun — "EDITION of the … contest", "animation
+  COMPANY" — rather than any word in it, because "theatre, home of the Royal Shakespeare
+  Company" is a building. **Measured first on 317 live candidates across 40 work-and-city
+  pairs: it refuses exactly two**, Eurovision and Framestore (a VFX company pinned on its
+  office), and nothing else. The problem was rarer than this line made it sound: almost
+  every "unknown precision" candidate is a real place whose description is an address.
 - ~~**A city row lists the same venue twice**~~ — **fixed 21.09, in the sentence rather than
   the query.** Measured on every live city page first: **113 of 2,701 lines showed one venue
   twice**; replayed through the fix, **1** does. And the note that stood here was wrong about

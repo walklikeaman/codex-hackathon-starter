@@ -6,6 +6,7 @@ import {
   buildInvertedSearch,
   buildSearchUrl,
   candidatesFromSearch,
+  describesSomethingElse,
   escapeInsourceRegex,
   isSearchableEntity,
   MAX_ENTITIES_PER_QUERY,
@@ -216,6 +217,54 @@ test("a page without one is dropped rather than half-placed", () => {
 
   assert.deepEqual(found, []);
   assert.deepEqual(candidatesFromSearch(null), []);
+});
+
+// --- a coordinate is not a place ------------------------------------------------------
+
+test("a contest held in a hall is not the hall", () => {
+  // Harry Potter in Edinburgh, live, 21.09: drawn as a pin 1.4 km from the centre.
+  const found = candidatesFromSearch({ query: { pages: [
+    {
+      pageid: 54469613,
+      title: "Eurovision Young Musicians 2018",
+      coordinates: [{ lat: 55.9466, lon: -3.2066 }],
+      terms: { description: ["nineteenth edition of the Eurovision Young Musicians contest"] },
+    },
+    {
+      pageid: 26556091,
+      title: "Greyfriars Kirkyard",
+      coordinates: [{ lat: 55.9469, lon: -3.1925 }],
+      terms: { description: ["graveyard surrounding Greyfriars Kirk in Edinburgh, Scotland, UK"] },
+    },
+  ] } });
+  assert.deepEqual(found.map((candidate) => candidate.title), ["Greyfriars Kirkyard"]);
+});
+
+test("what a description says it is decides, not a word it happens to contain", () => {
+  // The two refusals from 317 live candidates.
+  assert.equal(describesSomethingElse("nineteenth edition of the Eurovision Young Musicians contest"), true);
+  assert.equal(describesSomethingElse("British visual effects and animation company"), true);
+  assert.equal(describesSomethingElse("2019 film"), true);
+
+  // Places, including ones whose descriptions carry a refused word after the head.
+  assert.equal(describesSomethingElse("headquarters of the Metropolitan Police Service"), false);
+  assert.equal(describesSomethingElse("theatre in Stratford, home of the Royal Shakespeare Company"), false);
+  assert.equal(describesSomethingElse("sporting venue in Wellington, New Zealand"), false);
+  assert.equal(describesSomethingElse("event venue in London"), false);
+  assert.equal(describesSomethingElse("Jazz club"), false);
+  assert.equal(describesSomethingElse("place of burial in north London, England, UK"), false);
+  assert.equal(describesSomethingElse("Ulica od Rupa 7, 20000, Dubrovnik, Croatia"), false);
+  // Kept on purpose: "series" is not refused, because this is a place.
+  assert.equal(describesSomethingElse("series of caves in Derbyshire"), false);
+});
+
+test("no description is not a refusal", () => {
+  assert.equal(describesSomethingElse(null), false);
+  assert.equal(describesSomethingElse(""), false);
+  const found = candidatesFromSearch({ query: { pages: [
+    { pageid: 1, title: "Somewhere", coordinates: [{ lat: 55.95, lon: -3.19 }] },
+  ] } });
+  assert.equal(found.length, 1);
 });
 
 // --- the request ---------------------------------------------------------------------------

@@ -237,9 +237,51 @@ export function buildSearchUrl(query, { language = "en", limit = 20 } = {}) {
   return url.toString();
 }
 
+// **A page with a coordinate is not always a place.** "Eurovision Young Musicians 2018" came
+// back for Harry Potter in Edinburgh and was drawn as a pin 1.4 km from the centre: its
+// article mentions the book, and it carries the coordinate of the hall the contest was held
+// in. The page is about the CONTEST. Framestore did the same in London — a visual-effects
+// company, pinned on its office.
+//
+// The short description says so, and it is the only statement of what a Wikipedia page IS
+// that this search can see without another round trip. Its HEAD noun decides — the last
+// word before the first "of", "in", "from" or comma — because that is where English puts
+// the kind: "nineteenth EDITION of the … contest", "visual effects and animation COMPANY",
+// against "GRAVEYARD surrounding Greyfriars Kirk", "HEADQUARTERS of the Metropolitan
+// Police", "sporting VENUE in Wellington". A word anywhere in the description would not do:
+// a theatre "home of the Royal Shakespeare Company" is a building.
+//
+// Measured before it was written, on 317 live candidates across 40 work-and-city pairs
+// (21.09): it refuses exactly Eurovision Young Musicians 2018 and Framestore, and nothing
+// else. "series" is deliberately NOT on the list — it would refuse "series of caves", and a
+// television series' article almost never carries a coordinate to be wrong with.
+const NOT_A_PLACE_KIND = new Set([
+  "edition", "contest", "competition", "festival", "tournament", "championship",
+  "championships", "season", "election", "event", "ceremony", "award",
+  "company", "corporation", "organisation", "organization", "band",
+  "album", "single", "song", "film", "episode", "novel", "book", "franchise",
+  "character", "programme", "program", "broadcast", "game",
+]);
+
+export function descriptionHeadNoun(description) {
+  const text = String(description ?? "").toLowerCase().trim();
+  if (!text) return null;
+  const head = text.split(/\s+(?:of|in|from|for|based|located|that|which|at|on|by)\s+|[,;(]/)[0];
+  const words = head.match(/\p{L}+/gu);
+  return words ? words[words.length - 1] : null;
+}
+
+// True only when the description names a kind of thing that is not somewhere. A missing
+// description says nothing either way and is not a refusal — grading it is the precision
+// axis's job.
+export function describesSomethingElse(description) {
+  const noun = descriptionHeadNoun(description);
+  return noun !== null && NOT_A_PLACE_KIND.has(noun);
+}
+
 // Candidate places from a search response. A page without a coordinate is dropped: the
 // whole point of `nearcoord:` is that these should not occur, and one that does is a
-// page we cannot put on a map.
+// page we cannot put on a map. So is a page whose own description says it is not a place.
 export function candidatesFromSearch(payload) {
   const pages = payload?.query?.pages;
   if (!Array.isArray(pages)) return [];
@@ -253,12 +295,14 @@ export function candidatesFromSearch(payload) {
       const lat = finiteOrNull(coordinate?.lat);
       const lng = finiteOrNull(coordinate?.lon);
       if (lat === null || lng === null) return null;
+      const description = page?.terms?.description?.[0] ?? null;
+      if (describesSomethingElse(description)) return null;
       return {
         title: page.title,
         pageid: page.pageid,
         lat,
         lng,
-        description: page?.terms?.description?.[0] ?? null,
+        description,
       };
     })
     .filter(Boolean);
