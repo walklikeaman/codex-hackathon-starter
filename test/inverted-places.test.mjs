@@ -143,11 +143,29 @@ test("an error in a 200 body is a failure, not an empty result set", async () =>
 test("a failed search costs the candidates and never the map", async () => {
   // This runs alongside a search that has already succeeded. A Wikimedia hiccup must
   // not turn a working title search into an error page.
-  const { fetchImpl } = stubFetch([new Error("network down")]);
+  const { fetchImpl } = stubFetch([new Error("network down"), new Error("network down")]);
   assert.deepEqual(
     await findInvertedPlaces({ work: WORK, center: EDINBURGH, radiusKm: 15, fetchImpl }),
     [],
   );
+});
+
+test("a failed fan-out costs the characters, not the title", async () => {
+  // Harry Potter on 21.09: WDQS answered the fan-out with a 429, then timed out twice, and
+  // the candidates came back empty every time — although the title needed no fan-out.
+  const failures = [];
+  const { calls, fetchImpl } = stubFetch([
+    { ok: false, status: 429, body: {} },
+    { body: searchPayload([page(26556091, "Greyfriars Kirkyard", 55.9469, -3.1925)]) },
+  ]);
+  const records = await findInvertedPlaces({
+    work: WORK, center: EDINBURGH, radiusKm: 15, fetchImpl,
+    onError: (error) => failures.push(error.message),
+  });
+  assert.equal(calls.length, 2, "the search is still asked");
+  assert.match(new URL(calls[1]).searchParams.get("gsrsearch"), /insource:\/Harry Potter\//);
+  assert.deepEqual(records.map((record) => record.loc_name), ["Greyfriars Kirkyard"]);
+  assert.deepEqual(failures, ["429"], "and the fan-out's failure is still reported");
 });
 
 test("no work asks nothing", async () => {
