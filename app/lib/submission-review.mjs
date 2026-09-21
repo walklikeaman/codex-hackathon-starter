@@ -139,9 +139,26 @@ export function blocker(row) {
 }
 
 // What a row demonstrates, in the shared vocabulary. Each is a lookup, not an opinion.
+// **A Q-id our own geocoder chose is not a second opinion.** `resolve-wikidata` asks what
+// entity sits at a row's coordinate under the row's name. For a scraped row that coordinate
+// came from the scraper, and the answer is new evidence. For a row our geocoder placed, the
+// coordinate CAME from that entity — the geocoder looked the name up in Wikidata and took its
+// point — so asking again returns the same Q-id and proves nothing the placement did not.
+// Measured 21.09: of 476 Wikipedia rows given a Q-id that morning, 472 matched their own
+// `geocode_source_id` exactly, and counting them turned one cited sentence plus our own lookup
+// into `verified`. Clifton Village was one — placed in Nottingham for "Bristol", and a step
+// from being a verified wrong pin. The geocoder's pick is still evidence the place exists; it
+// is not a second source for the claim, and it is not counted as one.
+export function echoesItsOwnGeocode(row) {
+  return row?.geocode_source === "wikidata"
+    && typeof row?.geocode_source_id === "string"
+    && row.geocode_source_id === row?.wikidata_id;
+}
+
 export function submissionSignals(row) {
   const signals = [];
-  if (typeof row?.wikidata_id === "string" && /^Q[1-9]\d*$/.test(row.wikidata_id)) {
+  if (typeof row?.wikidata_id === "string" && /^Q[1-9]\d*$/.test(row.wikidata_id)
+    && !echoesItsOwnGeocode(row)) {
     signals.push("wikidata_entity");
   }
   // Somebody else's site, independently, names this place for this work. Agreement

@@ -43,6 +43,9 @@ if (!url || !key) {
 const COLUMNS = [
   "id", "place_name", "place_key", "lat", "lng", "source_kind", "source_sentence",
   "source_url", "status", "wikidata_id", "corroborated_by",
+  // Without these the rule that refuses a Q-id echoing our own geocode cannot see it, and a
+  // missing column reads as "not an echo" — silently counting what it exists to refuse.
+  "geocode_source", "geocode_source_id",
 ].join(",");
 
 async function fetchPage(offset) {
