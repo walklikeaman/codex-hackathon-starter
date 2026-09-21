@@ -58,7 +58,10 @@ is a machine not enriching, and running through a boot would mean a LaunchDaemon
 which is not worth root for a job that reads Wikipedia. And its `KeepAlive` is conditional:
 the loop exits 0 only when the catalogue is finished, and an agent that restarted *that*
 would read all 5,480 works again, so only a non-zero exit brings it back, after five
-minutes.
+minutes. **To stop the job**, `bash scripts/install-enrich-agent.sh --remove`; a bare `kill`
+on the supervisor also works now and takes the node child with it, which it did not before —
+bash defers a trap until the foreground command ends, so a TERM mid-work left both processes
+running and looked ignored (measured: still alive 35 seconds later).
 
 **That env file is deliberately not the one in the repository root, and using the root one
 costs a run.** The main clone's `.env.local` is the July team file: the two public Supabase
