@@ -671,3 +671,121 @@ test("the pair is checked against the entity API with a bounded reference photo"
   assert.ok(seen.some((url) => url.startsWith("https://www.wikidata.org/w/api.php?action=wbgetentities")));
   assert.ok(!seen.some((url) => url.includes("query.wikidata.org")));
 });
+
+// --- a "no", remembered with what it was a "no" to ---------------------------------------
+
+function verdictStore(initial = null, { lookupError, saveError } = {}) {
+  let stored = initial;
+  const calls = { lookups: 0, saves: [] };
+  return {
+    calls,
+    get stored() { return stored; },
+    create: () => ({
+      async resolve() { return null; },
+      async save() {},
+      async verdict() {
+        calls.lookups += 1;
+        if (lookupError) throw lookupError;
+        return stored;
+      },
+      async saveVerdict(row) {
+        calls.saves.push(row);
+        if (saveError) throw saveError;
+        stored = row;
+      },
+    }),
+  };
+}
+
+const NOTHING_HIGH = {
+  matches: [frameMatch({ candidateIndex: 0, confidence: "low", locationType: "street", description: "A generic street." })],
+};
+
+test("a paid no is written down with its fingerprint, and the next ask skips the model", async () => {
+  const store = verdictStore();
+  let parsed = 0;
+  const make = () => handlerForMatch({
+    createFrameStore: store.create, outputParsed: NOTHING_HIGH, onParse: () => { parsed += 1; },
+  });
+
+  const first = await (await make()(filmImageRequest())).json();
+  assert.equal(first.reason, "no_high_confidence_match");
+  assert.equal(parsed, 1);
+  assert.equal(store.calls.saves.length, 1);
+  assert.equal(store.calls.saves[0].work_qid, "Q181086");
+  assert.equal(store.calls.saves[0].place_qid, "Q386707");
+  assert.equal(store.calls.saves[0].matcher_version, "4");
+  assert.equal(store.calls.saves[0].candidates, 2);
+  assert.match(store.calls.saves[0].inputs_hash, /^[0-9a-f]{64}$/);
+
+  const second = await (await make()(filmImageRequest())).json();
+  assert.equal(parsed, 1, "the model was not asked again");
+  assert.equal(second.stored, true);
+  assert.equal(second.reason, "no_high_confidence_match");
+  assert.deepEqual(second.frames, []);
+  assert.equal(second.match_confidence, "low");
+});
+
+test("a no reached at final verification is remembered too", async () => {
+  const store = verdictStore();
+  const handler = handlerForMatch({
+    createFrameStore: store.create,
+    outputParsed: { matches: [frameMatch({ candidateIndex: 0, confidence: "high", locationType: "building", description: "Looks like the gate at first glance." })] },
+    verificationParsed: { matches: [] },
+  });
+  const payload = await (await handler(filmImageRequest())).json();
+  assert.equal(payload.reason, "no_high_confidence_match");
+  assert.equal(store.calls.saves.length, 1);
+});
+
+// TMDB adding a backdrop is exactly the change that could turn a "no" into a frame.
+test("a no to different inputs is asked again", async () => {
+  const store = verdictStore();
+  let parsed = 0;
+  await handlerForMatch({ createFrameStore: store.create, outputParsed: NOTHING_HIGH, onParse: () => { parsed += 1; } })(filmImageRequest());
+  await handlerForMatch({
+    createFrameStore: store.create,
+    outputParsed: NOTHING_HIGH,
+    onParse: () => { parsed += 1; },
+    backdrops: [
+      { file_path: "/generic.jpg", vote_count: 20, vote_average: 8, width: 1920 },
+      { file_path: "/matching.jpg", vote_count: 10, vote_average: 7, width: 1920 },
+      { file_path: "/new.jpg", vote_count: 5, vote_average: 7, width: 1920 },
+    ],
+  })(filmImageRequest());
+  assert.equal(parsed, 2);
+  assert.equal(store.calls.saves.length, 2, "the newer no replaces the older one");
+});
+
+test("a no from an older matcher is asked again", async () => {
+  const store = verdictStore();
+  await handlerForMatch({ createFrameStore: store.create, outputParsed: NOTHING_HIGH })(filmImageRequest());
+  const old = { ...store.stored, matcher_version: "3" };
+  const replay = verdictStore(old);
+  let parsed = 0;
+  await handlerForMatch({ createFrameStore: replay.create, outputParsed: NOTHING_HIGH, onParse: () => { parsed += 1; } })(filmImageRequest());
+  assert.equal(parsed, 1);
+});
+
+test("a found frame writes no verdict", async () => {
+  const store = verdictStore();
+  const handler = handlerForMatch({ createFrameStore: store.create, outputParsed: ONE_FRAME });
+  const payload = await (await handler(filmImageRequest())).json();
+  assert.equal(payload.frames.length, 1);
+  assert.equal(store.calls.saves.length, 0);
+});
+
+test("a verdict store that fails costs the model calls, never the answer", async () => {
+  const logged = [];
+  let parsed = 0;
+  const failing = verdictStore({ reason: "no_high_confidence_match" }, { lookupError: new Error("db down"), saveError: new Error("db down") });
+  const response = await handlerForMatch({
+    createFrameStore: failing.create,
+    outputParsed: NOTHING_HIGH,
+    onParse: () => { parsed += 1; },
+    logError: (...args) => logged.push(args[0]),
+  })(filmImageRequest());
+  assert.equal(response.status, 200);
+  assert.equal(parsed, 1);
+  assert.deepEqual(logged, ["Stored verdict lookup failed", "Verdict was not recorded"]);
+});
