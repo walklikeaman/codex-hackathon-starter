@@ -120,14 +120,15 @@ Three things, named precisely:
 - **`creator_place_links` exists and `creators` holds zero rows.** So **no fact of distance
   1 or 2 exists anywhere**, and the film card's two lower blocks have never been seen with
   live data.
-- **`geocode_cache` is built, wired and empty — and its stated blocker is gone.** The note
-  here read "loading them needs `SUPABASE_SERVICE_ROLE_KEY`, which this machine does not
-  have". It does have one: see **Keys and secrets**, and `geocode-submissions.mjs` already
-  prefers it over the anon key at line 41. What is left is that the script *emits* the cache
-  as SQL instead of writing it, which was the right shape when the write had to go through
-  the MCP. An anon INSERT policy is still deliberately NOT added: an open write there lets a
-  stranger poison a coordinate. **11,997 pending rows hold no coordinate** (21.09, 01:33), so
-  this is the cache's whole reason for existing, still unspent.
+- ~~**`geocode_cache` is built, wired and empty**~~ — **it writes now.**
+  `geocode-submissions.mjs --write` applies the coordinates and the cache directly instead
+  of emitting SQL for the MCP, which was the only shape available while this machine was
+  believed to hold the anon key alone. It refuses to run without a real service key rather
+  than sending PATCHes that anon cannot apply: PostgREST answers a refused PATCH with 200
+  and an empty body, so a `--write` over anon would have reported success over nothing.
+  `--sql` is unchanged and still the right choice when somebody wants to read twelve
+  thousand coordinates before they land. An anon INSERT policy is still deliberately NOT
+  added: an open write there lets a stranger poison a coordinate.
 
 That is worth keeping true. The project's most repeated failure is finished work that never
 reaches the live path: posters, ratings, three audio features, the personal library, the map
@@ -430,6 +431,13 @@ and `work_creators` hold zero rows, and filling them is a source problem, not a 
 4. **`head_unknown` is Fandom's ceiling** — 193 of 237 rows. Fandom names places like
    "Gary Rowe's house" and "CMGN Hamburg Printing Factory", which no gazetteer holds. Do not
    spend on it; the value of that source is the story-to-shoot pairing in its tables.
+   **It is Wikipedia's ceiling too, and that was not expected.** A 40-row batch put through
+   the geocoder on 21.09 came out **36 `head_unknown`, 2 accepted — 5.0%**, against the 8.3%
+   the script's own header measured on movie-locations. Forty rows is a sample and not a
+   verdict, but it says plainly that prose from an encyclopedia names buildings no gazetteer
+   holds just as readily as a fan wiki does. Where the pointless rows actually are, by
+   source (21.09, 01:40): `reelstreets` **7,650** · `movielocations` **3,163** ·
+   `wikipedia` **934** · `fandom` **226** · `moviemaps` **30**.
 5. **Two known-wrong things, both small.** `Clifton Village, Bristol` still resolves to
    Clifton in Nottingham — the hint and the chain agree on "England", and the fix that would
    catch it refuses 127 correct rows ([[geocoding-cascade]]). And `manoir Playboy` finds
