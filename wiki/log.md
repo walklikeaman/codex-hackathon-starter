@@ -7,6 +7,46 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-21] rule-change | A Q-id our own geocoder chose no longer counts as a second source
+
+**Object**: `app/lib/submission-review.mjs`, `scripts/review-submissions.mjs`, `scripts/promote-verified.mjs`
+**Scenario**: rule-change · **Outcome**: ✅ success
+**What happened**: Per the owner, 2026-09-21: the review stops counting `wikidata_entity` when
+a row's `wikidata_id` equals its own `geocode_source_id`. The resolver asks what sits at a row's
+coordinate under its name; for a row our geocoder placed, that coordinate came from the same
+entity, so the answer is an echo, not evidence. 530 rows in the queue carried one (472
+Wikipedia, 57 MovieMaps, 1 Fandom). Replayed: 473 pending rows that the next `--write` would
+have verified now stay pending, Clifton Village among them; 12 verified keep it on a real
+second signal. 41 places already promoted on the echo alone are left as they are — `--write`
+never demotes, they are almost all right, and taking them down is recorded in the handoff as
+the owner's call. Both scripts now read the geocode columns, without which a missing column
+would read as "not an echo".
+**Code changes**: 7b33052 (#293).
+**Updated**: wiki/handoff.md (owner decisions).
+
+## [2026-09-21] update | Six changes of the day that reached `main` without a line here
+
+**Object**: the enrichment agent, the geocoder, the directory, the inverted search, the live title search
+**Scenario**: feature · bugfix · **Outcome**: ✅ success, each verified on a preview or production
+**What happened**: Written after the fact so the chronicle has no gap; each PR carries the
+measurements.
+- **The enrichment survives the machine** — 94a9958 (#269) a single-instance lock and a
+  LaunchAgent, 2c072f9 (#270) its keys copied out of a scratch worktree to `~/.glorymap.env`,
+  4c15522 (#271) a supervisor a signal can stop (bash defers traps until the foreground command
+  ends). launchd was seen respawning it after a kill.
+- **`geocode_cache` can be written** — f0373d9 (#277) `geocode-submissions --write`. Probes then
+  showed the bulk pass is not the lever it looked like: 1.5–5% of pointless rows place, because
+  what is left is what no gazetteer holds. The full pass was not run.
+- **One venue per city line** — ae54428 (#281). 113 of 2,701 lines showed a venue twice; after,
+  1. `samePlaceWritten`, not `place-dedup` as the handoff had said, and "and N more" subtracts
+  every spelling.
+- **A coordinate is not a place** — 600417a (#284). The inverted search refuses pages whose
+  description's head noun names an event or company; 2 refusals in 317 live candidates.
+- **One-word titles are searched as titles** — d819c34 (#287). Only as `''Title''`: Up 10 → 0,
+  Jaws 0 → Martha's Vineyard; and a failed fan-out no longer empties the search.
+- **Psycho is found** — d8a84a6 (#288). A typed Wikidata search as the last resort, after our
+  own records, exact title only; Heat still answered by our records.
+
 ## [2026-09-21] update | Clifton is refused by distance — and two things broken on the way, one of them mine
 
 **Object**: `app/lib/geocode-wikidata.mjs`, `app/lib/geocode-client.mjs`
