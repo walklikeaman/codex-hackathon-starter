@@ -29,7 +29,7 @@ import { trailStopText } from "../lib/ambient-walk.mjs";
 import { advanceTriggers, hasMovedEnough, isUsableFix, playbackState, UNLOCK_PROMPT } from "../lib/geo-trigger.mjs";
 import { nextStop, ROAD_SAFETY_REMINDER, walkBanner } from "../lib/walk-mode.mjs";
 
-export default function WalkControls({ stops, onNarrate, onNextStopChange, onAmbientPlace }) {
+export default function WalkControls({ stops, ordered = false, onNarrate, onNextStopChange, onAmbientPlace }) {
   const [walking, setWalking] = useState(false);
   // Listening and walking a trail are two voices; only one may run.
   const [listening, setListening] = useState(false);
@@ -102,7 +102,12 @@ export default function WalkControls({ stops, onNarrate, onNextStopChange, onAmb
 
   // `nextStop` returns a wrapper — the stop plus how far it is and whether we have
   // arrived — not the stop itself.
-  const next = position ? nextStop(stops, position, { visitedIds }) : null;
+  // A story trail is followed in plot order; a film's place list has none, so its next
+  // stop is the nearest one left (see nextStop).
+  // Asked even before the first fix: `nextStop` answers with no distance then, and the
+  // banner says "Waiting for your position…". Skipping it made `null` — which the banner
+  // reads as "Tour complete · Every stop visited" before a single step had been taken.
+  const next = nextStop(stops, position, { visitedIds, order: ordered ? "sequence" : "nearest" });
   const banner = walkBanner(next);
 
   useEffect(() => { onNextStopChange?.(next?.stop?.id ?? null); }, [next?.stop?.id, onNextStopChange]);
