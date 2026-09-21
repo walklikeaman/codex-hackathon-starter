@@ -45,11 +45,38 @@ test("distances are rounded to something a person can act on", () => {
   assert.equal(formatDistance(null), null);
 });
 
-test("stops are followed in ORDER, not by whichever is nearest", () => {
+test("a story trail's stops are followed in ORDER, not by whichever is nearest", () => {
   // Nearest-first would march the walker back and forth across the city.
   const standingNearSecond = [51.5127, -0.0836];
   const next = nextStop(stops, standingNearSecond);
   assert.equal(next.stop.id, "a"); // still the first unvisited stop
+});
+
+// Skyfall's place list, as walk mode got it: database order, Ascot first.
+test("a place list's next stop is the nearest unvisited one", () => {
+  const skyfall = [
+    { id: "ascot", position: [51.4125, -0.6760] },
+    { id: "gallery", position: [51.50889, -0.12833] },
+    { id: "charing-cross", position: [51.50806, -0.12472] },
+    { id: "barts", position: [51.5174, -0.0999] },
+  ];
+  const trafalgar = [51.5080, -0.1281];
+
+  assert.equal(nextStop(skyfall, trafalgar).stop.id, "ascot", "sequence order is still the default");
+
+  const nearest = nextStop(skyfall, trafalgar, { order: "nearest" });
+  assert.equal(nearest.stop.id, "gallery");
+  assert.ok(nearest.distance_m < 150);
+
+  const afterGallery = nextStop(skyfall, trafalgar, { order: "nearest", visitedIds: ["gallery"] });
+  assert.equal(afterGallery.stop.id, "charing-cross");
+
+  assert.equal(nextStop(skyfall, trafalgar, { order: "nearest", visitedIds: skyfall.map((stop) => stop.id) }), null);
+  // No position, no nearest — and not the first row either, which would name Ascot to
+  // somebody in Trafalgar Square. Nor "Tour complete", which is what null used to say.
+  const blind = nextStop(skyfall, null, { order: "nearest" });
+  assert.equal(blind.stop, null);
+  assert.deepEqual(walkBanner(blind), { title: "Finding the nearest stop…", detail: "Waiting for your position…" });
 });
 
 test("a visited stop is skipped", () => {

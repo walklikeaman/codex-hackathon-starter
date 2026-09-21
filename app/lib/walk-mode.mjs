@@ -43,31 +43,52 @@ export function formatDistance(metres) {
   return `${(distance / 1000).toFixed(distance < 10000 ? 1 : 0)} km`;
 }
 
-// The next stop the walker has not reached yet, with distance and ETA. Stops are
-// followed IN ORDER — a walking tour is a sequence, and jumping to whichever stop is
-// nearest would send people back and forth.
-export function nextStop(stops, position, { visitedIds = [] } = {}) {
+// The next stop the walker has not reached yet, with distance and ETA.
+//
+// Two kinds of list reach this, and they want different answers:
+//
+//   * A STORY trail is a sequence — stops in plot order — and is followed IN ORDER.
+//     Jumping to whichever stop is nearest would tell the story out of order and send
+//     the walker back and forth along it.
+//   * A film's PLACE LIST has no order. Its order is the order rows came out of the
+//     database, and following it put "Next: Ascot Racecourse · 40 km · about 566 min"
+//     in front of somebody standing in Trafalgar Square with three of Skyfall's stops
+//     within ten minutes' walk. There, the next stop is the nearest one not yet visited.
+export function nextStop(stops, position, { visitedIds = [], order = "sequence" } = {}) {
   const list = Array.isArray(stops) ? stops : [];
   const visited = new Set(visitedIds);
+  const remaining = list.filter((stop) => !visited.has(stop?.id));
+  if (remaining.length === 0) return null;
 
-  for (const stop of list) {
-    if (visited.has(stop?.id)) continue;
-    const metres = metresBetween(position, stop?.position);
-    return {
-      stop,
-      distance_m: metres,
-      distance_label: formatDistance(metres),
-      eta_minutes: metres === null ? null : walkingMinutes(metres),
-      arrived: metres !== null && metres <= ARRIVAL_RADIUS_M,
-    };
+  let stop = remaining[0];
+  if (order === "nearest") {
+    let best = null;
+    for (const candidate of remaining) {
+      const metres = metresBetween(position, candidate?.position);
+      if (metres === null) continue;
+      if (!best || metres < best.metres) best = { candidate, metres };
+    }
+    // Without a position there is no "nearest", and naming the first row would name
+    // Ascot to somebody in Trafalgar Square. Say that it is being worked out instead.
+    if (!best) return { stop: null, distance_m: null, distance_label: null, eta_minutes: null, arrived: false };
+    stop = best.candidate;
   }
-  return null;
+
+  const metres = metresBetween(position, stop?.position);
+  return {
+    stop,
+    distance_m: metres,
+    distance_label: formatDistance(metres),
+    eta_minutes: metres === null ? null : walkingMinutes(metres),
+    arrived: metres !== null && metres <= ARRIVAL_RADIUS_M,
+  };
 }
 
 // What the banner says. Deliberately short: someone reading this is walking, and a
 // paragraph is a hazard.
 export function walkBanner(next) {
   if (!next) return { title: "Tour complete", detail: "Every stop visited." };
+  if (!next.stop) return { title: "Finding the nearest stop…", detail: "Waiting for your position…" };
   const name = next.stop?.place ?? next.stop?.name ?? "the next stop";
   if (next.arrived) return { title: `You're at ${name}`, detail: "Listening starts on its own." };
   if (next.distance_m === null) {

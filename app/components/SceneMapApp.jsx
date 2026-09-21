@@ -1851,6 +1851,9 @@ export default function SceneMapApp() {
   // true yet for any work. Walking between a film's real locations is useful on its
   // own, so that is the fallback rather than showing nothing: the feature works today
   // and gets better when the trail fills in.
+  // Whether walkStops is the story trail (plot order, followed in order) or the film's
+  // place list (no order; the next stop is the nearest).
+  const walkStopsAreStory = useMemo(() => trailStopList.some(isWalkableStop), [trailStopList]);
   const walkStops = useMemo(() => {
     // Only somewhere you can walk TO. Routing a walker to a city centroid would send
     // them to an arbitrary point that no scene happened at.
@@ -2958,6 +2961,7 @@ export default function SceneMapApp() {
 
         <WalkControls
           stops={walkStops}
+          ordered={walkStopsAreStory}
           onNextStopChange={setNextStopId}
           onNarrate={(stop) => setMapCenter(stop.position)}
           onAmbientPlace={(place) => setMapCenter(place.position)}
