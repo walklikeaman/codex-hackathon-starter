@@ -3,10 +3,13 @@
 //
 //   node scripts/review-submissions.mjs --dry             # report, write nothing
 //   node scripts/review-submissions.mjs --sql out.sql     # emit the UPDATEs
+//   node scripts/review-submissions.mjs --write           # apply them
 //
-// SQL rather than a direct write, for the same reason the plaque ingest does it: this
-// machine has the anon key and not `SUPABASE_SERVICE_ROLE_KEY`, so writes go through the
-// Supabase MCP as `postgres`. Reading is fine with anon — the queue is public-read.
+// It used to emit SQL only, because the machine that ran it held the anon key and writes
+// had to go through the Supabase MCP as `postgres`. With `SUPABASE_SERVICE_ROLE_KEY` in the
+// environment it can apply its own verdicts — and it should, because the emitted file for
+// this queue is 227 kB of id lists that nobody reads before running it anyway. `--sql`
+// stays for the case where somebody wants to read the decisions before they land.
 //
 // The rules live in `app/lib/submission-review.mjs` with the measurements that produced
 // them. This file only fetches, applies them, and counts.
@@ -22,6 +25,7 @@ import { reviewSubmission, tallyVerdicts } from "../app/lib/submission-review.mj
 
 const args = process.argv.slice(2);
 const sqlPath = args.includes("--sql") ? args[args.indexOf("--sql") + 1] : null;
+const WRITE = args.includes("--write");
 
 const PAGE = 1000;
 const UPDATE_CHUNK = 500;
@@ -136,9 +140,57 @@ const rows = await readQueue();
 const decisions = rows.map((row) => ({ id: row.id, verdict: reviewSubmission(row) }));
 report(rows, decisions);
 
+// The same grouping the SQL uses, applied. One request per (status, reason, chunk), so a
+// failure names the group it failed in rather than "the review failed".
+async function applyVerdicts(decisions) {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey) throw new Error("--write needs SUPABASE_SERVICE_ROLE_KEY in the environment");
+
+  const groups = new Map();
+  for (const { id, verdict } of decisions) {
+    if (!DECISIVE.has(verdict.status)) continue;
+    const groupKey = JSON.stringify([verdict.status, verdict.reason]);
+    groups.set(groupKey, [...(groups.get(groupKey) ?? []), id]);
+  }
+
+  let written = 0;
+  for (const [groupKey, ids] of [...groups].sort((a, b) => b[1].length - a[1].length)) {
+    const [status, reason] = JSON.parse(groupKey);
+    for (let i = 0; i < ids.length; i += UPDATE_CHUNK) {
+      const chunk = ids.slice(i, i + UPDATE_CHUNK);
+      const endpoint = `${url}/rest/v1/location_submissions`
+        + `?id=in.(${chunk.join(",")})`;
+      const response = await fetch(endpoint, {
+        method: "PATCH",
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({ status, status_reason: reason, reviewed_at: new Date().toISOString() }),
+      });
+      if (!response.ok) {
+        throw new Error(`verdict write failed for "${status}: ${reason}": `
+          + `${response.status} ${await response.text()}`);
+      }
+      written += chunk.length;
+      process.stderr.write(`\rwrote ${written}`);
+    }
+  }
+  process.stderr.write("\n");
+  return written;
+}
+
 if (sqlPath) {
   fs.writeFileSync(sqlPath, emitSql(decisions));
   console.log(`\nwrote ${sqlPath}`);
-} else {
-  console.log("\nNothing written. Pass --sql <path> to emit the UPDATEs.");
+}
+
+if (WRITE) {
+  const written = await applyVerdicts(decisions);
+  console.log(`\napplied ${written} verdicts`);
+  console.log("Reversible: update location_submissions set status='pending', status_reason=null, reviewed_at=null;");
+} else if (!sqlPath) {
+  console.log("\nNothing written. Pass --write to apply, or --sql <path> to read them first.");
 }
