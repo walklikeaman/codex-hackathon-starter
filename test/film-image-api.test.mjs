@@ -62,6 +62,10 @@ function handlerForMatch({
   onVerify,
   backdrops,
   bindings,
+  createFrameStore,
+  fetchImpl,
+  allowRequest,
+  logError,
 } = {}) {
   let parseCall = 0;
   return createFilmImageHandler({
@@ -70,10 +74,11 @@ function handlerForMatch({
       OPENAI_API_KEY: "openai-test-key",
       OPENAI_VISION_MODEL: "test-vision-model",
     },
-    fetchImpl: upstreamFetch({ backdrops, bindings }),
-    allowRequest: () => true,
+    fetchImpl: fetchImpl ?? upstreamFetch({ backdrops, bindings }),
+    allowRequest: allowRequest ?? (() => true),
     verifyToken: () => true,
-    logError: () => {},
+    logError: logError ?? (() => {}),
+    createFrameStore: createFrameStore ?? (() => null),
     createOpenAIClient: () => ({
       responses: {
         parse: async (body, options) => {
@@ -406,4 +411,157 @@ test("film image API never falls back to a generic backdrop after a matcher erro
   assert.equal(response.status, 502);
   assert.equal(payload.image_url, undefined);
   assert.equal(response.headers.get("cache-control"), "private, no-store");
+});
+
+// --- the answer, kept on our rows (#198) -------------------------------------------------
+
+const TWO_FRAMES = {
+  matches: [
+    frameMatch({
+      candidateIndex: 1, confidence: "high", locationType: "building",
+      description: "The brick gate matches the verified prison location.",
+    }),
+    frameMatch({
+      candidateIndex: 0, confidence: "high", locationType: "building",
+      description: "The institutional courtyard repeats the same brick layout.",
+    }),
+  ],
+};
+
+const RESOLVED = {
+  work_id: "11111111-1111-1111-1111-111111111111",
+  place_id: "22222222-2222-2222-2222-222222222222",
+  place_name: "HM Prison Wandsworth",
+  linked: true,
+  file_path: null,
+};
+
+function frameStore(resolved, { saveError, resolveError } = {}) {
+  const calls = { resolve: [], save: [] };
+  return {
+    calls,
+    create: () => ({
+      async resolve(work, place) {
+        calls.resolve.push([work, place]);
+        if (resolveError) throw resolveError;
+        return resolved;
+      },
+      async save(row) {
+        calls.save.push(row);
+        if (saveError) throw saveError;
+      },
+    }),
+  };
+}
+
+test("a frame already on our rows is served without Wikidata, TMDB, a model, or the limiter", async () => {
+  const store = frameStore({
+    ...RESOLVED,
+    file_path: "/matching.jpg",
+    evidence: "The brick gate matches the verified prison location.",
+    method: "film_image",
+    matcher_version: "4",
+    location_type: "building",
+    also: [{ file_path: "/generic.jpg", evidence: "The courtyard repeats the brick layout.", location_type: "building" }],
+  });
+  let upstream = 0;
+  let limited = 0;
+  let parsed = 0;
+  const handler = handlerForMatch({
+    createFrameStore: store.create,
+    fetchImpl: async () => { upstream += 1; throw new Error("no upstream expected"); },
+    allowRequest: () => { limited += 1; return true; },
+    onParse: () => { parsed += 1; },
+  });
+  const response = await handler(filmImageRequest());
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(store.calls.resolve, [["Q181086", "Q386707"]]);
+  assert.equal(upstream, 0);
+  assert.equal(parsed, 0);
+  assert.equal(limited, 0);
+  assert.equal(payload.stored, true);
+  assert.deepEqual(payload.frames.map((frame) => frame.image_url), [
+    "https://image.tmdb.org/t/p/w780/matching.jpg",
+    "https://image.tmdb.org/t/p/w400/generic.jpg",
+  ]);
+  assert.equal(payload.frames[0].location_name, "HM Prison Wandsworth");
+  assert.equal(payload.frames[0].description, "The brick gate matches the verified prison location.");
+  assert.match(response.headers.get("cache-control"), /s-maxage=2592000/);
+});
+
+test("a live match on a pair the graph links is written down, gallery and version included", async () => {
+  const store = frameStore(RESOLVED);
+  const handler = handlerForMatch({ createFrameStore: store.create, outputParsed: TWO_FRAMES });
+  const response = await handler(filmImageRequest());
+
+  assert.equal(response.status, 200);
+  assert.equal(store.calls.save.length, 1);
+  assert.deepEqual(store.calls.save[0], {
+    work_id: RESOLVED.work_id,
+    place_id: RESOLVED.place_id,
+    file_path: "/matching.jpg",
+    evidence: "The brick gate matches the verified prison location.",
+    location_type: "building",
+    method: "film_image",
+    matcher_version: "4",
+    also: [{
+      file_path: "/generic.jpg",
+      evidence: "The institutional courtyard repeats the same brick layout.",
+      location_type: "building",
+    }],
+  });
+});
+
+// Wikidata states the pair; our graph does not. Writing a frame would assert the link by
+// the back door, so the card answers live and records nothing.
+test("a pair our graph does not link is matched but not recorded", async () => {
+  for (const resolved of [{ ...RESOLVED, linked: false }, null]) {
+    const store = frameStore(resolved);
+    const handler = handlerForMatch({ createFrameStore: store.create, outputParsed: TWO_FRAMES });
+    const payload = await (await handler(filmImageRequest())).json();
+    assert.equal(payload.frames.length, 2);
+    assert.equal(store.calls.save.length, 0);
+  }
+});
+
+// Bumping the matcher version is how a changed matcher disowns its old answers.
+test("a card frame from an older matcher is matched again, and not overwritten", async () => {
+  const store = frameStore({
+    ...RESOLVED,
+    file_path: "/old.jpg",
+    evidence: "Recorded by a matcher that has since changed.",
+    method: "film_image",
+    matcher_version: "3",
+  });
+  let parsed = 0;
+  const handler = handlerForMatch({
+    createFrameStore: store.create, outputParsed: TWO_FRAMES, onParse: () => { parsed += 1; },
+  });
+  const payload = await (await handler(filmImageRequest())).json();
+
+  assert.equal(parsed, 1);
+  assert.equal(payload.stored, undefined);
+  assert.equal(store.calls.save.length, 0, "the row exists; replacing it is not this route's call");
+});
+
+test("a store that fails costs a live match, never the answer", async () => {
+  const logged = [];
+  const failingLookup = frameStore(RESOLVED, { resolveError: new Error("db down") });
+  const lookupHandler = handlerForMatch({
+    createFrameStore: failingLookup.create, outputParsed: TWO_FRAMES, logError: (...args) => logged.push(args),
+  });
+  const first = await lookupHandler(filmImageRequest());
+  assert.equal(first.status, 200);
+  assert.equal((await first.json()).frames.length, 2);
+
+  const failingSave = frameStore(RESOLVED, { saveError: new Error("constraint") });
+  const saveHandler = handlerForMatch({
+    createFrameStore: failingSave.create, outputParsed: TWO_FRAMES, logError: (...args) => logged.push(args),
+  });
+  const second = await saveHandler(filmImageRequest());
+  assert.equal(second.status, 200);
+  assert.equal(failingSave.calls.save.length, 1);
+  assert.equal(logged.length, 2);
 });

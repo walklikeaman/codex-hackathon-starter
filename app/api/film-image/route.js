@@ -1,5 +1,8 @@
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
+import { createClient } from "@supabase/supabase-js";
+
+import { cardFrameRow, payloadFromStored, storedFrameIsCurrent } from "../../lib/card-frames.mjs";
 
 import {
   parseTmdbMovieId,
@@ -17,6 +20,7 @@ import {
   MAX_TMDB_CANDIDATES,
   parseSceneImageRequest,
   parseWikidataSceneContext,
+  SCENE_IMAGE_MATCH_VERSION,
   sceneImageMatchSchema,
   sceneMatchClientId,
 } from "../../lib/scene-image-match.mjs";
@@ -31,7 +35,36 @@ const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
 export const runtime = "nodejs";
 
 const noStoreHeaders = { "Cache-Control": "private, no-store" };
+const matchedHeaders = { "Cache-Control": "public, s-maxage=2592000, stale-while-revalidate=604800" };
 const defaultRateLimiter = createSceneMatchRateLimiter();
+
+// Where a matched frame is kept (#198). The service key because the write is the point;
+// the anon key could read the pair but not record the answer. Unconfigured means the
+// card behaves exactly as it did before — matches live, remembers nothing.
+function defaultCreateFrameStore(env) {
+  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) return null;
+
+  const client = createClient(url, serviceKey, { auth: { persistSession: false } });
+  return {
+    async resolve(workQid, placeQid) {
+      const { data, error } = await client.rpc("frame_for_wikidata_pair", {
+        p_work: workQid,
+        p_place: placeQid,
+      });
+      if (error) throw new Error(`pair lookup failed: ${error.message}`);
+      return Array.isArray(data) ? data[0] ?? null : null;
+    },
+    async save(row) {
+      // Insert, yielding on conflict: whichever stage answered first keeps its answer.
+      const { error } = await client
+        .from("place_frames")
+        .upsert(row, { onConflict: "work_id,place_id", ignoreDuplicates: true });
+      if (error) throw new Error(`frame save failed: ${error.message}`);
+    },
+  };
+}
 
 function upstreamSignal(request, timeoutMs) {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
@@ -46,6 +79,7 @@ export function createFilmImageHandler({
   createOpenAIClient = (apiKey) => new OpenAI({ apiKey }),
   allowRequest = defaultRateLimiter,
   verifyToken = verifySceneMatchToken,
+  createFrameStore = defaultCreateFrameStore,
   logError = (...args) => console.error(...args),
 } = {}) {
   return async function GET(request) {
@@ -86,6 +120,22 @@ export function createFilmImageHandler({
         { error: "Scene matching request is not authorized" },
         { status: 403, headers: noStoreHeaders },
       );
+    }
+
+    // An answer already on our rows costs one query and no model. Looked up before the
+    // rate limiter, because a remembered frame is not the paid work the limiter guards.
+    const frameStore = createFrameStore(env);
+    let resolved = null;
+    if (frameStore) {
+      try {
+        resolved = await frameStore.resolve(sceneRequest.workId, sceneRequest.locationId);
+      } catch (error) {
+        // A lookup that fails costs a live match, which is what happened before it existed.
+        logError("Stored frame lookup failed", { message: error?.message });
+      }
+    }
+    if (storedFrameIsCurrent(resolved, { matcherVersion: SCENE_IMAGE_MATCH_VERSION })) {
+      return Response.json(payloadFromStored(resolved, { tmdbId }), { headers: matchedHeaders });
     }
 
     if (!allowRequest(sceneMatchClientId(request))) {
@@ -294,6 +344,22 @@ export function createFilmImageHandler({
         match_method: "openai_vision",
       }));
 
+      if (frameStore && resolved) {
+        const { row } = cardFrameRow(resolved, verifiedMatches.map((match) => ({
+          file_path: shortlistedPaths[match.candidateIndex],
+          description: match.description,
+          location_type: studioLocation ? "studio" : match.locationType,
+        })), { matcherVersion: SCENE_IMAGE_MATCH_VERSION });
+        if (row) {
+          try {
+            await frameStore.save(row);
+          } catch (error) {
+            // Not written means asked again next time — the old behaviour, not a failure.
+            logError("Matched frame was not recorded", { message: error?.message });
+          }
+        }
+      }
+
       return Response.json(
         {
           image_url: frames[0].image_url,
@@ -302,7 +368,7 @@ export function createFilmImageHandler({
           match_confidence: "high",
           match_method: "openai_vision",
         },
-        { headers: { "Cache-Control": "public, s-maxage=2592000, stale-while-revalidate=604800" } },
+        { headers: matchedHeaders },
       );
     } catch (error) {
       if (error?.name !== "AbortError") {
