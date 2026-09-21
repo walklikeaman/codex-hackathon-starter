@@ -511,10 +511,18 @@ as results, live-GPS buddy tracking, AI-generated "lore", and a 1–5 safety sco
   39.8% have exactly one. Live sources add places to about two thirds of them.
 - The inverted search returns some **non-places with coordinates** — "Eurovision Young
   Musicians 2018" for Harry Potter in Edinburgh.
-- **A city row lists the same venue twice** when two sources spell it differently: Skyfall
-  in London shows both "Broadgate Tower" and "Broadgate Tower, Bishopsgate, London". The
-  `distinct` in `city_catalogue` is on the exact string; `place-dedup.mjs` already knows how
-  to collapse these and is not wired into that query ([[directory]]).
+- ~~**A city row lists the same venue twice**~~ — **fixed 21.09, in the sentence rather than
+  the query.** Measured on every live city page first: **113 of 2,701 lines showed one venue
+  twice**; replayed through the fix, **1** does. And the note that stood here was wrong about
+  the cure: it said `place-dedup.mjs` "already knows how to collapse these". It does not, for
+  its own example — `namesMatch` allows one extra word and an address is three or four.
+  `samePlaceWritten` (place-name-head) is the rule that fits, and all 223 pairs it would
+  merge on production were read by eye: every one is the same building. `cityWorkLine` now
+  shows each venue once, by its shortest spelling, and subtracts every spelling from "and N
+  more" so the hidden duplicate cannot come back as a count. The one line left is Dublin's
+  Winetavern Street in five spellings, kept in three because "Dublin" and "Dublin 8" read as
+  different areas — the safe direction to be wrong in. The route still returns every
+  spelling; only the sentence decides.
 - A **one-word title** ("Dracula", "Trainspotting") contributes nothing to the inverted
   search: `isSearchableEntity` needs two words, so such a work depends entirely on its
   fan-out.

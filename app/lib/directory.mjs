@@ -7,6 +7,8 @@
 // says "many". A directory that oversells its thin half is the one nobody trusts on the
 // half that is good.
 
+import { samePlaceWritten } from "./place-name-head.mjs";
+
 export const WORKS_PER_PAGE = 100;
 export const CITY_WORKS_PER_PAGE = 48;
 
@@ -109,14 +111,57 @@ export function cityCoverage({ works = 0, points = 0, radiusKm = 20 } = {}) {
   return `${plural(works, "film")} with ${plural(points, "place")} named by our sources within ${radiusKm} km of the centre — candidates, not yet checked.`;
 }
 
+// **One venue, however many ways our sources spell it.** `city_catalogue` returns DISTINCT
+// strings, and a venue arrives from several sources in several spellings: "Bradbury
+// Building" beside "Bradbury Building, 304 South Broadway, downtown Los Angeles". Measured
+// on every live city page on 21.09: **178 of 2,701 work rows showed the same venue twice**,
+// 224 pairs, most of them in Los Angeles — Blade Runner, Back to the Future, The Prestige.
+//
+// The handoff named `place-dedup` as the module that already knew how to collapse these.
+// It does not, for its own example: `namesMatch` allows one extra word, and an address
+// glued onto a name is three or four. `samePlaceWritten` is the rule that fits — same head,
+// and where both spellings name an area, the same area — and it was checked here against
+// all 223 pairs it would merge on production: every one is the same building, including
+// the ten where both sides carry an address ("Broadgate Tower, Bishopsgate" and
+// "Broadgate Tower, Primrose Street" are one tower on a corner). "High Street,
+// Kensington" and "High Street, Wimbledon" still stay two.
+//
+// A group admits a spelling only if it matches EVERY member, because matching is not
+// transitive: a bare "Italian Gardens" is the same place as "Italian Gardens, Hyde Park"
+// and as "Italian Gardens, Kew", and those two are not the same place as each other.
+//
+// The shortest spelling is shown. It is the venue; the longer ones are the venue plus an
+// address, and on a page already titled with the city the address is mostly the city
+// again. `spellings` travels with it, because every spelling was at least one counted row.
+export function distinctVenues(names) {
+  const groups = [];
+  for (const name of Array.isArray(names) ? names : []) {
+    if (typeof name !== "string" || !name.trim()) continue;
+    const group = groups.find((members) => members.every((member) => samePlaceWritten(member, name)));
+    if (group) group.push(name);
+    else groups.push([name]);
+  }
+  return groups.map((members) => ({
+    name: [...members].sort((a, b) => a.length - b.length || a.localeCompare(b))[0],
+    spellings: members.length,
+  }));
+}
+
 // The line under a work in a city list. Printed even at one place, deliberately: a work we
 // hold a single pin for is not a tour and the directory should not imply otherwise.
+//
+// "And N more" subtracts every SPELLING behind the venues shown, not one per venue. Each
+// spelling is at least one row of `place_count`, so counting a collapsed spelling as "more"
+// would announce the duplicate this function just hid: "Bradbury Building — and 1 more",
+// where the one more is the Bradbury Building. Subtracting spellings can only under-state
+// what is left, which is the direction this module is allowed to err in.
 export function cityWorkLine({ place_count: count = 0, places = [] } = {}) {
-  const names = (Array.isArray(places) ? places : []).filter(Boolean);
-  const shown = names.slice(0, 3).join(" · ");
-  const rest = count - Math.min(names.length, 3);
-  if (!shown) return plural(count, "place");
-  return rest > 0 ? `${shown} — and ${rest} more` : shown;
+  const shown = distinctVenues(places).slice(0, 3);
+  if (shown.length === 0) return plural(count, "place");
+  const accounted = shown.reduce((sum, venue) => sum + venue.spellings, 0);
+  const line = shown.map((venue) => venue.name).join(" · ");
+  const rest = count - accounted;
+  return rest > 0 ? `${line} — and ${rest} more` : line;
 }
 
 // Countries ordered by what we actually hold, cities inside them likewise. An alphabetical
