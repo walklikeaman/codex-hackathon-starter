@@ -45,7 +45,20 @@ until it prints its own `Nothing to enrich.`, finds the env file by asking which
 `service_role` key for `quvxxqxowathrcyshhwj` rather than by path, and stops itself if ten
 runs in a row die inside ninety seconds — that pattern is a broken configuration, and
 looping on it only hides it. The restart it was written for arrived within the hour — see
-the maxlag trap below, which is also now fixed at the source.
+the maxlag trap below, which is also now fixed at the source. It also takes a lock, because
+the work list is chosen once per attempt and a second copy would spend the same rate limit
+reading the same articles.
+
+**And the machine restarting is covered too, by a LaunchAgent.**
+[scripts/install-enrich-agent.sh](scripts/install-enrich-agent.sh) writes
+`~/Library/LaunchAgents/com.glorymap.enrich.plist` and loads it; `--status` says whether it
+is loaded and running, `--remove` takes it away. Two things about it are worth knowing
+before trusting it. **It starts at LOGIN, not at boot** — a machine left at the login window
+is a machine not enriching, and running through a boot would mean a LaunchDaemon as root,
+which is not worth root for a job that reads Wikipedia. And its `KeepAlive` is conditional:
+the loop exits 0 only when the catalogue is finished, and an agent that restarted *that*
+would read all 5,480 works again, so only a non-zero exit brings it back, after five
+minutes.
 
 **That env file is deliberately not the one in the repository root, and using the root one
 costs a run.** The main clone's `.env.local` is the July team file: the two public Supabase

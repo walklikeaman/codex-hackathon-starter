@@ -82,6 +82,33 @@ GIVE_UP_AFTER=10
 [ -f "$ENV_FILE" ] || { echo "no env file at $ENV_FILE" >&2; exit 1; }
 cd "$ROOT"
 
+# **One of these at a time, or the catalogue is read twice.** The work list is chosen once
+# per attempt — every unstamped work, ordered by id — so a second copy takes the same list,
+# spends the same rate limit on the same articles, and races the first one to the stamp.
+# That becomes easy to do by accident the moment this is also started at login: the agent
+# has one, and the hand that types the command has another.
+#
+# `mkdir` is the lock because it is atomic and needs no tool macOS might not ship. A stale
+# lock is recognised by asking whether that pid is still THIS script rather than merely
+# alive — a pid is reused, and a reboot reuses low ones freely.
+LOCK="${LOCK:-$HOME/.glorymap-enrich.lock}"
+take_the_lock() {
+  if mkdir "$LOCK" 2>/dev/null; then return 0; fi
+  local held
+  held=$(cat "$LOCK/pid" 2>/dev/null || true)
+  if [ -n "$held" ] && ps -p "$held" -o command= 2>/dev/null | grep -q "enrich-loop.sh"; then
+    return 1
+  fi
+  rm -rf "$LOCK"
+  mkdir "$LOCK" 2>/dev/null
+}
+if ! take_the_lock; then
+  echo "already running as pid $(cat "$LOCK/pid" 2>/dev/null) — nothing to do" >&2
+  exit 0
+fi
+printf '%s\n' "$$" > "$LOCK/pid"
+trap 'rm -rf "$LOCK"' EXIT INT TERM
+
 fast_failures=0
 while true; do
   printf '\n===== attempt %s — %s %s =====\n' \
