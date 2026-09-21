@@ -3,6 +3,9 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { createClient } from "@supabase/supabase-js";
 
 import { cardFrameRow, payloadFromStored, storedFrameIsCurrent } from "../../lib/card-frames.mjs";
+import {
+  payloadFromVerdict, sceneInputsHash, verdictIsCurrent, verdictRow,
+} from "../../lib/scene-verdicts.mjs";
 
 import {
   parseTmdbMovieId,
@@ -61,6 +64,24 @@ function defaultCreateFrameStore(env) {
         .from("place_frames")
         .upsert(row, { onConflict: "work_id,place_id", ignoreDuplicates: true });
       if (error) throw new Error(`frame save failed: ${error.message}`);
+    },
+    // A remembered "no", keyed by the Wikidata pair: it needs no row of ours.
+    async verdict(workQid, placeQid) {
+      const { data, error } = await client
+        .from("scene_match_verdicts")
+        .select("matcher_version, inputs_hash, reason, match_confidence")
+        .eq("work_qid", workQid)
+        .eq("place_qid", placeQid)
+        .maybeSingle();
+      if (error) throw new Error(`verdict lookup failed: ${error.message}`);
+      return data ?? null;
+    },
+    async saveVerdict(row) {
+      // Overwrites: a newer "no" to newer inputs replaces the older one.
+      const { error } = await client
+        .from("scene_match_verdicts")
+        .upsert(row, { onConflict: "work_qid,place_qid" });
+      if (error) throw new Error(`verdict save failed: ${error.message}`);
     },
   };
 }
@@ -245,6 +266,42 @@ export function createFilmImageHandler({
         );
       }
 
+      // A "no" this matcher already gave to exactly these inputs is given again without
+      // asking the model. The fingerprint is everything the model is about to be shown.
+      const inputsHash = sceneInputsHash({
+        tmdbId, sceneContext, candidatePaths, studio: studioLocation,
+      });
+      if (typeof frameStore?.verdict === "function") {
+        try {
+          const verdict = await frameStore.verdict(sceneRequest.workId, sceneRequest.locationId);
+          if (verdictIsCurrent(verdict, { matcherVersion: SCENE_IMAGE_MATCH_VERSION, inputsHash })) {
+            return Response.json(payloadFromVerdict(verdict, { sourceUrl }), {
+              headers: { "Cache-Control": "public, s-maxage=86400" },
+            });
+          }
+        } catch (error) {
+          // A lookup that fails costs the model calls, which is what happened before.
+          logError("Stored verdict lookup failed", { message: error?.message });
+        }
+      }
+      const rememberNo = async (matchConfidence) => {
+        if (typeof frameStore?.saveVerdict !== "function") return;
+        const row = verdictRow({
+          workId: sceneRequest.workId,
+          locationId: sceneRequest.locationId,
+          matcherVersion: SCENE_IMAGE_MATCH_VERSION,
+          inputsHash,
+          matchConfidence,
+          candidates: candidatePaths.length,
+        });
+        if (!row) return;
+        try {
+          await frameStore.saveVerdict(row);
+        } catch (error) {
+          logError("Verdict was not recorded", { message: error?.message });
+        }
+      };
+
       const openai = createOpenAIClient(openAIKey);
       const matchResponse = await openai.responses.parse(
         {
@@ -287,12 +344,14 @@ export function createFilmImageHandler({
       );
 
       if (!acceptedMatches.length) {
+        const matchConfidence = matchResponse.output_parsed.matches[0]?.confidence ?? "none";
+        await rememberNo(matchConfidence);
         return Response.json(
           {
             image_url: null,
             source_url: sourceUrl,
             frames: [],
-            match_confidence: matchResponse.output_parsed.matches[0]?.confidence ?? "none",
+            match_confidence: matchConfidence,
             reason: "no_high_confidence_match",
           },
           { headers: { "Cache-Control": "public, s-maxage=86400" } },
@@ -340,12 +399,14 @@ export function createFilmImageHandler({
       );
 
       if (!verifiedMatches.length) {
+        const matchConfidence = verificationResponse.output_parsed.matches[0]?.confidence ?? "none";
+        await rememberNo(matchConfidence);
         return Response.json(
           {
             image_url: null,
             source_url: sourceUrl,
             frames: [],
-            match_confidence: verificationResponse.output_parsed.matches[0]?.confidence ?? "none",
+            match_confidence: matchConfidence,
             reason: "no_high_confidence_match",
           },
           { headers: { "Cache-Control": "public, s-maxage=86400" } },
