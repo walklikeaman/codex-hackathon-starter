@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import { graphFailureReason } from "../points/route.js";
 import { parseKindsParam } from "../../../lib/map-points.mjs";
-import { posterUrl, POSTER_SIZES } from "../../../lib/work-artwork.mjs";
+import { posterUrlFor } from "../../../lib/work-artwork.mjs";
 import { imdbUrl, rottenTomatoesUrl } from "../../../lib/work-ratings.mjs";
 
 export const runtime = "nodejs";
@@ -60,8 +60,10 @@ export function createMapWorksHandler({
             place_count: row.place_count ?? 0,
             // Two sizes from one stored path: a thumbnail for the picker, a larger
             // one for a card. image.tmdb.org needs no key, so these are plain URLs.
-            poster_url: posterUrl(row.poster_path, POSTER_SIZES.card),
-            poster_thumb_url: posterUrl(row.poster_path, POSTER_SIZES.thumb),
+            // Each is asked for at the size of the box it is drawn in (#198) — the card
+            // one was w500, 73 kB, for a poster 62 CSS px wide.
+            poster_url: posterUrlFor(row.poster_path, "workCardPoster"),
+            poster_thumb_url: posterUrlFor(row.poster_path, "searchSuggestion"),
             // Each rating keeps its source's own wording and a link back to it —
             // a score with no attribution is just a number we ask people to trust.
             ratings: Array.isArray(row.ratings) ? row.ratings : [],

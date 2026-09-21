@@ -1,4 +1,16 @@
 import { haversineKm } from "./geo.mjs";
+import { commonsFileUrl, commonsWidth, SURFACES } from "./image-budget.mjs";
+
+// Every place photo on the map is drawn in one box — the "place today" figure on the
+// place card — so every place photo is asked for at that box's size. Before #198 this
+// file built the URL twice, at 1200 and at no width at all, and the second one is the
+// full original upload: measured, 5.1 MB mean and 7.0 MB at worst, for a figure 192 CSS
+// px wide. Fifteen of fifteen places in a central-London viewport carried one.
+//
+// The desktop box decides the stored URL; a phone, where the figure is the full width of
+// the sheet, is served the larger bucket through `commonsSrcSet` at render time. That
+// only works because Special:FilePath renders on demand — see image-budget.mjs.
+const PLACE_PHOTO_WIDTH = commonsWidth(SURFACES.placePhoto.box);
 
 const WORK_KIND_CONFIG = {
   film: {
@@ -388,7 +400,18 @@ function entityReleaseYear(entity) {
 function entityImageUrl(entity) {
   const filename = entityClaimValues(entity, "P18")[0];
   if (typeof filename !== "string" || !filename.trim()) return null;
-  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=1200`;
+  return commonsFileUrl(filename, { width: PLACE_PHOTO_WIDTH });
+}
+
+// The SPARQL path states P18 as a bare `Special:FilePath/<file>` URL with no width, which
+// is the original. The two paths must agree on the size, so both go through the same
+// builder — and a URL that is not a Commons file URL is passed through untouched rather
+// than guessed at.
+function sparqlImageUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const filePath = value.match(/\/Special:FilePath\/([^?#]+)/);
+  if (!filePath) return value;
+  return commonsFileUrl(decodeURIComponent(filePath[1]), { width: PLACE_PHOTO_WIDTH });
 }
 
 // Every type reachable from an entity's P31 classes by walking P279* upward through
@@ -565,7 +588,7 @@ export function normalizeWikidataLocations(bindings, { kind }) {
       loc_name: place,
       lat: point.lat,
       lng: point.lng,
-      commons_image: row.image?.value ?? null,
+      commons_image: sparqlImageUrl(row.image?.value),
       film_tmdb_id: rowKind === "film" ? row.tmdbId?.value ?? null : null,
       relation_kind: config.relationKind,
       relation_property: config.locationProperty,

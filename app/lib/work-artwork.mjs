@@ -11,7 +11,7 @@
 // best-effort path for the common case.
 
 import { entityClaimValues, isWikidataId } from "./location-search.mjs";
-import { tmdbImageUrl } from "./tmdb-images.mjs";
+import { tmdbImageUrl, tmdbSrcSetForSurface, tmdbUrlForSurface } from "./tmdb-images.mjs";
 
 // TMDB external-id properties, the same allow-list the cross-walk uses in reverse.
 const TMDB_PROPERTY_BY_KIND = Object.freeze({
@@ -20,7 +20,23 @@ const TMDB_PROPERTY_BY_KIND = Object.freeze({
 });
 
 // Sizes chosen for what the UI actually renders; TMDB rejects anything else.
+//
+// These were two sizes for every poster in the product: w185 behind both a 34 px
+// suggestion row and a 28 px chip tile, w500 behind a 62 px card. Measured, 14 kB and
+// 73 kB to paint boxes that need 5 kB and 10 kB. Each surface now asks for its own size
+// through `posterUrlFor`; `full` stays because it is a link to the file rather than
+// something rendered.
 export const POSTER_SIZES = Object.freeze({ thumb: "w185", card: "w500", full: "original" });
+
+// A poster at the size the surface drawing it needs. Named for posters because that is
+// what every caller here holds; the arithmetic is shared with frames in tmdb-images.mjs.
+export function posterUrlFor(posterPath, surfaceKey) {
+  return tmdbUrlForSurface(posterPath, surfaceKey);
+}
+
+export function posterSrcSetFor(posterPath, surfaceKey) {
+  return tmdbSrcSetForSurface(posterPath, surfaceKey);
+}
 
 export function tmdbPropertyForKind(kind) {
   return TMDB_PROPERTY_BY_KIND[kind] ?? null;
