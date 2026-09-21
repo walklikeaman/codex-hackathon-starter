@@ -7,6 +7,25 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-22] update | "Star Wars" is A New Hope again: the dropdown breaks ties by fame
+
+**Object**: `search_works` (migration `20260922010000_search_breaks_ties_by_fame.sql`, applied to production)
+**Scenario**: bugfix · **Outcome**: ✅ success, checked on the live `/api/search`
+**What happened**: The juror re-run of 21.09 recorded "Star Wars" putting *Attack of the Clones*
+first and left it as a ranking question. The cause was mechanical: every "Star Wars: …" title
+ranks the same, the tie broke toward the work with the most places (Episode II had five), and the
+list is eight rows long — *The Empire Strikes Back*, with none, was ninth and not shown. Ties now
+break by IMDb vote count, which 5,495 of 7,063 works carry, then by places. Measured first on 40
+queries: 5 first answers change — Star Wars → A New Hope, Pirates → The Curse of the Black Pearl,
+Batman → the 1989 film, Alien → an *Alien* film instead of *Aliens in America*, Harry Potter →
+Deathly Hallows Part 2 with Philosopher's Stone (25 places) second. None of the 24 juror titles
+moves. Fame breaks ties only inside a match band; an exact title still beats a famous prefix.
+Also settled the same morning: the search box's Enter key is **not** broken. The automation's
+Enter sends a keydown without the character that triggers implicit submission; a bare form on a
+blank page, with no app code at all, does not submit on it either.
+**Code changes**: the migration, applied with the same name through the Supabase MCP.
+**Updated**: wiki/log.md.
+
 ## [2026-09-21] rule-change | A Q-id our own geocoder chose no longer counts as a second source
 
 **Object**: `app/lib/submission-review.mjs`, `scripts/review-submissions.mjs`, `scripts/promote-verified.mjs`
