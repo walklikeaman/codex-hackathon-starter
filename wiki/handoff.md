@@ -20,12 +20,27 @@ production: empty for **0 of 24** famous titles, median 1.3 s.
 
 | | |
 |---|---|
-| main | `ad358a5` — "a licensed second source, ingested (#264)"; `7c8b4e8` is what the rest of this table was measured against |
+| main | `db7d9d2` — "the route you are on survives the tab dying in your pocket (#274)" |
 | tests | **1,577 pass, 0 fail**, `node --test test/*.test.mjs`, zero network (1,565 before the two ratings PRs) |
-| works | 7,063 · **5,480 now carry a `wikidata_id`** (was 28 before the backfill of 12.09) |
-| enriched from Wikipedia | **264 of 5,480**. `works.wikipedia_enriched_at` is the progress marker; 5,216 remain |
-| queue | 45,249 rows. `moviemaps` 30,135 · `reelstreets` 8,062 · `movielocations` 5,578 · **`wikipedia` 1,172** · **`fandom` 239** · `open_plaques` 53 · `permit_record` 10 |
-| the two text sources | wikipedia **463 placed**, of which **36 are `author_place`** · fandom **11 placed** |
+| works | 7,063 · **5,480 carry a `wikidata_id`** (was 28 before the backfill of 12.09) |
+| enriched from Wikipedia | **441 of 5,480** (21.09, 01:33 UTC, and climbing — the run is live). `works.wikipedia_enriched_at` is the progress marker |
+| queue | **45,601** rows (21.09, 01:33 UTC): verified **4,703** · rejected **926** · pending **39,972**, of which **11,997 hold no coordinate** |
+| the graph | **places 2,908 · `work_place_links` 4,688** (21.09, 01:33). Both were 70 and ~70 the day before — see the promotion below |
+| the two text sources | wikipedia **463 placed**, of which **36 are `author_place`** · fandom **11 placed** (20.09) |
+
+## The queue became the graph, on 21.09, and not by this page's plan
+
+**#272 applied the review verdicts and promoted them.** 4,703 rows are `verified`, `places`
+went **70 → 2,908** and `work_place_links` stands at **4,688**. Hours earlier this page
+carried exactly that as an open decision for the owner, with the numbers to argue it. A
+different session took it while the decision was being written down — which is this page's
+own trap about two sessions taking the same next step, met from the other side, and it cost
+nothing this time only because one of the two was a paragraph.
+
+**It is not a thing that stays done.** The promotion covers the rows that existed when it
+ran; the Wikipedia enrichment has added ~350 since and will add thousands more, each landing
+`pending`. `scripts/promote-verified.mjs` is the pass to run again, and running it is the
+difference between a map and a map plus a growing pile of candidates nobody has looked at.
 
 ## Where the ingest pipelines stand, and how to restart them
 
@@ -105,10 +120,14 @@ Three things, named precisely:
 - **`creator_place_links` exists and `creators` holds zero rows.** So **no fact of distance
   1 or 2 exists anywhere**, and the film card's two lower blocks have never been seen with
   live data.
-- **`geocode_cache` is built, wired and empty.** The last run learned ~12,000 names; loading
-  them needs `SUPABASE_SERVICE_ROLE_KEY`, which this machine does not have. An anon INSERT
-  policy would fix the mechanics and is deliberately NOT added: an open write there lets a
-  stranger poison a coordinate.
+- **`geocode_cache` is built, wired and empty — and its stated blocker is gone.** The note
+  here read "loading them needs `SUPABASE_SERVICE_ROLE_KEY`, which this machine does not
+  have". It does have one: see **Keys and secrets**, and `geocode-submissions.mjs` already
+  prefers it over the anon key at line 41. What is left is that the script *emits* the cache
+  as SQL instead of writing it, which was the right shape when the write had to go through
+  the MCP. An anon INSERT policy is still deliberately NOT added: an open write there lets a
+  stranger poison a coordinate. **11,997 pending rows hold no coordinate** (21.09, 01:33), so
+  this is the cache's whole reason for existing, still unspent.
 
 That is worth keeping true. The project's most repeated failure is finished work that never
 reaches the live path: posters, ratings, three audio features, the personal library, the map
@@ -458,7 +477,7 @@ Nothing on this page marks an item as taken.
 are blocked on rows rather than on rendering, and they are the same three named under "built
 and NOT wired up": `creators` is empty so no fact of distance 1 or 2 exists anywhere;
 `statement` has no writer; `geocode_cache` is empty for want of a service-role key. A fourth
-belongs beside them now — **`places.city` is null in all 70 rows** (18.08, 00:06 UTC), so
+belongs beside them now — **`places.city` is null in all 2,908 rows** (21.09, 01:33 UTC; it was all 70 of them on 18.08), so
 anything that wants to group by administrative area reverse-geocodes the queue's 32,148
 located rows first (18.08, 20:23 UTC). The directory works
 around that with a gazetteer of discs; a city FILTER on the map would not.
@@ -475,16 +494,6 @@ as results, live-GPS buddy tracking, AI-generated "lore", and a 1–5 safety sco
   cannot be chosen without this. It is one question and it unblocks the whole feature.
 - **`isRoutable`**: an unconfirmed stop is currently routed with a warning rather than
   refused. Whether it should harden into a refusal is a product call, not a technical one.
-- **4,614 rows the committed rules already call `verified` are still `pending`.** Measured
-  20.09, 23:23 UTC: `review-submissions.mjs --dry` over 45,278 queue rows returns **verified
-  4,704 · rejected 914 · pending 39,660**, and the live table holds **verified 90 · rejected
-  926 · pending 44,262**. So the rejecting half of that review was applied and the verifying
-  half never was — 3,095 of them on `wikidata_entity+cited_source` alone. Either that is a
-  deliberate stance (rejecting is safe, promoting a row to confirmed is a product claim) or
-  it is a run nobody finished, and the page cannot tell which. It is worth deciding on
-  purpose, because it is the difference between a map of candidates and a map: the writes
-  themselves are now mechanical, since the service key exists (see **Keys and secrets**) and
-  no longer has to go through the MCP.
 - **Rotating `SUPABASE_SERVICE_ROLE_KEY`** (see above) — recommended, never confirmed.
 - **Russian merge-commit subjects on `main`** — fixing them rewrites history.
 
