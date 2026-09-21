@@ -469,6 +469,7 @@ function kindLabel(kind) {
 function filmImagePlaceholderLabel(status) {
   if (status === "loading") return "Matching scene to this place…";
   if (status === "no_match") return "No verified scene match";
+  if (status === "studio_lot") return "Filmed on a studio lot";
   if (status === "error") return "Scene matching failed";
   return "Scene matching unavailable";
 }
@@ -1351,15 +1352,18 @@ export default function SceneMapApp() {
 
         const status = payload.image_url
           ? "ready"
-          : ["no_candidates", "no_high_confidence_match"].includes(payload.reason)
-            ? "no_match"
-            : "unavailable";
+          : payload.reason === "studio_lot"
+            ? "studio_lot"
+            : ["no_candidates", "no_high_confidence_match"].includes(payload.reason)
+              ? "no_match"
+              : "unavailable";
         const frames = framesFromFilmImagePayload(payload, activeLocation.place);
         const cached = {
           url: frames[0]?.url ?? payload.image_url ?? null,
           sourceUrl: frames[0]?.sourceUrl ?? payload.source_url ?? null,
           frames,
           status,
+          studio: payload.studio ?? null,
         };
         filmImageCache.current.set(cacheKey, cached);
         setFilmImageState({
@@ -4062,6 +4066,16 @@ export default function SceneMapApp() {
                 ) : (
                   <div className="image-placeholder" role="status">
                     <span>{filmImagePlaceholderLabel(activeFilmImageStatus)}</span>
+                    {/* A lot has no frame worth showing: the scene is a set, dressed as
+                        somewhere else, that nobody can go and stand in (#196). The photo
+                        beside this is the lot itself, which is the honest image of it. */}
+                    {activeFilmImageStatus === "studio_lot" && (
+                      <small className="image-placeholder-note">
+                        {filmImageState.studio?.name ? `${filmImageState.studio.name}. ` : ""}
+                        The scene was shot on a set, so there is no spot to match a frame to.
+                        {filmImageState.studio?.access_note ? ` ${filmImageState.studio.access_note}` : ""}
+                      </small>
+                    )}
                     {activeFilmImageStatus === "error" && (
                       <button
                         className="image-placeholder-retry"

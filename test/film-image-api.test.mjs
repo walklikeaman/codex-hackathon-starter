@@ -42,7 +42,11 @@ function wikidataResponse(pair = CLOCKWORK) {
     Q386707: {
       id: "Q386707",
       labels: { en: { value: pair?.locationLabel ?? "HM Prison Wandsworth" } },
-      claims: { P18: pair?.image ? [statement(pair.image)] : [] },
+      claims: {
+        P18: pair?.image ? [statement(pair.image)] : [],
+        P625: pair?.lat !== undefined ? [statement({ latitude: pair.lat, longitude: pair.lng })] : [],
+        P31: (pair?.instanceOf ?? []).map((id) => statement({ id })),
+      },
     },
   };
   return new Response(JSON.stringify({ entities }), {
@@ -321,31 +325,67 @@ test("film image API rejects a shortlisted image that fails exact final verifica
   assert.equal(payload.reason, "no_high_confidence_match");
 });
 
-test("film image API can associate representative frames with an explicit studio", async () => {
-  const handler = handlerForMatch({
-    pair: { workLabel: "Test Film", locationLabel: "Pinewood Studios", tmdbId: "185", image: null },
-    outputParsed: {
-      matches: [frameMatch({
-        candidateIndex: 0,
-        confidence: "high",
-        locationType: "building",
-        description: "An interior production frame; the exact soundstage is not visible.",
-      })],
+// A studio is answered before TMDB or a model is asked (#196): a frame from a stage
+// shows a set dressed as somewhere else, and nobody can go and stand in it.
+function countingFetch(pair) {
+  const calls = { tmdb: 0 };
+  const inner = upstreamFetch({ pair });
+  return {
+    calls,
+    fetchImpl: async (url, init) => {
+      if (new URL(url).hostname === "api.themoviedb.org") calls.tmdb += 1;
+      return inner(url, init);
     },
-    onParse: (body) => {
-      assert.equal(
-        body.input[0].content.filter((item) => item.type === "input_image").length,
-        2,
-      );
-      assert.match(body.input[0].content[0].text, /explicitly a studio/);
-    },
-  });
-  const response = await handler(filmImageRequest());
-  const payload = await response.json();
+  };
+}
 
-  assert.equal(response.status, 200);
-  assert.equal(payload.frames[0].location_name, "Pinewood Studios");
-  assert.equal(payload.frames[0].location_type, "studio");
+test("a place Wikidata calls a film studio gets the lot, not a frame", async () => {
+  const { fetchImpl, calls } = countingFetch({
+    workLabel: "Test Film", locationLabel: "Pinewood Studios", tmdbId: "185", image: null,
+    lat: 51.549, lng: -0.535, instanceOf: ["Q375336"],
+  });
+  let parsed = 0;
+  const handler = handlerForMatch({ fetchImpl, onParse: () => { parsed += 1; } });
+  const payload = await (await handler(filmImageRequest())).json();
+
+  assert.equal(payload.reason, "studio_lot");
+  assert.deepEqual(payload.frames, []);
+  assert.equal(payload.studio.name, "Pinewood Studios");
+  assert.equal(payload.studio.basis, "type");
+  assert.equal(calls.tmdb, 0);
+  assert.equal(parsed, 0);
+});
+
+// "New York Street" has no "studio" in its name. It is inside Warner Bros. Burbank, and it
+// is New York in Blade Runner and Batman Returns. The old name test sent it to matching.
+test("a place inside a lot's fence is a studio whatever it is called", async () => {
+  const { fetchImpl, calls } = countingFetch({
+    workLabel: "Test Film", locationLabel: "New York Street", tmdbId: "185", image: "NYS.jpg",
+    lat: 34.1476, lng: -118.3374,
+  });
+  const payload = await (await handlerForMatch({ fetchImpl })(filmImageRequest())).json();
+
+  assert.equal(payload.reason, "studio_lot");
+  assert.equal(payload.studio.basis, "polygon");
+  assert.equal(payload.studio.name, "Warner Bros. Studios Burbank");
+  assert.match(payload.studio.access_note, /tour/i);
+  assert.equal(calls.tmdb, 0);
+});
+
+// Studio City is a neighbourhood. A bistro on Ventura Boulevard is a street address.
+test("a place called '… Studio City' on the street is matched like any street", async () => {
+  const { fetchImpl, calls } = countingFetch({
+    workLabel: "Test Film", locationLabel: "Bistro Garden, Studio City", tmdbId: "185", image: "Bistro.jpg",
+    lat: 34.1437, lng: -118.3960,
+  });
+  const handler = handlerForMatch({
+    fetchImpl,
+    outputParsed: { matches: [frameMatch({ candidateIndex: 1, confidence: "high", locationType: "bar_or_restaurant", description: "The striped awning matches the bistro frontage." })] },
+  });
+  const payload = await (await handler(filmImageRequest())).json();
+  assert.equal(payload.reason, undefined);
+  assert.equal(payload.frames.length, 1);
+  assert.equal(calls.tmdb, 1);
 });
 
 test("film image API can match a relevant backdrop beyond the first six", async () => {

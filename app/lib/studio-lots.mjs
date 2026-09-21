@@ -381,3 +381,47 @@ export function studioLotAccessNote(lot) {
   if (lot.access === ACCESS.ticketed) return "A studio tour goes inside. Book ahead.";
   return "A working lot — no public access. The gate is as close as you get.";
 }
+
+// Wikidata's own word for it, verified live when these were chosen (location-resolver.mjs
+// PLACE_TYPE_TARGETS): Q375336 "film studio" — Warner Bros. Burbank, Pinewood, Shepperton,
+// Cinecittà — and Q21550789, the lot-as-a-building sense. Checked on the entity's own
+// P31, not its ancestry: this runs per card, and one hop is what the entity states.
+export const STUDIO_TYPES = Object.freeze(["Q375336", "Q21550789"]);
+
+// The name test, kept for the one case nothing else can answer: a place with no
+// coordinate. Measured on 5,436 Los Angeles queue rows it missed 166 places inside a
+// lot ("New York Street", "Stars Hollow", "Courthouse Square") and called a bookshop
+// and a jeweller in Studio City — a neighbourhood — studios. "Studio City" is excluded
+// by name because it is the false alarm that recurs; the rest is why this is last.
+const STUDIO_NAME = /\b(studio|studios|sound[ -]?stage)\b/i;
+const STUDIO_CITY = /\bstudio city\b/gi;
+
+// The neighbourhood is cut out before the test, so "CBS Studio Center, Studio City" is
+// still a studio and "Bookstar (Studio City)" is not.
+export function studioNameHint(name) {
+  if (typeof name !== "string") return false;
+  return STUDIO_NAME.test(name.replace(STUDIO_CITY, ""));
+}
+
+// Is this place a studio — somewhere the camera was, standing in for somewhere else?
+//
+// In order of what can be argued with least:
+//   1. the coordinate is inside a lot's fence (a polygon from OpenStreetMap);
+//   2. Wikidata states the place is a film studio;
+//   3. a coordinate that is neither — it is on the street. The name is NOT consulted:
+//      the false alarm ("a studio", said of a shop) makes a claim about the place, and
+//      the miss (a stage we have no fence for) only costs a frame match that the matcher
+//      is conservative enough to decline;
+//   4. no coordinate at all — the name, and the answer says it came from the name.
+//
+// `basis` travels with the answer so a caller, a test or a log line can tell a fence
+// from a guess.
+export function studioVerdict({ name = null, lat = null, lng = null, instanceOf = [] } = {}) {
+  const lot = studioLotAt(lat, lng);
+  if (lot) return { studio: true, basis: "polygon", lot };
+  const types = new Set(Array.isArray(instanceOf) ? instanceOf : []);
+  if (STUDIO_TYPES.some((type) => types.has(type))) return { studio: true, basis: "type", lot: null };
+  const hasCoordinate = finiteOrNull(lat) !== null && finiteOrNull(lng) !== null && !(Number(lat) === 0 && Number(lng) === 0);
+  if (hasCoordinate) return { studio: false, basis: "coordinate", lot: null };
+  return { studio: studioNameHint(name), basis: "name", lot: null };
+}
