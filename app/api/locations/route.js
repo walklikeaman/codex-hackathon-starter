@@ -3,6 +3,7 @@ import { MAX_SEARCH_RADIUS_KM } from "../../lib/nearby.mjs";
 import {
   buildLocationsSparql,
   buildWikidataEntitiesUrl,
+  buildTypedWorkSearchUrl,
   buildWikidataSearchUrl,
   buildWorkFameQuery,
   entityClaimIds,
@@ -25,6 +26,8 @@ import {
   resolveWorkKind,
   WORK_KINDS,
   workKindConfig,
+  labelIsTitle,
+  typedMatchesFromSearch,
   workMatchesTypeGraph,
 } from "../../lib/location-search.mjs";
 import {
@@ -210,6 +213,26 @@ async function searchWorks(query) {
   }
 }
 
+// The second way to find a work, used only when the first found none — see
+// `buildTypedWorkSearchUrl`. Never throws: a failure here must cost this fallback and
+// nothing else, because it only runs for a title that has already come back empty.
+async function searchTypedWorks(query) {
+  const url = buildTypedWorkSearchUrl(query);
+  if (!url) return [];
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+      next: { revalidate: 86400 },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!response.ok) return [];
+    return typedMatchesFromSearch(await response.json());
+  } catch (error) {
+    console.warn("typed work search unavailable", error?.message);
+    return [];
+  }
+}
+
 async function fetchLocationBindings(query) {
   const endpoint = new URL(WIKIDATA_ENDPOINT);
   endpoint.searchParams.set("query", query);
@@ -304,9 +327,15 @@ async function fetchTypeGraph(workEntities, kind) {
   return graph;
 }
 
-async function findLocationsByTitle({ workMatches, kind, center, radius, limit, excludeLocationId }) {
-  const workIds = workMatches.map((match) => match.id);
+async function findLocationsByTitle({
+  workMatches, kind, center, radius, limit, excludeLocationId, requireTitle = null,
+}) {
+  let workIds = workMatches.map((match) => match.id);
   const workEntities = await fetchEntities(workIds);
+  // The typed fallback's rule: its answer must be CALLED what was typed — see labelIsTitle.
+  if (requireTitle) {
+    workIds = workIds.filter((id) => labelIsTitle(entityText(workEntities.get(id), "labels"), requireTitle));
+  }
   let matchedWorkId = null;
   // The kind the matched work turned out to BE. Asking for every kind still has to end
   // with one: which property holds its places, and whether they are filming locations or
@@ -325,13 +354,17 @@ async function findLocationsByTitle({ workMatches, kind, center, radius, limit, 
     }
   }
 
-  const matchedWork = matchedWorkId
-    ? workMatches.find((match) => match.id === matchedWorkId) ?? null
-    : null;
-
   if (!matchedWorkId) return { matchedWork: null, locations: [] };
 
   const workEntity = workEntities.get(matchedWorkId);
+  // A candidate from the typed search arrives with no label; its entity has one. Filled
+  // from there, never made up — and the label search's own words win when it has them.
+  const found = workMatches.find((match) => match.id === matchedWorkId) ?? { id: matchedWorkId };
+  const matchedWork = {
+    ...found,
+    label: found.label ?? entityText(workEntity, "labels"),
+    description: found.description ?? entityText(workEntity, "descriptions"),
+  };
   const config = workKindConfig(matchedKind);
 
   // The work's own property first, then the weaker ones — but only if the strong one
@@ -504,6 +537,9 @@ export async function GET(request) {
   }
 
   try {
+    // Started now, read only if the label search's candidates hold no work — so a title
+    // that already resolves waits for nothing and changes in nothing.
+    const typedWorks = workQuery ? searchTypedWorks(workQuery) : Promise.resolve([]);
     const workMatches = workQuery ? await searchWorks(workQuery) : [];
     const workIds = workMatches.map((match) => match.id);
 
@@ -551,6 +587,27 @@ export async function GET(request) {
             candidate_count: own.locations.length,
             queued_count: own.locations.length,
           };
+        }
+      }
+
+      // **Last: the label search held no work, and neither do our own records.** "Psycho"
+      // is a prefix of Psychology, Psychotria and psychosis; the film was twentieth of a
+      // list cut at fifteen, and our catalogue holds it with no place. Ask again with the
+      // type in the question, and take only a work whose label IS the title. It runs after
+      // our own records on purpose: "Heat" is answered by them today with six places, and
+      // the typed search's first "Heat" was a television series.
+      if (!result.matchedWork) {
+        const typed = (await typedWorks).filter((match) => !workIds.includes(match.id));
+        if (typed.length) {
+          result = await findLocationsByTitle({
+            workMatches: typed,
+            kind,
+            center: { lat, lng },
+            radius,
+            limit,
+            excludeLocationId,
+            requireTitle: workQuery,
+          });
         }
       }
 

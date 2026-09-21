@@ -20,6 +20,9 @@ import {
   fameFromBindings,
   rankWorksByFame,
   WORK_SEARCH_CANDIDATES,
+  buildTypedWorkSearchUrl,
+  labelIsTitle,
+  typedMatchesFromSearch,
 } from "../app/lib/location-search.mjs";
 
 function binding({
@@ -414,4 +417,45 @@ test("a kind that is absent costs the others nothing", () => {
   ], { limit: 30, balanced: true });
 
   assert.deepEqual([...new Set(balanced.map((row) => row.work_wikidata_id))], ["F1", "B1", "F2", "F3"]);
+});
+
+// ---------- the typed fallback: when the name is a prefix of everything ----------
+
+test("the typed search asks for the three work types, with the title as a phrase", () => {
+  const url = buildTypedWorkSearchUrl("Psycho");
+  assert.equal(url.hostname, "www.wikidata.org"); // not the query service
+  assert.equal(
+    url.searchParams.get("srsearch"),
+    '"Psycho" haswbstatement:P31=Q11424|P31=Q5398426|P31=Q7725634',
+  );
+});
+
+test("a title's own quotes and syntax stay text", () => {
+  const url = buildTypedWorkSearchUrl('Say "Anything" -now');
+  assert.equal(url.searchParams.get("srsearch").split(" haswbstatement")[0], '"Say Anything -now"');
+  assert.equal(buildTypedWorkSearchUrl("   "), null);
+  assert.equal(buildTypedWorkSearchUrl(null), null);
+});
+
+test("the typed search yields Q-ids and nothing it cannot vouch for", () => {
+  // Shape of the live answer for "Psycho", 21.09 — the 1960 film first.
+  const matches = typedMatchesFromSearch({ query: { search: [
+    { title: "Q163038" }, { title: "Q979196" }, { title: "Property:P31" }, {},
+  ] } });
+  assert.deepEqual(matches.map((match) => match.id), ["Q163038", "Q979196"]);
+  assert.equal(matches[0].label, null, "no label is invented; the entity supplies it");
+  assert.deepEqual(typedMatchesFromSearch(null), []);
+});
+
+test("the fallback takes only a work called what was typed", () => {
+  // The typed search's first "Heat" was a television series. Not a last resort worth having.
+  assert.equal(labelIsTitle("In the Heat of the Night", "Heat"), false);
+  assert.equal(labelIsTitle("Heat", "Heat"), true);
+  assert.equal(labelIsTitle("Psycho", "psycho"), true);
+  assert.equal(labelIsTitle("The Godfather", "godfather"), true);   // a leading article
+  assert.equal(labelIsTitle("Amélie", "Amelie"), true);             // accents
+  assert.equal(labelIsTitle("Mamma Mia!", "Mamma Mia"), true);      // punctuation
+  assert.equal(labelIsTitle("American Psycho", "Psycho"), false);
+  assert.equal(labelIsTitle(null, "Psycho"), false);
+  assert.equal(labelIsTitle("", ""), false);
 });
