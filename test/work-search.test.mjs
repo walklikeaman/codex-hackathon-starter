@@ -7,6 +7,7 @@ import {
   matchRange,
   MAX_SUGGESTIONS,
   prepareSearchQuery,
+  holdsTheTitle,
 } from "../app/lib/work-search.mjs";
 
 const highlight = (title, query) => {
@@ -135,6 +136,21 @@ test("search passes the normalised query and returns suggestions", async () => {
   assert.equal(seen.query, "sky");
   assert.equal(body.suggestions[0].title, "Skyfall");
   assert.deepEqual(body.suggestions[0].match, { start: 0, end: 3 });
+  assert.equal(body.held, true);
+});
+
+test("search says so when its rows only look like what was typed", async () => {
+  const handler = handlerWith({
+    reader: {
+      search: async () => [
+        { work_id: "a", title: "The Sacred Spirit", kind: "film", year: 2021 },
+        { work_id: "b", title: "Cast Away", kind: "film", year: 2000 },
+      ],
+    },
+  });
+  const body = await (await handler(searchRequest("Spirited Away"))).json();
+  assert.equal(body.suggestions.length, 2);
+  assert.equal(body.held, false);
 });
 
 test("search reports a graph failure with its cause", async () => {
@@ -150,4 +166,36 @@ test("search reports a graph failure with its cause", async () => {
 test("search returns 503 when the graph is not configured", async () => {
   const handler = handlerWith({ createReader: () => null });
   assert.equal((await handler(searchRequest("sky"))).status, 503);
+});
+
+// ---------- whether we hold what was typed ----------
+
+test("seven look-alikes are not the film that was asked for", () => {
+  // /api/search?q=Spirited Away on production, 21.09. The film is not in our catalogue;
+  // every row is a neighbouring spelling, and none of them carries a match.
+  const query = prepareSearchQuery("Spirited Away").query;
+  const rows = formatSuggestions([
+    { work_id: "a", title: "The Sacred Spirit", kind: "film", year: 2021 },
+    { work_id: "b", title: "Spirit Glitch", kind: "film", year: 2019 },
+    { work_id: "c", title: "Cast Away", kind: "film", year: 2000 },
+    { work_id: "d", title: "Suspiria", kind: "film", year: 2018 },
+  ], query);
+  assert.equal(holdsTheTitle(rows), false);
+});
+
+test("a title we hold is held, however it is typed", () => {
+  const held = (typed, title) => holdsTheTitle(
+    formatSuggestions([{ work_id: "x", title, kind: "film", year: 2001 }], prepareSearchQuery(typed).query),
+  );
+  assert.equal(held("Skyfall", "Skyfall"), true);
+  assert.equal(held("skyfal", "Skyfall"), true);          // still typing
+  assert.equal(held("amelie", "Amélie"), true);           // accents fold
+  assert.equal(held("matrix", "The Matrix"), true);       // a word inside the title
+  assert.equal(held("Spirited Away", "Cast Away"), false);
+});
+
+test("no rows at all holds nothing", () => {
+  assert.equal(holdsTheTitle([]), false);
+  assert.equal(holdsTheTitle(null), false);
+  assert.equal(holdsTheTitle(undefined), false);
 });

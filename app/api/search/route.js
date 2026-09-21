@@ -1,7 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
 import { graphFailureReason } from "../map/points/route.js";
-import { formatSuggestions, MAX_SUGGESTIONS, prepareSearchQuery } from "../../lib/work-search.mjs";
+import {
+  formatSuggestions, holdsTheTitle, MAX_SUGGESTIONS, prepareSearchQuery,
+} from "../../lib/work-search.mjs";
 
 export const runtime = "nodejs";
 
@@ -59,8 +61,12 @@ export function createSearchHandler({
 
     try {
       const rows = await reader.search(prepared);
+      const suggestions = formatSuggestions(rows, prepared.query);
       return Response.json(
-        { query: prepared.query, suggestions: formatSuggestions(rows, prepared.query) },
+        // `held` answers the question the rows cannot: whether anything we hold is CALLED
+        // what was typed. Decided here, beside `match`, so the dropdown never has to
+        // re-derive it — see holdsTheTitle.
+        { query: prepared.query, suggestions, held: holdsTheTitle(suggestions) },
         // Short shared cache: the same few prefixes get typed constantly, and the
         // graph changes far slower than people type.
         { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } },
