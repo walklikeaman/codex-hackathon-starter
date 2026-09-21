@@ -320,6 +320,16 @@ gave Adele's lyric video and "Parasite" an academic journal. The fix that works,
 now used in three places: take 15 candidates, rank by `wikibase:sitelinks`, and only then
 check the type.
 
+**And sometimes the right entity is not in the fifteen at all** (21.09). "Psycho" is a prefix
+of Psychology, Psychotria, psychosis and a family of flies; Hitchcock's film was twentieth,
+so ranking had nothing to rank and the live search answered `matched_work: null`. Wikidata's
+own search takes a type filter — `"Psycho" haswbstatement:P31=Q11424|…` returns the film
+first, from wikidata.org rather than the query service. It is the LAST resort in
+`/api/locations`, after our own records, and takes only a work whose label is the title:
+its first answer for "Heat" was *In the Heat of the Night*, and our records already answer
+Heat with six places. It cannot replace the label search, because it sees the root types
+exactly and Spirited Away is an "animated feature film".
+
 **Another session takes the same next step, not only the same database.** On 18–19.08 two
 sessions built #158 simultaneously from this page's own numbered list; one directory was
 finished and discarded. Nothing here marks an item as taken, so **before starting one, run

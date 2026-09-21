@@ -296,6 +296,71 @@ export function buildWikidataSearchUrl(query, limit = WORK_SEARCH_CANDIDATES) {
   return endpoint;
 }
 
+// **When the name is a prefix of everything, ask for the TYPE as well.** `wbsearchentities`
+// matches labels by prefix, and "Psycho" begins Psychology, Psychological Medicine,
+// Psychotria, Psychodidae and psychosis. Measured 21.09: the fifteen candidates it returns
+// for "Psycho" hold not one work — Hitchcock's film is twentieth — so fame ranking had
+// nothing to rank and the search answered `matched_work: null`: the film a juror is most
+// likely to name when asked for a Hitchcock was not there.
+//
+// Wikidata's own search takes a type filter. `Psycho haswbstatement:P31=Q11424` returns the
+// 1960 film first, in one request to wikidata.org — not to the query service, which spent
+// the same day nine hours behind and answering 429. It sees only the three root types
+// exactly, so it cannot replace the label search: Spirited Away is an "animated feature
+// film", a subclass, and only the label search finds it. So it is the last resort: asked
+// in parallel so it costs no waiting, read only when every other way came back empty.
+//
+// The title is searched as a phrase, with its own double quotes removed: a title is text,
+// and an unquoted "-" or a stray keyword would otherwise become search syntax.
+export const TYPED_WORK_SEARCH_CANDIDATES = 8;
+
+export function buildTypedWorkSearchUrl(query, limit = TYPED_WORK_SEARCH_CANDIDATES) {
+  const text = String(query ?? "").replace(/"/g, " ").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  const types = WORK_KINDS.map((kind) => `P31=${workKindConfig(kind).rootType}`).join("|");
+  const endpoint = new URL("https://www.wikidata.org/w/api.php");
+  endpoint.searchParams.set("action", "query");
+  endpoint.searchParams.set("list", "search");
+  endpoint.searchParams.set("srsearch", `"${text}" haswbstatement:${types}`);
+  endpoint.searchParams.set("srnamespace", "0");
+  endpoint.searchParams.set("srlimit", String(limit));
+  endpoint.searchParams.set("srprop", "");
+  endpoint.searchParams.set("format", "json");
+  endpoint.searchParams.set("origin", "*");
+  return endpoint;
+}
+
+// Q-ids only: this search returns no label, and the entities the route fetches next carry
+// one. A candidate without a label is filled in from its entity, never invented.
+export function typedMatchesFromSearch(payload) {
+  const results = payload?.query?.search;
+  if (!Array.isArray(results)) return [];
+  return results
+    .map((result) => result?.title)
+    .filter(isWikidataId)
+    .map((id) => ({ id, label: null, description: null }));
+}
+
+// **Only the title that was typed.** The typed search ranks by text relevance, not by what
+// somebody meant: for "Heat" its first answer was "In the Heat of the Night", a television
+// series. As a last resort that is worse than nothing, so this fallback takes a work only if
+// its own label IS the title — ignoring case, accents, punctuation and a leading article, so
+// "The Godfather" answers "godfather" and "Amélie" answers "Amelie".
+function comparableTitle(value) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/^(?:the|a|an) /, "");
+}
+
+export function labelIsTitle(label, title) {
+  const left = comparableTitle(label);
+  return left.length > 0 && left === comparableTitle(title);
+}
+
 // Which of the candidates is the one somebody meant.
 //
 // A label match cannot tell "Skyfall the film" from "Skyfall the lyric video", and the
