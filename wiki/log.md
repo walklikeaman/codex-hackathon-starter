@@ -7,6 +7,38 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-21] update | Clifton is refused by distance — and two things broken on the way, one of them mine
+
+**Object**: `app/lib/geocode-wikidata.mjs`, `app/lib/geocode-client.mjs`
+**Scenario**: bugfix · **Outcome**: ✅ fixed for new geocoding; three wrong rows remain in the queue
+
+**The fix.** "Clifton Village", hint "Bristol, England", resolved to Clifton in Nottingham
+because the chain and the hint agree on England. The stricter name rule refused 127 correct
+rows, because a chain can be silent about a town as well as name a different one. Measured
+over 925 placed Wikipedia rows, 48 have a chain silent about their hint's town, and the right
+pins among them sit within 80 km of it; the wrong ones at 188 (Clifton), 309 (Saint
+Francisville, placed in Illinois for "Louisiana") and 704 km (Milton Academy, placed in
+Wisconsin for "Cambridge, Massachusetts"). The geocoder now looks the town up — only for
+those winners, only point-like towns that AGREE with the rest of the hint — and refuses past
+150 km. Replayed with the real functions: 5 refusals, 3 of them real errors, 1 a source that
+contradicts itself, 1 a right pin under a wrong hint. The first version refused Leavesden
+too: a far Windsor with a one-line chain testified for a hint that was itself wrong, which is
+why a town must now agree rather than merely not contradict. A second slip was caught by the
+tests, not the data: `haversineKm` takes `[lat, lng]` pairs, objects gave NaN, and `NaN > 150`
+is false — a check that could never have refused anything.
+
+**Found on the way: 472 circular Q-ids** — written by this session's resolver run the same
+morning. Recorded under the owner's open decisions in the handoff, with the two ways out.
+
+**Found on the way, and caused here: the main checkout lost its packages.** Checking #288 by
+running the route locally, this session put a `node_modules` symlink into its worktree;
+`.gitignore` said `node_modules/`, which matches directories only, so `git add -A` committed
+it; fast-forwarding the main checkout replaced its real (ignored) `node_modules` with the
+link, which there points at itself. Another session fixed the repository in #289. The main
+checkout's packages were restored with `npm ci --offline` from the lockfile and the local
+cache, before the enrichment agent — which runs from the main checkout and holds its modules
+only in memory until its current attempt ends — needed them again.
+
 ## [2026-09-21] update | The juror scenario, re-run: 23 of 24, and the one that failed was one we had fixed
 
 **Object**: `app/api/search/route.js`, `app/lib/work-search.mjs`, `app/components/SearchBox.jsx`

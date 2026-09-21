@@ -230,3 +230,56 @@ test("waiting out a rate limit does not spend the budget for splitting", async (
   assert.equal(resolved.size, 8);
   assert.ok(seen.includes(1), "never got down to one name per query");
 });
+
+// --- the town a hint names, when the winner's chain is silent about it ------------------
+
+// One entity comes back once per ancestor, carrying its chain a row at a time.
+function placedRows(name, qid, lat, lng, chain, country, type = null) {
+  return chain.map((ancestor) => ({
+    ...binding(name, qid, lat, lng),
+    countryLabel: { value: country },
+    ancLabel: { value: ancestor },
+    ...(type ? { typeLabel: { value: type } } : {}),
+  }));
+}
+
+const CLIFTON = placedRows("Clifton Village", "Q5133339", 52.909, -1.19,
+  ["City of Nottingham", "Nottinghamshire", "England", "United Kingdom"], "United Kingdom");
+const BRISTOL = placedRows("Bristol", "Q23154", 51.4545, -2.5879,
+  ["Bristol", "England", "United Kingdom"], "United Kingdom", "city");
+
+test("a winner 188 km from the town its hint names is refused", async () => {
+  // Clifton Village, "Bristol, England": resolved to Clifton in Nottingham, because the chain
+  // and the hint agreed on England. The answer, the headquarters check, then the town.
+  const { fetchImpl, calls } = stubFetch([CLIFTON, [], BRISTOL]);
+  const resolved = await createGeocoder({ fetchImpl, sleep: noSleep })(
+    ["Clifton Village"], { areas: new Map([["Clifton Village", "Bristol, England"]]) },
+  );
+  assert.equal(resolved.get("Clifton Village").place, null);
+  assert.equal(resolved.get("Clifton Village").reason, "far_from_hint_town");
+  assert.equal(calls.length, 3);
+  assert.match(calls[2].query, /"Bristol"/);
+});
+
+test("a town that cannot be looked up is a check not made, not a pin dropped", async () => {
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push(options.body.get("query"));
+    if (calls.length === 3) return { ok: false, status: 429, json: async () => ({}) };
+    return { ok: true, json: async () => ({ results: { bindings: calls.length === 1 ? CLIFTON : [] } }) };
+  };
+  const resolved = await createGeocoder({ fetchImpl, sleep: noSleep })(
+    ["Clifton Village"], { areas: new Map([["Clifton Village", "Bristol, England"]]) },
+  );
+  assert.equal(resolved.get("Clifton Village").place.wikidata_id, "Q5133339");
+});
+
+test("nothing more is asked when the chain already names the town", async () => {
+  // Nineteen in twenty placed rows: the hint's town is in the chain, and the check costs nothing.
+  const { fetchImpl, calls } = stubFetch([CLIFTON, []]);
+  const resolved = await createGeocoder({ fetchImpl, sleep: noSleep })(
+    ["Clifton Village"], { areas: new Map([["Clifton Village", "Nottingham, England"]]) },
+  );
+  assert.equal(resolved.get("Clifton Village").place.wikidata_id, "Q5133339");
+  assert.equal(calls.length, 2, "the answer and the headquarters check, and no town query");
+});
