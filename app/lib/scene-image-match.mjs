@@ -31,11 +31,6 @@ export const sceneImageMatchSchema = z.object({
   matches: z.array(sceneFrameMatchSchema).max(MAX_SCENE_FRAMES),
 });
 
-export function isStudioLocation(place) {
-  return typeof place === "string"
-    && /\b(studio|studios|sound[ -]?stage)\b/i.test(place);
-}
-
 export function isAllowedLocationImageUrl(value) {
   try {
     const url = new URL(value);
@@ -123,11 +118,17 @@ export function parseWikidataSceneEntities(payload, expected) {
 
   const filename = truthyValues(location, "P18").find((value) => typeof value === "string");
   const imageUrl = filename ? commonsFileUrl(filename, { width: REFERENCE_WIDTH }) : null;
+  // Where the place is and what Wikidata says it is — the two things that decide whether
+  // it is a studio (studioVerdict), neither of which is its name.
+  const coordinate = truthyValues(location, "P625").find((value) => Number.isFinite(value?.latitude));
   return {
     // The query service fell back to the id when there was no English label; so does this.
     filmTitle: work.labels?.en?.value ?? expected.workId,
     place: location.labels?.en?.value ?? expected.locationId,
     locationImageUrl: isAllowedLocationImageUrl(imageUrl) ? imageUrl : null,
+    lat: coordinate ? coordinate.latitude : null,
+    lng: coordinate ? coordinate.longitude : null,
+    instanceOf: truthyValues(location, "P31").map(itemId).filter(Boolean),
   };
 }
 
@@ -164,8 +165,10 @@ export function buildSceneImageContent({
   place,
   locationImageUrl,
   candidateImageUrls,
+  // Decided by the caller from the coordinate and the place's type (studioVerdict), never
+  // from `place`, which is a name.
+  studioLocation = false,
 }) {
-  const studioLocation = isStudioLocation(place);
   const context = JSON.stringify({ filmTitle, place, studioLocation });
   const content = [
     {

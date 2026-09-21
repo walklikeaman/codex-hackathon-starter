@@ -3,6 +3,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { createClient } from "@supabase/supabase-js";
 
 import { cardFrameRow, payloadFromStored, storedFrameIsCurrent } from "../../lib/card-frames.mjs";
+import { studioLotAccessNote, studioVerdict } from "../../lib/studio-lots.mjs";
 import {
   payloadFromVerdict, sceneInputsHash, verdictIsCurrent, verdictRow,
 } from "../../lib/scene-verdicts.mjs";
@@ -19,7 +20,6 @@ import {
   buildWikidataSceneEntitiesUrl,
   canonicalSceneImageQuery,
   createSceneMatchRateLimiter,
-  isStudioLocation,
   MAX_TMDB_CANDIDATES,
   parseSceneImageRequest,
   parseWikidataSceneEntities,
@@ -228,9 +228,37 @@ export function createFilmImageHandler({
         );
       }
 
-      const studioLocation = isStudioLocation(sceneContext.place);
-
-      if (!sceneContext.locationImageUrl && !studioLocation) {
+      // A studio is answered here, before TMDB or a model is asked anything (#196). The
+      // camera was on a stage or a backlot; a frame from it shows a dressed set that is
+      // set somewhere else and that nobody can go and stand in, so offering one beside
+      // "the place today" would imply exactly that. The honest image of a lot is a
+      // photograph of the lot — the card already has one — and the card says why.
+      //
+      // Decided by the coordinate and Wikidata's type, not the name: the name test this
+      // replaces missed 166 of Los Angeles's backlot rows and called Studio City shops
+      // studios.
+      const verdict = studioVerdict({
+        name: sceneContext.place,
+        lat: sceneContext.lat,
+        lng: sceneContext.lng,
+        instanceOf: sceneContext.instanceOf,
+      });
+      if (verdict.studio) {
+        return Response.json(
+          {
+            image_url: null,
+            frames: [],
+            reason: "studio_lot",
+            studio: {
+              name: verdict.lot?.name ?? sceneContext.place,
+              basis: verdict.basis,
+              access_note: studioLotAccessNote(verdict.lot),
+            },
+          },
+          { headers: { "Cache-Control": "public, s-maxage=86400" } },
+        );
+      }
+      if (!sceneContext.locationImageUrl) {
         return Response.json(
           { image_url: null, reason: "location_image_unavailable" },
           { headers: { "Cache-Control": "public, s-maxage=86400" } },
@@ -269,7 +297,7 @@ export function createFilmImageHandler({
       // A "no" this matcher already gave to exactly these inputs is given again without
       // asking the model. The fingerprint is everything the model is about to be shown.
       const inputsHash = sceneInputsHash({
-        tmdbId, sceneContext, candidatePaths, studio: studioLocation,
+        tmdbId, sceneContext, candidatePaths, studio: false,
       });
       if (typeof frameStore?.verdict === "function") {
         try {
@@ -423,7 +451,7 @@ export function createFilmImageHandler({
         ),
         source_url: sourceUrl,
         location_name: sceneContext.place,
-        location_type: studioLocation ? "studio" : match.locationType,
+        location_type: match.locationType,
         description: match.description,
         match_confidence: "high",
         match_method: "openai_vision",
@@ -433,7 +461,7 @@ export function createFilmImageHandler({
         const { row } = cardFrameRow(resolved, verifiedMatches.map((match) => ({
           file_path: shortlistedPaths[match.candidateIndex],
           description: match.description,
-          location_type: studioLocation ? "studio" : match.locationType,
+          location_type: match.locationType,
         })), { matcherVersion: SCENE_IMAGE_MATCH_VERSION });
         if (row) {
           try {

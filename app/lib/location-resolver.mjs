@@ -9,7 +9,7 @@
 // must survive as a row with lat/lng NULL and no false geocode.
 //
 // Stage 1 classifies each place by walking P31 → P279* upward (typeAncestry) to a
-// small set of target types. Classification is never by name: isStudioLocation() is
+// small set of target types. Classification is never by name: studioNameHint() is
 // a name regex and is used ONLY as a QA flag, never to decide place_class.
 //
 // Pure by default (classifyPlace / buildResolutionPlan / missingEvidenceRows) with
@@ -29,7 +29,7 @@ import {
   typeAncestry,
   workKindConfig,
 } from "./location-search.mjs";
-import { isStudioLocation } from "./scene-image-match.mjs";
+import { studioNameHint } from "./studio-lots.mjs";
 
 export const RESOLVER_VERSION = "wikidata-stage0.1";
 
@@ -76,7 +76,7 @@ export function classifyPlace({ ancestry, relationKind, coordinate, name } = {})
   // rather than by the database CHECK, which would 502 the whole batch.
   const point = hasValidCoordinate(coordinate?.lat, coordinate?.lng) ? coordinate : null;
   // Name regex has zero authority over the classification — QA signal only.
-  const nameHintsStudio = isStudioLocation(name ?? "");
+  const nameHintsStudio = studioNameHint(name ?? "");
 
   // 1. Fiction first, so a fictional studio is fiction rather than a studio. A P625
   //    on a fictional entity is discarded: we never pin a real point for a made-up place.

@@ -1429,9 +1429,12 @@ figure img {
 }
 
 .image-placeholder {
-  height: 105px;
+  /* A minimum, not a height: a studio lot says why it has no frame, in two lines. */
+  min-height: 105px;
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: 6px;
   padding: 12px;
   color: var(--muted);
   background:
@@ -1439,6 +1442,12 @@ figure img {
     #101212;
   font-size: 0.78rem;
   text-align: center;
+}
+
+.image-placeholder-note {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--muted);
 }
 
 .image-placeholder-retry {
@@ -2231,7 +2240,7 @@ figcaption a {
   }
 
   .image-placeholder {
-    height: 92px;
+    min-height: 92px;
   }
 
   .recreate-header {

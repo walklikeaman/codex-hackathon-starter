@@ -9,7 +9,6 @@ import {
   canonicalSceneImageQuery,
   createSceneMatchRateLimiter,
   isAllowedLocationImageUrl,
-  isStudioLocation,
   parseSceneImageRequest,
   parseWikidataSceneEntities,
   truthyValues,
@@ -93,6 +92,9 @@ test("uses only the canonical Wikidata pair to obtain matching context", () => {
     place: "HM Prison Wandsworth",
     // Bounded: P18 names the original upload, measured at up to 7 MB (#198).
     locationImageUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Test.jpg?width=800",
+    lat: null,
+    lng: null,
+    instanceOf: [],
   });
   assert.equal(parseWikidataSceneEntities(wikidataPayload(), { ...EXPECTED, tmdbId: "999" }), null);
 });
@@ -190,20 +192,27 @@ test("keeps up to three distinct high-confidence frame matches", () => {
   assert.deepEqual(matches.map((match) => match.candidateIndex), [1, 3, 4]);
 });
 
-test("recognizes explicit studio locations without guessing generic interiors", () => {
-  assert.equal(isStudioLocation("Warner Bros. Studios, Leavesden"), true);
-  assert.equal(isStudioLocation("Stage 4 sound-stage"), true);
-  assert.equal(isStudioLocation("The interior of a London pub"), false);
-
-  const content = buildSceneImageContent({
+// The studio decision belongs to the caller (studioVerdict, from the coordinate and the
+// type). The builder no longer reads the place's name for it: "Pinewood Studios" by name
+// alone is a street here, and only an explicit flag switches the studio wording on.
+test("the prompt's studio wording follows the caller's verdict, not the place's name", () => {
+  const byName = buildSceneImageContent({
     filmTitle: "Test Film",
     place: "Pinewood Studios",
     locationImageUrl: null,
     candidateImageUrls: ["https://image.tmdb.org/t/p/w780/one.jpg"],
   });
+  assert.doesNotMatch(byName[0].text, /explicitly a studio/);
 
-  assert.equal(content.filter((item) => item.type === "input_image").length, 1);
-  assert.match(content[0].text, /exact soundstage is not visually verifiable/);
+  const flagged = buildSceneImageContent({
+    filmTitle: "Test Film",
+    place: "Somewhere",
+    locationImageUrl: null,
+    candidateImageUrls: ["https://image.tmdb.org/t/p/w780/one.jpg"],
+    studioLocation: true,
+  });
+  assert.equal(flagged.filter((item) => item.type === "input_image").length, 1);
+  assert.match(flagged[0].text, /exact soundstage is not visually verifiable/);
 });
 
 test("limits origin scene matching requests per client window", () => {
