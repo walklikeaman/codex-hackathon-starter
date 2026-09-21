@@ -1,5 +1,7 @@
 import "./globals.css";
 
+import OfflineReady from "./components/OfflineReady.jsx";
+
 export const metadata = {
   title: "GloryMap",
   description: "Walk through places from your favourite films, series, and books",
@@ -19,7 +21,10 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <OfflineReady />
+      </body>
     </html>
   );
 }
