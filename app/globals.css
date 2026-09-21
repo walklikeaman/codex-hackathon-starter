@@ -4447,3 +4447,14 @@ figcaption a {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* What the walk kept for the street, said in tiles and kilobytes. Same shape as the
+   restored-walk line above it, quieter: it is a receipt, not an offer. */
+.kept-offline {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.74rem;
+  color: rgba(236, 232, 225, 0.62);
+}

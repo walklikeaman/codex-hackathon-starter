@@ -9,6 +9,7 @@ import {
   Copy,
   Cloud,
   Clock3,
+  Download,
   History,
   Crosshair,
   DoorOpen,
@@ -105,6 +106,8 @@ import {
   sortWorks,
 } from "../lib/library-view.mjs";
 import { describedFilms } from "../lib/place-note.mjs";
+import { keepTheWalk } from "../lib/keep-the-walk.mjs";
+import { corridorSizeLabel } from "../lib/tile-corridor.mjs";
 import { clearWalk, freezeWalk, loadWalk, saveWalk, walkAgeLabel } from "../lib/walk-store.mjs";
 import { getSupabaseBrowserClient } from "../lib/supabase-browser.mjs";
 import { EVERY_KIND, workKindLabel } from "../lib/location-search.mjs";
@@ -1030,6 +1033,8 @@ export default function SceneMapApp() {
   const [routeMessage, setRouteMessage] = useState("");
   // A walk frozen by a previous session, offered back when the app opens without a network.
   const [restoredWalk, setRestoredWalk] = useState(null);
+  // What the corridor prefetch did, so the card can say it. Null until a route is kept.
+  const [keptTiles, setKeptTiles] = useState(null);
   const [nearbyStatus, setNearbyStatus] = useState("idle");
   const [nearbyMessage, setNearbyMessage] = useState("");
   const [userPosition, setUserPosition] = useState(null);
@@ -1979,14 +1984,18 @@ export default function SceneMapApp() {
 
     setAiTour(null);
     setAiTourError("");
-    setRouteStops([...routeStops, location]);
+    // Functional, because two taps inside one render both read the same `routeStops` and
+    // the second overwrites the first: adding three stops quickly added one.
+    setRouteStops((current) => (current.some((stop) => stop.id === location.id)
+      ? current
+      : [...current, location]));
     invalidateRoute();
   }
 
   function removeRouteStop(locationId) {
     setAiTour(null);
     setAiTourError("");
-    setRouteStops(routeStops.filter((stop) => stop.id !== locationId));
+    setRouteStops((current) => current.filter((stop) => stop.id !== locationId));
     invalidateRoute();
   }
 
@@ -2135,6 +2144,29 @@ export default function SceneMapApp() {
     if (typeof window === "undefined") return;
     const walk = freezeWalk({ stops, route, cityName });
     if (walk) saveWalk(window.localStorage, walk);
+    keepTilesForWalk(route);
+  }
+
+  // The tiles along the route, fetched once so the service worker has them before the walk
+  // does. The cache covers ground already panned over; a route is precisely the ground that
+  // has not been — four stops seen as pins on a zoomed-out map.
+  //
+  // Skipped outright when the reader has asked their phone to save data: keeping a walk is
+  // worth about 100 kB on a London route, and it is still not ours to spend unasked.
+  function keepTilesForWalk(route) {
+    const positions = route?.positions ?? [];
+    if (!mapApi || positions.length < 2) return;
+    if (typeof navigator !== "undefined" && navigator.connection?.saveData === true) {
+      setKeptTiles({ skipped: "save_data" });
+      return;
+    }
+
+    setKeptTiles({ working: true });
+    keepTheWalk(mapApi, positions)
+      .then((result) => setKeptTiles(result))
+      // A prefetch that fails costs nothing that was not already lost: the walk asks for
+      // those tiles on the day, exactly as it did before this existed.
+      .catch(() => setKeptTiles({ kept: 0, failed: 0, reason: "unavailable" }));
   }
 
   async function buildRoute(stops = routeStops) {
@@ -3493,6 +3525,24 @@ export default function SceneMapApp() {
               setRouteResult(null);
               setRouteStatus("idle");
             }}>Clear</button>
+          </p>
+        )}
+
+        {keptTiles && (
+          <p className="kept-offline" role="status">
+            <Download size={13} aria-hidden="true" />
+            {keptTiles.working && <span>Keeping this walk for offline…</span>}
+            {keptTiles.skipped === "save_data" && <span>Data saver is on, so the map was not kept for offline.</span>}
+            {keptTiles.reason === "no_tile_source" && <span>This basemap cannot be kept offline.</span>}
+            {keptTiles.reason === "unavailable" && <span>Could not keep the map for offline; the walk still works online.</span>}
+            {keptTiles.reason === null && (
+              <span>
+                {keptTiles.kept} map {keptTiles.kept === 1 ? "tile" : "tiles"} kept
+                {" "}({corridorSizeLabel(keptTiles.kept)}) for this walk
+                {keptTiles.failed > 0 && `, ${keptTiles.failed} could not be fetched`}
+                {keptTiles.truncated && " — the route is long, so the start is kept"}
+              </span>
+            )}
           </p>
         )}
 
