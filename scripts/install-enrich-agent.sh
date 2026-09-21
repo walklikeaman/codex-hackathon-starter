@@ -50,6 +50,28 @@ NODE_DIR="$(dirname "$NODE")"
 [ -x "$ROOT/scripts/enrich-loop.sh" ] || [ -f "$ROOT/scripts/enrich-loop.sh" ] || {
   echo "no scripts/enrich-loop.sh under $ROOT" >&2; exit 1; }
 
+# **The keys must outlive the worktree they happen to live in.** The only .env.local with a
+# service key sits inside `.claude/worktrees/…`, which is a scratch directory an agent
+# session created and some later session may delete. That is survivable for a job somebody
+# starts by hand and reads the error from; it is not survivable for one that is supposed to
+# come back by itself after a reboot. So the file is copied once to a path that belongs to
+# nobody's scratch, and the plist names that copy.
+#
+# The loop script is asked which file it would choose rather than the question being asked
+# twice in two places and drifting.
+ENV_FILE="${ENV_FILE:-$(bash "$ROOT/scripts/enrich-loop.sh" --print-env-file)}"
+[ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ] || { echo "no usable env file" >&2; exit 1; }
+case "$ENV_FILE" in
+  */.claude/worktrees/*)
+    DURABLE="$HOME/.glorymap.env"
+    cp "$ENV_FILE" "$DURABLE"
+    chmod 600 "$DURABLE"
+    echo "copied the keys out of a scratch worktree into $DURABLE (chmod 600)"
+    echo "  source: $ENV_FILE"
+    ENV_FILE="$DURABLE"
+    ;;
+esac
+
 mkdir -p "$HOME/Library/LaunchAgents"
 cat > "$PLIST" <<PLIST_END
 <?xml version="1.0" encoding="UTF-8"?>
@@ -68,6 +90,7 @@ cat > "$PLIST" <<PLIST_END
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>$NODE_DIR:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>ENV_FILE</key><string>$ENV_FILE</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key>

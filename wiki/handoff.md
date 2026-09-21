@@ -336,6 +336,13 @@ hold `SUPABASE_SERVICE_ROLE_KEY`** — writes from that clone went through the S
 `OPENROUTER_API_KEY`, `MODEL_REQUESTS_PER_MINUTE=18`. See the restart section above for why
 pointing `--env-file` at the wrong one is worse than an error.
 
+**And that file sits in a scratch directory.** `.claude/worktrees/…` belongs to an agent
+session; some later session may delete it, and with it the only service key on this machine.
+Survivable for a run somebody starts by hand and reads the error from — not for one that is
+supposed to come back by itself after a reboot. So `install-enrich-agent.sh` copies it once
+to **`~/.glorymap.env`** (chmod 600) and names that copy in the plist. The two will drift if
+the keys are ever changed in one and not the other; the agent reads only `~/.glorymap.env`.
+
 - **`SUPABASE_SERVICE_ROLE_KEY` was printed to a terminal and appeared in a screenshot
   shared into a chat. Rotation was recommended and never confirmed.**
 - `SCENE_MATCH_SIGNING_SECRET` is set in `.env.local` and in Vercel production+preview.
