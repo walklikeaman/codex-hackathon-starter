@@ -2696,6 +2696,27 @@ figcaption a {
   color: rgba(244, 231, 200, 0.55);
 }
 
+/* The way out of a title we do not hold. A real button, because the note used to say
+   "press Enter", which is no instruction at all on a phone. */
+.search-note-action {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid rgba(247, 183, 51, 0.42);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gold);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.search-note-action:hover,
+.search-note-action:focus-visible {
+  background: rgba(247, 183, 51, 0.12);
+  color: var(--gold-strong);
+}
+
 .suggestion-card-link {
   margin-right: 4px;
   padding: 4px 8px;

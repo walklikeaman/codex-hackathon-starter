@@ -21,7 +21,7 @@ const CITY_MIN_LENGTH = 2;
 // A dropdown source. Returns what it last successfully answered for a query it was
 // actually asked about — never a stale answer to an older one.
 function useSuggestions({ value, endpoint, debounceMs, minLength, read }) {
-  const [state, setState] = useState({ rows: [], status: "idle", unavailable: false });
+  const [state, setState] = useState({ rows: [], status: "idle", unavailable: false, held: null });
   const controllerRef = useRef(null);
   const serialRef = useRef(0);
 
@@ -34,7 +34,7 @@ function useSuggestions({ value, endpoint, debounceMs, minLength, read }) {
     serialRef.current = serial;
 
     if (query.trim().length < minLength) {
-      setState({ rows: [], status: "idle", unavailable: false });
+      setState({ rows: [], status: "idle", unavailable: false, held: null });
       return;
     }
 
@@ -52,11 +52,13 @@ function useSuggestions({ value, endpoint, debounceMs, minLength, read }) {
         rows: read(body),
         status: "ready",
         unavailable: Boolean(body.unavailable),
+        // Only the catalogue says this; the gazetteer never does, and null means "not asked".
+        held: typeof body.held === "boolean" ? body.held : null,
       });
     } catch (error) {
       if (error?.name === "AbortError") return; // superseded by a later keystroke
       if (serial !== serialRef.current) return;
-      setState({ rows: [], status: "ready", unavailable: true });
+      setState({ rows: [], status: "ready", unavailable: true, held: null });
     }
   }, [endpoint, minLength, read]);
 
@@ -107,6 +109,9 @@ export default function SearchBox({
   const [activeKey, setActiveKey] = useState(null);
   const boxRef = useRef(null);
   const listId = useId();
+  // The live lookup is a SUBMIT, and its button lives in the dropdown rather than inside the
+  // <form>, so it names the form it submits.
+  const formId = `${listId}-form`;
 
   const works = useSuggestions({
     value,
@@ -210,6 +215,7 @@ export default function SearchBox({
     <div className="work-search-box" ref={boxRef}>
       <form
         className="work-search"
+        id={formId}
         onSubmit={(event) => {
           setOpen(false);
           onSubmit?.(event);
@@ -240,6 +246,22 @@ export default function SearchBox({
       {showList && (
         <ul className="search-suggestions" id={listId} role="listbox">
           <li className="search-group" role="presentation">Films, series and books</li>
+          {/* **Rows are not the same as having it.** Asked for "Spirited Away" on 21.09,
+              the catalogue answered with seven neighbouring spellings — The Sacred Spirit,
+              Cast Away, Suspiria — and because there were seven rows the box never said
+              what was true: we do not hold the film, and the live lookup on submit finds
+              it and puts it in Japan. A juror typing their favourite film is the whole
+              acceptance test, and this was the screen they would have seen. So when no row
+              is called what was typed, that is said FIRST, above the look-alikes, with a
+              button — "press Enter" is no instruction at all on a phone. */}
+          {works.status === "ready" && works.held === false && works.rows.length > 0 && (
+            <li className="search-note" role="presentation">
+              {`Nothing in our catalogue is called “${query}” — these only look alike.`}
+              <button className="search-note-action" form={formId} type="submit">
+                {`Look “${query}” up on Wikidata`}
+              </button>
+            </li>
+          )}
           {options.filter((option) => option.kind === "work").map((option) => (
             <li {...optionProps(option)}>
               <button onClick={() => choose(option)} type="button">
@@ -282,8 +304,11 @@ export default function SearchBox({
           {works.status === "ready" && works.rows.length === 0 && (
             <li className="search-note" role="presentation">
               {works.unavailable
-                ? "Our catalogue did not answer. Press Enter to look the title up on Wikidata."
-                : `Nothing in our catalogue is called “${query}”. Press Enter to look the title up on Wikidata.`}
+                ? "Our catalogue did not answer."
+                : `Nothing in our catalogue is called “${query}”.`}
+              <button className="search-note-action" form={formId} type="submit">
+                {`Look “${query}” up on Wikidata`}
+              </button>
             </li>
           )}
 

@@ -88,3 +88,18 @@ export function formatSuggestions(rows, normalizedQuery) {
     match: matchRange(row.title, normalizedQuery),
   }));
 }
+
+// **Does anything we hold go by the name that was typed?** Not the same question as "did the
+// search return rows". `search_works` answers a title it has never heard of with its nearest
+// spellings: "Spirited Away" came back on 21.09 as The Sacred Spirit, Spirit Glitch, Cast
+// Away, Far and Away, Breaking Away, Since You Went Away and Suspiria — seven rows, not one of
+// them the film. The dropdown took seven rows to mean "we have it" and so never said the one
+// thing that was true, which is that we do not, and that the live lookup would find it.
+//
+// `match` already carries the answer: it is set only when the query is the visible start of a
+// word in the title, after the same accent folding the index uses, so "amelie" still holds
+// "Amélie" and "skyfal" still holds "Skyfall". No row with a match means no title we hold is
+// called that.
+export function holdsTheTitle(suggestions) {
+  return (Array.isArray(suggestions) ? suggestions : []).some((row) => Boolean(row?.match));
+}
