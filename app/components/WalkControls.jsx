@@ -20,10 +20,12 @@
 //     a trigger is a claim about where someone is standing.
 
 import { useEffect, useRef, useState } from "react";
-import { Footprints, Play, Square, Volume2 } from "lucide-react";
+import { Footprints, Play, SkipForward, Square, Volume2 } from "lucide-react";
 
 import AmbientGuide from "./AmbientGuide.jsx";
+import useTellingPlayer from "./useTellingPlayer.js";
 import useWakeLock from "./useWakeLock.js";
+import { trailStopText } from "../lib/ambient-walk.mjs";
 import { advanceTriggers, hasMovedEnough, isUsableFix, playbackState, UNLOCK_PROMPT } from "../lib/geo-trigger.mjs";
 import { nextStop, ROAD_SAFETY_REMINDER, walkBanner } from "../lib/walk-mode.mjs";
 
@@ -39,8 +41,37 @@ export default function WalkControls({ stops, onNarrate, onNextStopChange, onAmb
   // and re-run the effect that does the recording.
   const triggerState = useRef({});
   const lastFix = useRef(null);
+  // The trail spoke to nobody: arrival re-centred the map and that was all (#190). It
+  // now says the graph's sentence for this film at this stop, through the same player
+  // "Listen as I walk" uses — one unlock, one voice, one way of failing quietly.
+  const player = useTellingPlayer();
+  const playerRef = useRef(player);
+  playerRef.current = player;
+  // The parent passes a new arrow on every render, and every map move is a render. As a
+  // dependency it tore down and re-created the position watch each time — a fresh
+  // watchPosition per pan while somebody is walking.
+  const onNarrateRef = useRef(onNarrate);
+  onNarrateRef.current = onNarrate;
 
   useWakeLock(walking);
+
+  // An arrival only counts once the guide can be heard. Before this, a stop reached
+  // before the unlock tap was marked visited in silence and never told — the trigger
+  // de-duplicates, so there was no second chance. Until the tap, the stop simply waits.
+  const unlockedRef = useRef(false);
+  unlockedRef.current = unlocked;
+  const lastUsableFix = useRef(null);
+  const arriveRef = useRef(() => {});
+  arriveRef.current = (position) => {
+    if (!unlockedRef.current || !position) return;
+    const result = advanceTriggers(triggerState.current, position, { stops });
+    triggerState.current = result.state;
+    if (!result.speak) return;
+    setVisitedIds((current) => [...new Set([...current, result.speak.id])]);
+    onNarrateRef.current?.(result.speak);
+    const text = trailStopText(result.speak);
+    if (text) playerRef.current.say({ text, meta: { name: result.speak.place, checked: true } });
+  };
 
   useEffect(() => {
     if (!walking || typeof navigator === "undefined" || !navigator.geolocation) return undefined;
@@ -59,20 +90,15 @@ export default function WalkControls({ stops, onNarrate, onNextStopChange, onAmb
         // for no new information.
         if (!hasMovedEnough(lastFix.current, next.coords)) return;
         lastFix.current = next.coords;
+        lastUsableFix.current = next;
         setPosition(next.coords);
-
-        const result = advanceTriggers(triggerState.current, next, { stops });
-        triggerState.current = result.state;
-        if (result.speak) {
-          setVisitedIds((current) => [...new Set([...current, result.speak.id])]);
-          onNarrate?.(result.speak);
-        }
+        arriveRef.current(next);
       },
       () => setAccuracyWarning(true),
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
     );
     return () => navigator.geolocation.clearWatch(watch);
-  }, [walking, stops, onNarrate]);
+  }, [walking, stops]);
 
   // `nextStop` returns a wrapper — the stop plus how far it is and whether we have
   // arrived — not the stop itself.
@@ -103,7 +129,10 @@ export default function WalkControls({ stops, onNarrate, onNextStopChange, onAmb
             <button
               aria-label="Stop walking"
               className="walk-stop"
-              onClick={() => { setWalking(false); setUnlocked(false); triggerState.current = {}; }}
+              onClick={() => {
+                setWalking(false); setUnlocked(false); triggerState.current = {};
+                lastUsableFix.current = null; lastFix.current = null; player.stop();
+              }}
               type="button"
             >
               <Square size={14} />
@@ -115,14 +144,33 @@ export default function WalkControls({ stops, onNarrate, onNextStopChange, onAmb
           {/* Asked for UP FRONT, not at the first stop: by then it is too late to
               explain why nothing is playing. */}
           {state === "needs-unlock" && (
-            <button className="walk-unlock" type="button" onClick={() => setUnlocked(true)}>
+            // The unlock has to happen inside this tap, or the first arrival is silent.
+            <button className="walk-unlock" type="button" onClick={() => {
+              player.unlock();
+              setUnlocked(true);
+              unlockedRef.current = true;
+              // Somebody tapping at the first stop is standing still: no new fix will
+              // come to trigger it, so the last one is checked now.
+              arriveRef.current(lastUsableFix.current);
+            }}>
               <Volume2 size={14} />
               <span>{UNLOCK_PROMPT}</span>
             </button>
           )}
 
-          {state === "armed" && (
+          {state === "armed" && !player.current && (
             <small className="walk-armed"><Play size={12} /> Narration will start on arrival</small>
+          )}
+
+          {player.current && (
+            <div className="walk-row">
+              <small className="ambient-checked">
+                {player.state === "preparing" ? "Getting ready… · " : ""}{player.current.name}
+              </small>
+              <button aria-label="Skip this telling" className="walk-stop" onClick={player.skip} type="button">
+                <SkipForward size={14} />
+              </button>
+            </div>
           )}
 
           {accuracyWarning && (

@@ -201,3 +201,26 @@ test("precision travels with the stop, so the map can tell them apart", () => {
   assert.equal(isWalkableStop(stops[0]), false);
   assert.equal(isWalkableStop(stops[1]), true);
 });
+
+// /api/work hands the client the precision BADGE, not the column. The check read only
+// the column, so every stop built on the client failed it and the story trail could
+// never be walked.
+test("a stop is walkable by its badge as well as by its column", () => {
+  assert.equal(isWalkableStop({ precision: "Exact point" }), true);
+  assert.equal(isWalkableStop({ precision: "Street" }), true);
+  assert.equal(isWalkableStop({ precision: "Building" }), true);
+  assert.equal(isWalkableStop({ precision: "City only" }), false);
+  assert.equal(isWalkableStop({ precision: "Region only" }), false);
+  assert.equal(isWalkableStop({ precision: "Unknown precision" }), false);
+});
+
+test("a trail stop carries its place's sentence and badge, and never a scene's words", () => {
+  const [stop] = trailStops(
+    [{ sequence_index: 1, place_norm: "pantages", place_name: "Pantages", summary: "The hero dies here." }],
+    { pantages: { id: "p1", name: "Pantages Theatre", lat: 34.1, lng: -118.3, precision: "Exact point", sentence: "The Bodyguard was filmed at Pantages Theatre." } },
+  );
+  assert.equal(stop.sentence, "The Bodyguard was filmed at Pantages Theatre.");
+  assert.equal(stop.precision, "Exact point");
+  assert.equal(isWalkableStop(stop), true);
+  assert.equal(JSON.stringify(stop).includes("dies"), false);
+});
