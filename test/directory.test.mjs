@@ -18,6 +18,7 @@ import {
   cityCoverage,
   cityWorkLine,
   directorySortKey,
+  distinctVenues,
   directorySummary,
   groupByCountry,
   isDirectoryLetter,
@@ -145,6 +146,74 @@ test("a long place list is cut with the count of what was cut", () => {
     places: ["147 Cromwell Road", "4 Warwick House Street", "43 St. George's Walk", "Australia House"],
   });
   assert.equal(line, "147 Cromwell Road · 4 Warwick House Street · 43 St. George's Walk — and 75 more");
+});
+
+// ---------- one venue, however it is spelled ----------
+
+test("a venue and the venue-plus-address are one entry, shown by its shortest name", () => {
+  // Blade Runner on the live Los Angeles page, 21.09.
+  const line = cityWorkLine({
+    place_count: 4,
+    places: [
+      "Bradbury Building",
+      "Bradbury Building, South Broadway, downtown Los Angeles",
+      "Ennis House",
+      "Union Station",
+    ],
+  });
+  assert.equal(line, "Bradbury Building · Ennis House · Union Station");
+});
+
+test("the collapsed spelling is not announced as one more place", () => {
+  // The duplicate hidden from the list must not come back through the count: this read
+  // "Bradbury Building — and 1 more", where the one more was the Bradbury Building.
+  const line = cityWorkLine({
+    place_count: 2,
+    places: ["Bradbury Building", "Bradbury Building, 304 South Broadway, downtown Los Angeles"],
+  });
+  assert.equal(line, "Bradbury Building");
+});
+
+test("what is genuinely left is still counted", () => {
+  const line = cityWorkLine({
+    place_count: 12,
+    places: ["Greystone Mansion", "Greystone Mansion, Beverly Hills, Los Angeles", "Griffith Observatory", "Union Station"],
+  });
+  // Four names, three venues; the Greystone spellings are two rows, so 12 - 4 = 8.
+  assert.equal(line, "Greystone Mansion · Griffith Observatory · Union Station — and 8 more");
+});
+
+test("two addresses of one building are one venue", () => {
+  // Skyfall, London: one tower on the corner of two streets, each source naming a different one.
+  assert.deepEqual(
+    distinctVenues(["Broadgate Tower, Bishopsgate, London", "Broadgate Tower, Primrose Street, London"]),
+    [{ name: "Broadgate Tower, Bishopsgate, London", spellings: 2 }],
+  );
+});
+
+test("the same street name in two different places stays two", () => {
+  assert.deepEqual(
+    distinctVenues(["High Street, Kensington", "High Street, Wimbledon"]).map((venue) => venue.name),
+    ["High Street, Kensington", "High Street, Wimbledon"],
+  );
+});
+
+test("a bare name does not chain two different places together", () => {
+  // Each qualified spelling matches the bare one, and they do not match each other, so a
+  // group that checked only its first member would fold all three into one.
+  const venues = distinctVenues(["Italian Gardens", "Italian Gardens, Hyde Park", "Italian Gardens, Kew"]);
+  assert.equal(venues.length, 2);
+  assert.deepEqual(venues.map((venue) => venue.spellings).sort(), [1, 2]);
+});
+
+test("different venues are left alone", () => {
+  assert.deepEqual(
+    distinctVenues(["National Gallery", "National Portrait Gallery"]).map((venue) => venue.name),
+    ["National Gallery", "National Portrait Gallery"],
+  );
+  assert.deepEqual(distinctVenues([]), []);
+  assert.deepEqual(distinctVenues(null), []);
+  assert.deepEqual(distinctVenues(["", "  ", null]), []);
 });
 
 test("a work with no names still says how many places it has", () => {
