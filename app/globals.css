@@ -4421,3 +4421,29 @@ figcaption a {
   color: rgba(247, 231, 200, 0.92);
   font-size: 0.74rem;
 }
+
+/* A walk that came back from this phone rather than from the network. It sits above the
+   route card because that is the thing it is about. */
+.restored-walk {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.7rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: 9px;
+  border: 1px solid rgba(247, 183, 51, 0.28);
+  background: rgba(247, 183, 51, 0.08);
+  color: rgba(247, 231, 200, 0.9);
+  font-size: 0.76rem;
+}
+.restored-walk span { flex: 1; }
+.restored-walk button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent, #f0a83c);
+  font: inherit;
+  font-size: 0.74rem;
+  text-decoration: underline;
+  cursor: pointer;
+}

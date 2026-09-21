@@ -9,6 +9,7 @@ import {
   Copy,
   Cloud,
   Clock3,
+  History,
   Crosshair,
   DoorOpen,
   ExternalLink,
@@ -104,6 +105,7 @@ import {
   sortWorks,
 } from "../lib/library-view.mjs";
 import { describedFilms } from "../lib/place-note.mjs";
+import { clearWalk, freezeWalk, loadWalk, saveWalk, walkAgeLabel } from "../lib/walk-store.mjs";
 import { getSupabaseBrowserClient } from "../lib/supabase-browser.mjs";
 import { EVERY_KIND, workKindLabel } from "../lib/location-search.mjs";
 import { filmLocationImageKey } from "../lib/tmdb-images.mjs";
@@ -1026,6 +1028,8 @@ export default function SceneMapApp() {
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
   const [routeMessage, setRouteMessage] = useState("");
+  // A walk frozen by a previous session, offered back when the app opens without a network.
+  const [restoredWalk, setRestoredWalk] = useState(null);
   const [nearbyStatus, setNearbyStatus] = useState("idle");
   const [nearbyMessage, setNearbyMessage] = useState("");
   const [userPosition, setUserPosition] = useState(null);
@@ -1494,6 +1498,25 @@ export default function SceneMapApp() {
   const resetFilters = useCallback(() => {
     for (const key of ["mineOnly", "minRating", "minImdb", "kinds", "workId"]) clearFilter(key);
   }, [clearFilter]);
+
+  // Only on an offline open, and the restriction is the point. Restoring a walk over a
+  // fresh online session would be the product deciding where somebody is — `?city=london`
+  // means London even if the last route was in Lisbon. Offline there is no other answer
+  // available, and the frozen walk beats an empty map.
+  useEffect(() => {
+    if (typeof window === "undefined" || navigator.onLine !== false) return;
+    const walk = loadWalk(window.localStorage);
+    if (!walk) return;
+
+    setRestoredWalk(walk);
+    setRouteStops(walk.stops);
+    if (walk.route) {
+      setRouteResult(walk.route);
+      setRouteStatus(walk.route.source === "openstreetmap-foot" ? "ready" : "fallback");
+    }
+    if (walk.cityName) setCityName(walk.cityName);
+    setMapCenter(walk.stops[0].position);
+  }, []);
 
   const chooseBasemap = useCallback((id) => {
     setBasemapId(layerById(id).id);
@@ -2105,6 +2128,15 @@ export default function SceneMapApp() {
     return payload;
   }
 
+  // The walk, written down at the one moment we know the reader committed to it. The
+  // service worker keeps what the phone FETCHED; this keeps what the reader was doing, so
+  // a tab evicted in a pocket does not come back as an empty map with a search box.
+  function rememberWalk(stops, route) {
+    if (typeof window === "undefined") return;
+    const walk = freezeWalk({ stops, route, cityName });
+    if (walk) saveWalk(window.localStorage, walk);
+  }
+
   async function buildRoute(stops = routeStops) {
     const requestId = routeRequestId.current + 1;
     routeRequestId.current = requestId;
@@ -2119,11 +2151,14 @@ export default function SceneMapApp() {
 
       setRouteResult(payload);
       setRouteStatus("ready");
+      rememberWalk(stops, payload);
     } catch {
       if (requestId !== routeRequestId.current) return;
 
-      setRouteResult(makeFallbackRoute(stops));
+      const fallback = makeFallbackRoute(stops);
+      setRouteResult(fallback);
       setRouteStatus("fallback");
+      rememberWalk(stops, fallback);
       setRouteMessage(
         "Walking directions are unavailable, so the stops are connected directly.",
       );
@@ -3443,6 +3478,23 @@ export default function SceneMapApp() {
             </div>
           ))}
         </div>
+
+        {/* A walk that came back from this phone rather than from the network. Said out
+            loud, with its age: a route is a plan for an afternoon, and one restored
+            silently would be the product asserting where somebody is. */}
+        {restoredWalk && (
+          <p className="restored-walk" role="status">
+            <History size={14} aria-hidden="true" />
+            <span>Your walk from {walkAgeLabel(restoredWalk)}, kept on this phone</span>
+            <button type="button" onClick={() => {
+              clearWalk(window.localStorage);
+              setRestoredWalk(null);
+              setRouteStops([]);
+              setRouteResult(null);
+              setRouteStatus("idle");
+            }}>Clear</button>
+          </p>
+        )}
 
         <div className="route-card">
           <div>
