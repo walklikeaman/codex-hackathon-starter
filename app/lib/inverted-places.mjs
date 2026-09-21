@@ -153,8 +153,10 @@ export async function findInvertedPlaces({
   try {
     const names = await fanoutNames(work.id, { fetchImpl });
     // The title leads: it is the one name guaranteed to be about this work, and for a
-    // work with no characters in Wikidata it is the only one there is.
-    const query = buildInvertedSearch({ names: [work.title, ...names], center, radiusKm });
+    // work with no characters in Wikidata it is the only one there is. Passed as the title
+    // rather than as a name, because a one-word title is searched differently — see
+    // `italicTitlePattern`.
+    const query = buildInvertedSearch({ title: work.title, names, center, radiusKm });
     if (!query) return [];
 
     const payload = await readJson(buildSearchUrl(query, { limit: Math.min(limit * 2, 50) }), {

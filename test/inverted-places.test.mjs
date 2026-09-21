@@ -150,22 +150,27 @@ test("a failed search costs the candidates and never the map", async () => {
   );
 });
 
-test("no work, or a work with no searchable name, asks nothing", async () => {
+test("no work asks nothing", async () => {
   const { calls, fetchImpl } = stubFetch([{ body: fanoutPayload([]) }]);
   assert.deepEqual(await findInvertedPlaces({ work: null, fetchImpl }), []);
   assert.equal(calls.length, 0);
+});
 
-  // A one-word title with an empty fan-out has nothing near-unique to search for, and
-  // asking anyway would return every article in the city containing that word.
-  const short = stubFetch([{ body: fanoutPayload([]) }]);
-  assert.deepEqual(
-    await findInvertedPlaces({
-      work: { id: "Q1", title: "Up" }, center: EDINBURGH, radiusKm: 15,
-      fetchImpl: short.fetchImpl,
-    }),
-    [],
-  );
-  assert.equal(short.calls.length, 1, "the fan-out is asked; the search is not");
+test("a one-word title with no characters is searched — as a title, never as a word", async () => {
+  // This used to ask nothing, on the grounds that the bare word would return every article
+  // in the city containing it. That was true, and measured: "Up" near San Francisco matched
+  // ten unrelated articles. Asked as an italic mention instead — the way Wikipedia sets
+  // the titles of films — it matched none, and Jaws, which has no two-word character in
+  // Wikidata to fall back on, found Martha's Vineyard, Edgartown and Menemsha.
+  const short = stubFetch([{ body: fanoutPayload([]) }, { body: searchPayload([]) }]);
+  await findInvertedPlaces({
+    work: { id: "Q1", title: "Up" }, center: EDINBURGH, radiusKm: 15,
+    fetchImpl: short.fetchImpl,
+  });
+  assert.equal(short.calls.length, 2, "the fan-out, then the search");
+  const asked = new URL(short.calls[1]).searchParams.get("gsrsearch");
+  assert.match(asked, /insource:\/''\(.*\)\?Up\(.*\)\?''\//);
+  assert.doesNotMatch(asked, /insource:\/Up\//);
 });
 
 test("the work's own title leads the search, before its characters", async () => {
