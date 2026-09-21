@@ -111,15 +111,34 @@ if ! take_the_lock; then
   exit 0
 fi
 printf '%s\n' "$$" > "$LOCK/pid"
-trap 'rm -rf "$LOCK"' EXIT INT TERM
+
+# **A signal must stop this, and by default it does not.** bash defers a trap until the
+# foreground command finishes, so `kill <supervisor>` on a run that is mid-work does
+# nothing visible for as long as that work takes — and the pid is still there afterwards,
+# which reads as "the TERM was ignored". Measured: 35 seconds after a TERM, both the
+# supervisor and its node child were still running.
+#
+# So node runs in the background and is waited on. The trap then fires at once, and it
+# takes the child with it: killing the supervisor alone would leave an orphan reading
+# Wikipedia and stamping works with nothing watching it.
+child=""
+stop() {
+  [ -n "$child" ] && kill "$child" 2>/dev/null
+  rm -rf "$LOCK"
+}
+trap 'stop; exit 143' INT TERM
+trap 'stop' EXIT
 
 fast_failures=0
 while true; do
   printf '\n===== attempt %s — %s %s =====\n' \
     "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$ENV_FILE" "$*" >> "$LOG"
   started=$(date +%s)
-  node --env-file="$ENV_FILE" scripts/enrich-from-wikipedia.mjs "$@" >> "$LOG" 2>&1
+  node --env-file="$ENV_FILE" scripts/enrich-from-wikipedia.mjs "$@" >> "$LOG" 2>&1 &
+  child=$!
+  wait "$child"
   status=$?
+  child=""
   elapsed=$(( $(date +%s) - started ))
 
   if [ "$status" -eq 0 ] && tail -40 "$LOG" | grep -q "Nothing to enrich."; then
@@ -141,5 +160,10 @@ while true; do
 
   printf '===== attempt ended after %ss with status %s — again in %ss =====\n' \
     "$elapsed" "$status" "$GAP_SECONDS" >> "$LOG"
-  sleep "$GAP_SECONDS"
+  # Backgrounded for the same reason as the run itself: a TERM during the gap should stop
+  # this now, not in two minutes.
+  sleep "$GAP_SECONDS" &
+  child=$!
+  wait "$child"
+  child=""
 done
