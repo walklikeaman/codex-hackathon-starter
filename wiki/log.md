@@ -7,6 +7,54 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-21] update | The juror scenario, re-run: 23 of 24, and the one that failed was one we had fixed
+
+**Object**: `app/api/search/route.js`, `app/lib/work-search.mjs`, `app/components/SearchBox.jsx`
+**Scenario**: bugfix · **Outcome**: ✅ fixed and verified on a preview deployment, then on production
+
+The graph grew from 70 places to 2,908 today and three sessions shipped into the same
+surfaces, so the owner's acceptance test was run again rather than assumed: 24 famous titles
+through `/api/search`, the box a juror types into.
+
+**23 of 24 put the right film first**, median 402 ms. Eight carry no verified place yet and
+all eight open onto cards with labelled candidates. **Spirited Away failed**, and it is one of
+the three titles the August fix was made on. It is not in our catalogue; the box offered The
+Sacred Spirit, Spirit Glitch, Cast Away, Far and Away, Breaking Away, Since You Went Away and
+Suspiria. The live lookup on submit still finds it and still puts it in Japan — checked in the
+browser — but the dropdown never said the film was missing, because its note to that effect was
+written for zero rows and `search_works` never returns zero: it returns its nearest spellings.
+
+`match` already knew. It is set only when what was typed is the visible start of a word in a
+title, after the index's own accent folding, so "amelie" holds Amélie and "skyfal" holds
+Skyfall. No row with a match means nothing we hold is called that. The route now returns that as
+`held`; the box says it first and gives a button, since "press Enter" is no instruction on a
+phone and there was no mouse path to the live lookup at all.
+
+Verified on the PR's preview deployment by driving the page: the note appears for Spirited Away
+above the look-alikes, the button fires `/api/locations?q=Spirited+Away`, the list closes and
+the card reads "Spirited Away is set in Japan"; for Skyfall, "amelie" and "matrix" the note does
+not appear and the right film is first. Then on production: `held` false for Spirited Away over
+seven rows, true for Skyfall.
+
+**The August list of 24 was never recorded**, so this run could not repeat it exactly. This is
+the list, and it should be the fixed one from here on — the number after each is the verified
+place count the dropdown showed on 21.09:
+
+| | | |
+|---|---|---|
+| Parasite 0 | Spirited Away — *not held* | Skyfall 39 |
+| The Godfather 15 | Titanic 0 | Harry Potter and the Philosopher's Stone 25 |
+| The Lord of the Rings: The Fellowship of the Ring 2 | Star Wars 5 *(Episode II first)* | Inception 8 |
+| The Dark Knight 27 | Pulp Fiction 0 | Forrest Gump 2 |
+| The Shawshank Redemption 0 | Amélie 1 | La La Land 3 |
+| Casablanca 0 | Jurassic Park 0 | The Matrix 1 |
+| Notting Hill 4 | Mamma Mia! 0 | Game of Thrones 27 |
+| Breaking Bad 1 | Roman Holiday 2 | Back to the Future 9 |
+
+"Star Wars" puts Episode II first, which is a film called Star Wars but probably not the one a
+juror means; it is recorded here rather than fixed, because which Star Wars is "the" Star Wars
+is a ranking question and not a bug.
+
 ## [2026-09-21] ingest | The enrichment was resumable and nothing was resuming it
 
 **Object**: `scripts/enrich-loop.sh` (new), `wiki/handoff.md`
