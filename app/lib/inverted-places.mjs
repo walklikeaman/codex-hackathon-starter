@@ -151,10 +151,23 @@ export async function findInvertedPlaces({
   if (!work?.id || !work?.title) return [];
 
   try {
-    const names = await fanoutNames(work.id, { fetchImpl });
+    // **A failed fan-out costs the characters, not the title.** The fan-out is one SPARQL
+    // query against WDQS, which on 21.09 answered Harry Potter's with a 429 and then timed
+    // out twice running; this function then returned nothing at all, so a query-service
+    // bad day emptied every work's candidates — even though the title needs no fan-out to
+    // be searched. Measured the same day on the preview: Harry Potter came back empty four
+    // times in a row, each at the eight-second limit. The title now goes on alone.
+    let names = [];
+    try {
+      names = await fanoutNames(work.id, { fetchImpl });
+    } catch (error) {
+      onError?.(error);
+    }
     // The title leads: it is the one name guaranteed to be about this work, and for a
-    // work with no characters in Wikidata it is the only one there is.
-    const query = buildInvertedSearch({ names: [work.title, ...names], center, radiusKm });
+    // work with no characters in Wikidata it is the only one there is. Passed as the title
+    // rather than as a name, because a one-word title is searched differently — see
+    // `italicTitlePattern`.
+    const query = buildInvertedSearch({ title: work.title, names, center, radiusKm });
     if (!query) return [];
 
     const payload = await readJson(buildSearchUrl(query, { limit: Math.min(limit * 2, 50) }), {

@@ -143,29 +143,52 @@ test("an error in a 200 body is a failure, not an empty result set", async () =>
 test("a failed search costs the candidates and never the map", async () => {
   // This runs alongside a search that has already succeeded. A Wikimedia hiccup must
   // not turn a working title search into an error page.
-  const { fetchImpl } = stubFetch([new Error("network down")]);
+  const { fetchImpl } = stubFetch([new Error("network down"), new Error("network down")]);
   assert.deepEqual(
     await findInvertedPlaces({ work: WORK, center: EDINBURGH, radiusKm: 15, fetchImpl }),
     [],
   );
 });
 
-test("no work, or a work with no searchable name, asks nothing", async () => {
+test("a failed fan-out costs the characters, not the title", async () => {
+  // Harry Potter on 21.09: WDQS answered the fan-out with a 429, then timed out twice, and
+  // the candidates came back empty every time — although the title needed no fan-out.
+  const failures = [];
+  const { calls, fetchImpl } = stubFetch([
+    { ok: false, status: 429, body: {} },
+    { body: searchPayload([page(26556091, "Greyfriars Kirkyard", 55.9469, -3.1925)]) },
+  ]);
+  const records = await findInvertedPlaces({
+    work: WORK, center: EDINBURGH, radiusKm: 15, fetchImpl,
+    onError: (error) => failures.push(error.message),
+  });
+  assert.equal(calls.length, 2, "the search is still asked");
+  assert.match(new URL(calls[1]).searchParams.get("gsrsearch"), /insource:\/Harry Potter\//);
+  assert.deepEqual(records.map((record) => record.loc_name), ["Greyfriars Kirkyard"]);
+  assert.deepEqual(failures, ["429"], "and the fan-out's failure is still reported");
+});
+
+test("no work asks nothing", async () => {
   const { calls, fetchImpl } = stubFetch([{ body: fanoutPayload([]) }]);
   assert.deepEqual(await findInvertedPlaces({ work: null, fetchImpl }), []);
   assert.equal(calls.length, 0);
+});
 
-  // A one-word title with an empty fan-out has nothing near-unique to search for, and
-  // asking anyway would return every article in the city containing that word.
-  const short = stubFetch([{ body: fanoutPayload([]) }]);
-  assert.deepEqual(
-    await findInvertedPlaces({
-      work: { id: "Q1", title: "Up" }, center: EDINBURGH, radiusKm: 15,
-      fetchImpl: short.fetchImpl,
-    }),
-    [],
-  );
-  assert.equal(short.calls.length, 1, "the fan-out is asked; the search is not");
+test("a one-word title with no characters is searched — as a title, never as a word", async () => {
+  // This used to ask nothing, on the grounds that the bare word would return every article
+  // in the city containing it. That was true, and measured: "Up" near San Francisco matched
+  // ten unrelated articles. Asked as an italic mention instead — the way Wikipedia sets
+  // the titles of films — it matched none, and Jaws, which has no two-word character in
+  // Wikidata to fall back on, found Martha's Vineyard, Edgartown and Menemsha.
+  const short = stubFetch([{ body: fanoutPayload([]) }, { body: searchPayload([]) }]);
+  await findInvertedPlaces({
+    work: { id: "Q1", title: "Up" }, center: EDINBURGH, radiusKm: 15,
+    fetchImpl: short.fetchImpl,
+  });
+  assert.equal(short.calls.length, 2, "the fan-out, then the search");
+  const asked = new URL(short.calls[1]).searchParams.get("gsrsearch");
+  assert.match(asked, /insource:\/''\(.*\)\?Up\(.*\)\?''\//);
+  assert.doesNotMatch(asked, /insource:\/Up\//);
 });
 
 test("the work's own title leads the search, before its characters", async () => {

@@ -174,17 +174,71 @@ export function escapeInsourceRegex(name) {
 // for every one; six full names is already a wide net over a single city.
 export const MAX_ENTITIES_PER_QUERY = 6;
 
+// **A one-word title is searched as a TITLE — in italics — or not at all.**
+//
+// `isSearchableEntity` refuses one word, rightly: "Harry" matches a thousand sentences. But
+// the title fell under the same rule, so Trainspotting, Dracula, Ulysses, Jaws and
+// Frankenstein reached this search with no title at all and lived entirely on whatever
+// two-word character names Wikidata happened to hold. Measured 21.09, on 20 one-word
+// titles in their own cities: 13 got nothing from the title.
+//
+// Letting the bare word in is the wrong fix, and the same measurement says why. "Up" near
+// San Francisco returned ten articles that merely contain the word; "Psycho" matched
+// "Psychology"; "Casablanca" in Casablanca returned every article about the city,
+// "Chinatown" in Los Angeles every article about the neighbourhood; "Amélie" in Paris found
+// the finance ministry, through a minister called Amélie.
+//
+// Wikipedia's own style answers it: titles of films, books and series are set in italics,
+// and nothing else is. `''Casablanca''` is the film and Casablanca is the city. So a
+// one-word title is asked for only as an italic mention — bare, or wrapped round a link,
+// `''[[Casablanca (film)|Casablanca]]''` and `''[[Dracula]]''` alike. On the same 20:
+//
+//   Up            10 unrelated          ->  0
+//   Psycho        10 unrelated          ->  Colonial Street backlot, Academy Museum
+//   Amélie        ministries, stations  ->  Café des 2 Moulins
+//   Chinatown     the neighbourhood     ->  Echo Park, Mulholland Dam, Bradbury Building
+//   Rocky         Comcast, UPenn        ->  Philadelphia Museum of Art, Rocky Steps
+//   Jaws          nothing               ->  Martha's Vineyard, Edgartown, Menemsha
+//   Dracula       2                     ->  + Whitby Abbey, St Mary's, the 199 steps
+//   Frankenstein  0                     ->  Villa Diodati, Cologny, Plainpalais
+//
+// What it gives up is the plain mention: Amadeus loses the churches whose articles say
+// "Wolfgang Amadeus Mozart", which is correct to lose, and Trainspotting loses Arthur's
+// Seat, which is not. Precision is the side to be on in a search whose every result is
+// drawn on a map.
+export function isOneWordTitle(title) {
+  const text = String(title ?? "").trim();
+  if (!text || /^Q[1-9]\d*$/.test(text)) return false;
+  if (/\s/.test(text)) return false;
+  return (text.match(/[\p{L}\p{N}]/gu) ?? []).length >= 2;
+}
+
+export function italicTitlePattern(title) {
+  return `''(\\[\\[([^\\]|]*\\|)?)?${escapeInsourceRegex(String(title).trim())}(\\]\\])?''`;
+}
+
 // The radius comes from the city the user is looking at. Unlike the work search — where
 // a radius was the wrong question entirely — here it IS the question: this asks what in
 // THIS place is connected to the work.
-export function buildInvertedSearch({ names, center, radiusKm = 15 }) {
+//
+// `title`, when given, leads: a title of two words or more joins the names as plain text,
+// exactly as before; a title of one word becomes the italic branch above and takes one of
+// the six places in the budget.
+export function buildInvertedSearch({ names, title = null, center, radiusKm = 15 }) {
   // Deduplicated BEFORE the cap, because a repeat costs a branch and the branches are
   // the whole budget. Measured: a work's title is usually also the name of its main
   // character, so "Harry Potter" arrived twice, pushed Lord Voldemort out of the six —
   // and Voldemort is the only one of those names that Greyfriars Kirkyard's article
   // contains. The duplicate, on its own, lost the case this module was written for.
+  const lead = typeof title === "string" ? title.trim() : "";
+  const italicLead = isOneWordTitle(lead) ? italicTitlePattern(lead) : null;
+  const plain = [
+    ...(lead && !italicLead ? [lead] : []),
+    ...(Array.isArray(names) ? names : []),
+  ];
+
   const seen = new Set();
-  const wanted = (Array.isArray(names) ? names : [])
+  const wanted = plain
     .filter(isSearchableEntity)
     .filter((name) => {
       const key = String(name).trim().toLowerCase();
@@ -192,8 +246,8 @@ export function buildInvertedSearch({ names, center, radiusKm = 15 }) {
       seen.add(key);
       return true;
     })
-    .slice(0, MAX_ENTITIES_PER_QUERY);
-  if (wanted.length === 0) return null;
+    .slice(0, MAX_ENTITIES_PER_QUERY - (italicLead ? 1 : 0));
+  if (wanted.length === 0 && !italicLead) return null;
 
   const lat = finiteOrNull(center?.lat);
   const lng = finiteOrNull(center?.lng);
@@ -211,7 +265,7 @@ export function buildInvertedSearch({ names, center, radiusKm = 15 }) {
   //   nearcoord:… insource:/A|B/                      → 1 (correct)
   //
   // Each name is escaped first, so a `|` inside a name cannot become an alternation.
-  const pattern = wanted.map(escapeInsourceRegex).join("|");
+  const pattern = [...(italicLead ? [italicLead] : []), ...wanted.map(escapeInsourceRegex)].join("|");
   return `nearcoord:${radius}km,${lat.toFixed(4)},${lng.toFixed(4)} insource:/${pattern}/`;
 }
 

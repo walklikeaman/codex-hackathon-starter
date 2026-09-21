@@ -8,7 +8,9 @@ import {
   candidatesFromSearch,
   describesSomethingElse,
   escapeInsourceRegex,
+  isOneWordTitle,
   isSearchableEntity,
+  italicTitlePattern,
   MAX_ENTITIES_PER_QUERY,
   namesFromFanout,
 } from "../app/lib/place-search.mjs";
@@ -217,6 +219,68 @@ test("a page without one is dropped rather than half-placed", () => {
 
   assert.deepEqual(found, []);
   assert.deepEqual(candidatesFromSearch(null), []);
+});
+
+// --- a one-word title is searched as a title ------------------------------------------
+
+test("a one-word title reaches the search, as an italic mention", () => {
+  // Before: Trainspotting in Edinburgh was searched on "Mark Renton" alone, because the
+  // title was one word and the two-word rule threw it away.
+  const query = buildInvertedSearch({
+    title: "Trainspotting", names: ["Mark Renton", "Irvine Welsh"], center: EDINBURGH,
+  });
+  assert.equal(
+    query,
+    "nearcoord:15km,55.9533,-3.1883 insource:/''(\\[\\[([^\\]|]*\\|)?)?Trainspotting(\\]\\])?''|Mark Renton|Irvine Welsh/",
+  );
+  // Still one regex: CirrusSearch's OR between insource clauses returns zero, silently.
+  assert.equal((query.match(/insource:/g) ?? []).length, 1);
+});
+
+test("a one-word title with no characters is still a search", () => {
+  // This was null — a work whose only name is one word asked Wikipedia nothing at all.
+  assert.match(buildInvertedSearch({ title: "Jaws", names: [], center: EDINBURGH }), /Jaws/);
+});
+
+test("the italic pattern covers a bare title and one wrapped round a link", () => {
+  const pattern = new RegExp(italicTitlePattern("Casablanca"));
+  assert.match("the film ''Casablanca'' (1942)", pattern);
+  assert.match("in ''[[Casablanca (film)|Casablanca]]'', Rick", pattern);
+  assert.match("Stoker's ''[[Casablanca]]''", pattern);
+  // The city, the word and a longer title are not the film.
+  assert.doesNotMatch("Casablanca is the largest city of Morocco", pattern);
+  assert.doesNotMatch("[[Casablanca]] port", pattern);
+  assert.doesNotMatch("''Casablanca Express''", pattern);
+});
+
+test("a title's own punctuation cannot change what is asked", () => {
+  const pattern = italicTitlePattern("M*A*S*H");
+  assert.match(pattern, /M\\\*A\\\*S\\\*H/);
+  assert.match("''M*A*S*H''", new RegExp(pattern));
+});
+
+test("a title of two words or more is searched exactly as before", () => {
+  const query = buildInvertedSearch({ title: "The Third Man", names: ["Harry Lime"], center: EDINBURGH });
+  assert.match(query, /insource:\/The Third Man\|Harry Lime\//);
+  assert.doesNotMatch(query, /''/);
+});
+
+test("the italic title spends one of the six places, not a seventh", () => {
+  const many = Array.from({ length: 10 }, (_, i) => `Character Number${i}`);
+  const query = buildInvertedSearch({ title: "Dracula", names: many, center: EDINBURGH });
+  assert.equal((query.match(/Character Number/g) ?? []).length, MAX_ENTITIES_PER_QUERY - 1);
+});
+
+test("what counts as a one-word title", () => {
+  assert.equal(isOneWordTitle("Trainspotting"), true);
+  assert.equal(isOneWordTitle("Amélie"), true);
+  assert.equal(isOneWordTitle("Se7en"), true);
+  assert.equal(isOneWordTitle("Up"), true);
+  assert.equal(isOneWordTitle("The Third Man"), false);
+  assert.equal(isOneWordTitle("Q41542"), false); // an unresolved label, not a title
+  assert.equal(isOneWordTitle("X"), false);
+  assert.equal(isOneWordTitle(""), false);
+  assert.equal(isOneWordTitle(null), false);
 });
 
 // --- a coordinate is not a place ------------------------------------------------------

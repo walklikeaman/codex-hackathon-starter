@@ -542,9 +542,17 @@ as results, live-GPS buddy tracking, AI-generated "lore", and a 1–5 safety sco
   Winetavern Street in five spellings, kept in three because "Dublin" and "Dublin 8" read as
   different areas — the safe direction to be wrong in. The route still returns every
   spelling; only the sentence decides.
-- A **one-word title** ("Dracula", "Trainspotting") contributes nothing to the inverted
-  search: `isSearchableEntity` needs two words, so such a work depends entirely on its
-  fan-out.
+- ~~A **one-word title** contributes nothing to the inverted search~~ — **fixed 21.09, by
+  searching it as a title rather than as a word.** Letting the bare word in was measured
+  first and is wrong: "Up" matched ten unrelated articles in San Francisco, "Psycho" matched
+  "Psychology", "Casablanca" every article about the city, "Amélie" the finance ministry.
+  Wikipedia sets titles of films and books in italics and nothing else, so a one-word title
+  is now asked for only as `''Title''`, bare or round a link. On 20 one-word titles in their
+  own cities: Up 10 → 0, Jaws 0 → Martha's Vineyard, Edgartown and Menemsha, Dracula gains
+  Whitby Abbey, St Mary's and the 199 steps, Frankenstein gains Villa Diodati, Chinatown
+  trades the neighbourhood for Echo Park and Mulholland Dam, Amélie finds the Café des 2
+  Moulins. It costs 0.15–0.7 s more per search, and Trainspotting loses Arthur's Seat, whose
+  article names the film without italics.
 - **Sherlock returns 5 places against Harry Potter's 26** — not a matching bug, a coverage
   one: the queue holds four rows for it.
 - `api_help.html` and `lt.html` are research scratch in the main clone's root, untracked.
