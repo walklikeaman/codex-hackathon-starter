@@ -223,6 +223,24 @@ export async function parseStructured({
 
 // Free endpoints are shared and rate-limited per account, so pacing belongs to the
 // caller, not to a retry loop that only discovers the limit by breaching it.
+// **A refusal that lasts until tomorrow.** OpenRouter answers two different things with a
+// 429. "Provider returned error" is a free endpoint busy for a moment, and the next work may
+// well get through. "Rate limit exceeded: free-models-per-day…" is the account's daily
+// allowance of free-model calls, spent — and every call until it resets will get the same
+// answer.
+//
+// The enrichment treated both as the first kind. Measured on 22.09 over the log of the live
+// run: the daily refusal first came on the morning of 21.09, and since then it had answered
+// 15,386 times against 983 extractions that got through — each of those refusals a work whose
+// Wikipedia article had been fetched for nothing, left unstamped, to be fetched again the
+// next day. The run still converged, because most works need no model at all, but for most
+// of every day it was reading Wikipedia to throw the reading away.
+export function dailyQuotaSpent(result) {
+  if (!result || result.ok) return false;
+  if (result.status !== 429 && result.reason !== "rate_limited") return false;
+  return /per[- ]day|daily/i.test(String(result.detail ?? ""));
+}
+
 export function createThrottle(requestsPerMinute = 12, { now = () => Date.now(), sleep } = {}) {
   const gapMs = Math.ceil(60_000 / requestsPerMinute);
   const pause = sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));

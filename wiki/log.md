@@ -7,6 +7,24 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-22] incident | The enrichment spent most of each day reading Wikipedia for nothing
+
+**Object**: `app/lib/model-client.mjs`, `scripts/enrich-from-wikipedia.mjs`, `scripts/enrich-loop.sh`
+**Scenario**: incident · **Outcome**: ✅ fixed; the ceiling itself is a cost decision
+**What happened**: The free model's daily allowance ran out on the morning of 21.09 and every
+call after that got `429 … free-models-per-day-high-balance`. The script treated it like a
+momentarily busy endpoint: it left the work unstamped and went on to the next one, so for
+most of every day it fetched Wikipedia articles and threw them away — 15,386 refusals against
+983 extractions by 22.09. The run still converged (3,661 works left of 5,216; 3,716 Wikipedia
+rows, from 1,172), because most works need no model. Now `dailyQuotaSpent` tells the daily
+refusal from a busy one; the script finishes the current work, stops, and exits 75; the
+supervisor waits for 00:05 UTC, or an hour if a run after that is refused again. Checked in
+isolation with a stand-in that exits 75. The same check found the machine had rebooted and
+the LaunchAgent had brought the run back on its own. The "~60 hours" in the handoff was
+wrong and is replaced by what the quota allows.
+**Code changes**: this PR.
+**Updated**: wiki/handoff.md (pace), wiki/log.md.
+
 ## [2026-09-22] update | A fact says what its source said — and stops claiming novels were filmed
 
 **Object**: `app/lib/promote-submission.mjs`, `scripts/promote-verified.mjs`, `promote_place` (migration `20260922020000_a_fact_says_what_its_source_said.sql`, applied to production), `scripts/backfill-link-statements.mjs`

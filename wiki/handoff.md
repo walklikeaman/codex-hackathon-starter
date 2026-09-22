@@ -108,9 +108,16 @@ account connects and writes just as happily.
 through `tail` — it buffers everything until the process ends, which is exactly when you
 stop needing it. `~/enrich.log` is appended to, with a dated header per run.
 
-Pace, measured: **1.4 works/min** at `MODEL_REQUESTS_PER_MINUTE=18`, so the remaining 5,216
-are about **60 hours**. The model is not the bottleneck; the 5-second Wikidata gap and the
-1-second Wikimedia pace are, and both are deliberate.
+Pace: **the model's daily allowance is the ceiling, not the clock.** The 1.4 works/min and
+"~60 hours" measured on 20.09 held only until the free model's daily quota ran out, which it
+first did the next morning — OpenRouter answers `429 Rate limit exceeded:
+free-models-per-day-high-balance` until it resets. By 22.09 the log held **15,386** such
+refusals against **983** extractions that got through. The run still converged — 5,216
+unstamped works became 3,661, and Wikipedia rows in the queue went 1,172 → 3,716, because
+most works need no model at all — but for most of every day it read Wikipedia only to throw
+the reading away. Since 22.09 a spent daily quota ends the attempt (exit 75) and
+`enrich-loop.sh` waits for 00:05 UTC, then hourly if the reset is late. **To go faster is
+the owner's call:** a paid model removes the ceiling, and changes the model mid-catalogue.
 
 Resuming is safe and needs no flags — the query selects `wikipedia_enriched_at is null`.
 `--again` re-reads works already attempted, for when the extractor itself has changed.
