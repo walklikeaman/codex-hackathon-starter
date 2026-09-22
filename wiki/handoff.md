@@ -141,10 +141,13 @@ Three things, named precisely:
   a wikitext list item, with the plaque ingest's doubled apostrophes restored to one. 57
   existing links were backfilled (`scripts/backfill-link-statements.mjs`); every Wikipedia row
   promoted from now on arrives quoted. `about` and `stated_year` still have no writer.
-  **Still wrong underneath:** the plaques' relation kind is `filming_location` for "was
-  written here" and "home of the band" alike. The sentence on the card is now true; the kind
-  that filters and labels it is not, and splitting it into `wrote_here` / `commemorated_here`
-  means reading 53 inscriptions, which is the next step.
+  **The plaques' kinds were fixed the same day** (migration
+  `20260922030000_a_plaque_says_what_kind_of_place_it_is.sql`): each of the 52 read by hand,
+  26 moved — 14 to `author_place`, 3 `artist_place`, 2 `narrative_location`, 4
+  `inspiration_for`, 1 `replica`, 2 `studio_of`. Not `wrote_here` / `lived_here`: those are
+  PERSON kinds ("${subject} wrote at…") for `creator_place_links`, and on a work they would
+  read "Crime and Punishment wrote at". Tolkien's three plaques now sit under "Through the
+  people who made it", distance 1, instead of posing as filming locations.
 - **`creator_place_links` exists and `creators` holds zero rows.** So **no fact of distance
   1 or 2 exists anywhere**, and the film card's two lower blocks have never been seen with
   live data.
@@ -564,6 +567,12 @@ as results, live-GPS buddy tracking, AI-generated "lore", and a 1–5 safety sco
   Biltmore for Ghostbusters — and under-evidenced by this project's own two-signal standard.
   Demoting them removes true pins from the map for a procedural reason; leaving them keeps
   41 facts the rules would not grant today. The owner's call; nothing has been changed.
+- **5 plaque links point at the wrong WORK** (22.09) — only deleting them fixes them. A
+  plaque about *The Italian Job* on "The Italian" (2010); Basil Rathbone on a 1964 "Sherlock
+  Holmes"; Diana Rigg's 1965 series on the 1998 film *The Avengers*; Porter's 1903 *The Great
+  Train Robbery* on the 1978 one; a 1921 Fairbanks screening on the 1993 *Three Musketeers*.
+  Each shows on the wrong card as a filming location. The cause is upstream: the plaque
+  matcher takes a title without its year. Link ids are in the migration's header.
 - **Rotating `SUPABASE_SERVICE_ROLE_KEY`** (see above) — recommended, never confirmed.
 - **Russian merge-commit subjects on `main`** — fixing them rewrites history.
 

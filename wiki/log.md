@@ -7,6 +7,22 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-22] update | 52 plaques read by hand: 26 were never filming locations
+
+**Object**: `work_place_links` (migration `20260922030000_a_plaque_says_what_kind_of_place_it_is.sql`, applied to production)
+**Scenario**: bugfix · **Outcome**: ✅ 26 corrected; ⚠️ 5 wrong-work links left for the owner
+**What happened**: After the cards began quoting the plaques, the kind beneath each quote was
+still `filming_location` for all 52 — the kind that decides the card's block and whether a route
+may stop there. Each inscription was read and decided by link id: 21 really are filming places,
+14 are where the work was written or its maker lived (`author_place`), 3 an actor or crew member
+(`artist_place`), 2 events of the story (`narrative_location`), 4 where an idea came from
+(`inspiration_for`), 1 a house built to copy Tara (`replica`), 2 Gainsborough Studios
+(`studio_of`). Checked on live cards: Crime and Punishment and Tolkien's three plaques now sit
+under "Through the people who made it". Five links attach a plaque to a different work of the
+same title — the matcher ignores the year — and are recorded in the handoff for deletion.
+**Code changes**: the migration, applied through the Supabase MCP under its name.
+**Updated**: wiki/handoff.md, wiki/log.md.
+
 ## [2026-09-22] incident | The enrichment spent most of each day reading Wikipedia for nothing
 
 **Object**: `app/lib/model-client.mjs`, `scripts/enrich-from-wikipedia.mjs`, `scripts/enrich-loop.sh`
