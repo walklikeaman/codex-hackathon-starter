@@ -7,6 +7,25 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-09-22] update | A fact says what its source said — and stops claiming novels were filmed
+
+**Object**: `app/lib/promote-submission.mjs`, `scripts/promote-verified.mjs`, `promote_place` (migration `20260922020000_a_fact_says_what_its_source_said.sql`, applied to production), `scripts/backfill-link-statements.mjs`
+**Scenario**: bugfix · **Outcome**: ✅ success, checked on live cards
+**What happened**: `work_place_links.statement` is the sentence a card prints verbatim; all
+4,688 links had none, so cards fell back to a template from the relation kind, and every
+promoted row is a `filming_location`. Production said "Crime and Punishment was filmed at 14
+ulitsa Kaznacheiskaia" and "Finnegans Wake was filmed at 6 Alexandra Terrace" — the plaques
+there say the novels were written. Promotion now carries the source's own sentence where we
+may print it: plaques and Wikipedia only, since the fan sites are facts-not-prose by the
+owner's MovieMaps ruling. The dry run caught two of our own artefacts before anything was
+written: a wikitext bullet ("* Hankley en Surrey, Angleterre", 10 of 2,576 Wikipedia rows) and
+apostrophes doubled by the plaque ingest's SQL escaping (3 of 53) — the first is refused, the
+second restored. 57 links backfilled; the live cards for Crime and Punishment, Finnegans Wake,
+Brief Encounter and Skyfall now quote their sources. The plaques' relation kind is still
+`filming_location`; recorded in the handoff as the next step.
+**Code changes**: this PR; the promotion function applied through the Supabase MCP under the migration's name.
+**Updated**: wiki/handoff.md (built-and-not-wired), wiki/log.md.
+
 ## [2026-09-21] rule-change | A Q-id our own geocoder chose no longer counts as a second source
 
 **Object**: `app/lib/submission-review.mjs`, `scripts/review-submissions.mjs`, `scripts/promote-verified.mjs`
