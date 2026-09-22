@@ -78,8 +78,8 @@ test("every lot carries a ring, a source and an access answer", () => {
     slugs.add(lot.slug);
     assert.ok(lot.name);
     // The OSM way or relation it came from, so a boundary can be re-checked rather than
-    // believed.
-    assert.match(lot.osm, /^(way|relation)\/\d+$/);
+    // believed. A lot OSM draws in pieces (Elstree and its backlot) names every piece.
+    assert.match(lot.osm, /^(way|relation)\/\d+( \+ (way|relation)\/\d+)*$/);
     assert.ok(Object.values(ACCESS).includes(lot.access), `${lot.slug} has a real access value`);
     assert.ok(lot.rings.length > 0);
     for (const ring of lot.rings) {
@@ -92,9 +92,13 @@ test("every lot carries a ring, a source and an access answer", () => {
   }
 });
 
-test("the four lots that run a public tour are the ones marked ticketed", () => {
+test("the lots that run a public tour are the ones marked ticketed", () => {
   const ticketed = STUDIO_LOTS.filter((lot) => lot.access === ACCESS.ticketed).map((lot) => lot.slug);
-  assert.deepEqual(ticketed.sort(), ["paramount-pictures", "sony-pictures", "universal-city", "warner-bros-burbank"]);
+  assert.deepEqual(ticketed.sort(), [
+    "paramount-pictures", "sony-pictures", "universal-city", "warner-bros-burbank",
+    // The Making of Harry Potter.
+    "warner-bros-leavesden",
+  ]);
 });
 
 // ---------- what a reader is told ----------
