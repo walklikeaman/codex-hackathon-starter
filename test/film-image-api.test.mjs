@@ -341,8 +341,9 @@ function countingFetch(pair) {
 
 test("a place Wikidata calls a film studio gets the lot, not a frame", async () => {
   const { fetchImpl, calls } = countingFetch({
-    workLabel: "Test Film", locationLabel: "Pinewood Studios", tmdbId: "185", image: null,
-    lat: 51.549, lng: -0.535, instanceOf: ["Q375336"],
+    // Cinecittà: no ring here, so the type is what decides.
+    workLabel: "Test Film", locationLabel: "Cinecittà", tmdbId: "185", image: null,
+    lat: 41.8522, lng: 12.5773, instanceOf: ["Q375336"],
   });
   let parsed = 0;
   const handler = handlerForMatch({ fetchImpl, onParse: () => { parsed += 1; } });
@@ -350,7 +351,7 @@ test("a place Wikidata calls a film studio gets the lot, not a frame", async () 
 
   assert.equal(payload.reason, "studio_lot");
   assert.deepEqual(payload.frames, []);
-  assert.equal(payload.studio.name, "Pinewood Studios");
+  assert.equal(payload.studio.name, "Cinecittà");
   assert.equal(payload.studio.basis, "type");
   assert.equal(calls.tmdb, 0);
   assert.equal(parsed, 0);

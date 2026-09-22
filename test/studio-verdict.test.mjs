@@ -13,8 +13,9 @@ test("inside a lot's fence is a studio, whatever the place is called", () => {
 });
 
 test("Wikidata's own type makes a studio where there is no fence", () => {
-  const pinewood = studioVerdict({ name: "Pinewood Studios", lat: 51.549, lng: -0.535, instanceOf: ["Q375336"] });
-  assert.deepEqual([pinewood.studio, pinewood.basis], [true, "type"]);
+  // Cinecittà has no ring here; its type is what says it is a studio.
+  const cinecitta = studioVerdict({ name: "Cinecittà", lat: 41.8522, lng: 12.5773, instanceOf: ["Q375336"] });
+  assert.deepEqual([cinecitta.studio, cinecitta.basis], [true, "type"]);
   for (const type of STUDIO_TYPES) {
     assert.equal(studioVerdict({ lat: 1, lng: 1, instanceOf: [type] }).studio, true, type);
   }
@@ -28,6 +29,12 @@ test("a coordinate outside every lot, with no studio type, is the street", () =>
     const verdict = studioVerdict({ name, lat: 34.1437, lng: -118.396 });
     assert.deepEqual([verdict.studio, verdict.basis], [false, "coordinate"], name);
   }
+});
+
+// The rings added for #196, each checked against a row the queue holds inside it.
+test("the lots beyond Los Angeles are fenced too", () => {
+  assert.equal(studioVerdict({ lat: 51.5497, lng: -0.5361 }).lot?.slug, "pinewood-studios");
+  assert.equal(studioVerdict({ lat: 51.6922, lng: -0.4185 }).lot?.slug, "warner-bros-leavesden");
 });
 
 test("only a place with no coordinate falls back to its name, and says so", () => {
