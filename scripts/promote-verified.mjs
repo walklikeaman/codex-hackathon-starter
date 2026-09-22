@@ -22,7 +22,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 import {
-  groupIntoPlaces, linksFromGroup, matchExistingPlace, placeFromGroup,
+  groupIntoPlaces, linksFromGroup, matchExistingPlace, placeFromGroup, quoteFrom,
 } from "../app/lib/promote-submission.mjs";
 import { reviewSubmission } from "../app/lib/submission-review.mjs";
 
@@ -125,6 +125,9 @@ for (const [index, group] of groups.entries()) {
     source_url: row.source_url ?? null,
     source_kind: row.source_kind ?? null,
     snippet: row.source_sentence ?? null,
+    // The source's own sentence, only where we may print it — see quoteFrom. promote_place
+    // puts it on the link if the link has none; it never overwrites one.
+    quote: quoteFrom(row),
     confidence: scoreOf(row),
   }));
   const links = linksFromGroup("counted-only", group.rows, { scoreOf });

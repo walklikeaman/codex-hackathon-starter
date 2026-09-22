@@ -124,11 +124,20 @@ more; [[fandom-discovery]] has the numbers.
 
 Three things, named precisely:
 
-- **`statement`, `about` and `stated_year` have a reader and no writer.** The film card
-  prints them; nothing fills them. `/api/resolve` leaves `statement` null on purpose — a
-  P915 statement says a work and a place are related and no more. The first real producer
-  would be the 53 Open Plaques rows in the queue, and promoting them crosses "nothing from
-  the queue enters the graph", so it is the owner's call.
+- ~~**`statement` has a reader and no writer**~~ — **it has one since 22.09.** All 4,688
+  links were empty, so every card built its sentence from the relation kind — and every
+  promoted row is a `filming_location`, so production read "Crime and Punishment was filmed
+  at 14 ulitsa Kaznacheiskaia" where the plaque says the novel was written. `promote_place`
+  now writes the source's own sentence onto a link that has none, decided by `quoteFrom`:
+  **only a plaque's inscription or a Wikipedia sentence** (MovieMaps, movie-locations,
+  ReelStreets and Fandom are fan prose we take facts from, not words), never shortened, never
+  a wikitext list item, with the plaque ingest's doubled apostrophes restored to one. 57
+  existing links were backfilled (`scripts/backfill-link-statements.mjs`); every Wikipedia row
+  promoted from now on arrives quoted. `about` and `stated_year` still have no writer.
+  **Still wrong underneath:** the plaques' relation kind is `filming_location` for "was
+  written here" and "home of the band" alike. The sentence on the card is now true; the kind
+  that filters and labels it is not, and splitting it into `wrote_here` / `commemorated_here`
+  means reading 53 inscriptions, which is the next step.
 - **`creator_place_links` exists and `creators` holds zero rows.** So **no fact of distance
   1 or 2 exists anywhere**, and the film card's two lower blocks have never been seen with
   live data.

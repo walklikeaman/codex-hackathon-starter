@@ -9,6 +9,8 @@ import {
   linksFromGroup,
   matchExistingPlace,
   placeFromGroup,
+  quoteFrom,
+  MAX_QUOTE_CHARS,
 } from "../app/lib/promote-submission.mjs";
 
 // Real shapes from `location_submissions`: two sites naming the Millennium Biltmore for two
@@ -136,4 +138,53 @@ test("an existing graph place is matched by id, then by point and name", () => {
 
   const [elsewhere] = groupIntoPlaces([{ ...biltmoreB, lat: 51.5, lng: -0.12, wikidata_id: null }]);
   assert.equal(matchExistingPlace(elsewhere, places), null);
+});
+
+// ---------- a fact says what its source said ----------
+
+test("a plaque's inscription becomes the fact's own sentence", () => {
+  // The card read "Crime and Punishment was filmed at 14 ulitsa Kaznacheiskaia"; the plaque says:
+  assert.equal(
+    quoteFrom({ source_kind: "open_plaques", source_sentence: "The novel Crime and Punishment was written here." }),
+    "The novel Crime and Punishment was written here.",
+  );
+});
+
+test("a Wikipedia sentence is quoted verbatim, whitespace aside", () => {
+  assert.equal(
+    quoteFrom({ source_kind: "wikipedia", source_sentence: "Filming took place at  Alnwick Castle\nover three nights." }),
+    "Filming took place at Alnwick Castle over three nights.",
+  );
+});
+
+test("a fan site's prose is evidence, never a published statement", () => {
+  for (const source_kind of ["moviemaps", "movielocations", "reelstreets", "fandom", "permit_record", undefined]) {
+    assert.equal(quoteFrom({ source_kind, source_sentence: "The chase was filmed on this very corner." }), null, source_kind);
+  }
+});
+
+test("a quote is never shortened to fit", () => {
+  const long = "Filming took place here. ".repeat(40).trim();
+  assert.ok(long.length > MAX_QUOTE_CHARS);
+  assert.equal(quoteFrom({ source_kind: "wikipedia", source_sentence: long }), null);
+});
+
+test("a sentence that states nothing is not a statement", () => {
+  assert.equal(quoteFrom({ source_kind: "wikipedia", source_sentence: "" }), null);
+  assert.equal(quoteFrom({ source_kind: "wikipedia", source_sentence: null }), null);
+  assert.equal(quoteFrom({ source_kind: "open_plaques", source_sentence: "Photo: J. Smith" }), null);
+  assert.equal(quoteFrom(null), null);
+});
+
+test("a wikitext list item is not a sentence", () => {
+  // Found in the dry run: a French edition's bullet, kept by the extractor.
+  assert.equal(quoteFrom({ source_kind: "wikipedia", source_sentence: "* Hankley en Surrey, Angleterre" }), null);
+  assert.equal(quoteFrom({ source_kind: "wikipedia", source_sentence: "# Second item of a list" }), null);
+});
+
+test("an apostrophe our ingest doubled is the wall's single one again", () => {
+  assert.equal(
+    quoteFrom({ source_kind: "open_plaques", source_sentence: "In Langley Lane, at his parents'' house Little Balgair, Frederick Knott wrote 'Dial M For Murder'." }),
+    "In Langley Lane, at his parents' house Little Balgair, Frederick Knott wrote 'Dial M For Murder'.",
+  );
 });

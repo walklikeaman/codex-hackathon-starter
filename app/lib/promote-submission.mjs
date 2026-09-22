@@ -26,6 +26,7 @@
 import { DEDUP_RADIUS_M, metresApart, namesMatch, normalizePlaceName } from "./place-dedup.mjs";
 import { finiteOrNull } from "./numbers.mjs";
 import { studioLotAt } from "./studio-lots.mjs";
+import { statesSomething } from "./submission-review.mjs";
 
 // What the graph is told about where the point came from.
 //
@@ -186,4 +187,45 @@ export function matchExistingPlace(group, places, { radiusM = DEDUP_RADIUS_M } =
     return namesMatch(place.name, bestName(group.rows ?? []))
       || normalizePlaceName(place.name) === normalizePlaceName(bestName(group.rows ?? []));
   }) ?? null;
+}
+
+// **A fact should say what its source said.** `work_place_links.statement` is printed
+// verbatim by the card and had no writer: all 4,688 links carried none, so every card fell
+// back to a sentence built from the relation kind. And every promoted row is filed as a
+// `filming_location`, so the fallback read, on production on 22.09, "Crime and Punishment was
+// filmed at 14 ulitsa Kaznacheiskaia" and "Finnegans Wake was filmed at 6 Alexandra Terrace" —
+// where the plaques themselves say the novel was WRITTEN, and nobody ever filmed Finnegans Wake.
+// The source's own sentence, verbatim, is the one claim the card can make without inventing.
+//
+// Only sources whose words we may print. A plaque's inscription is on a public wall; a
+// Wikipedia sentence is CC BY-SA and travels with the permalink of its revision. MovieMaps,
+// movie-locations, ReelStreets and Fandom are fan projects whose facts we take and whose
+// prose we do not — the owner's ruling for MovieMaps says exactly that — so their sentences
+// stay evidence in `place_evidence` and are never published as a statement.
+//
+// Never shortened: a quote cut to fit is no longer the source's words. A sentence too long
+// to print whole is simply not used, and the card keeps its fallback.
+export const QUOTABLE_SOURCES = Object.freeze(new Set(["wikipedia", "open_plaques"]));
+export const MAX_QUOTE_CHARS = 500;
+
+// Two artefacts of OUR pipeline, found in the dry run before anything was written, and
+// removed because they are not the source's words:
+//
+//   "* Hankley en Surrey, Angleterre"   a wikitext list item the extractor kept (10 of 2,576
+//                                       Wikipedia rows start with a list marker) — a bullet
+//                                       is not a sentence, so it is not quoted at all;
+//   "at his parents'' house"            an apostrophe doubled by the plaque ingest's own SQL
+//                                       escaping (3 of 53 inscriptions). The wall says one,
+//                                       so one is restored. Only for plaques: in Wikipedia
+//                                       text '' was italics and is already gone.
+const WIKI_LIST_ITEM = /^[*#:;]/;
+
+export function quoteFrom(row) {
+  if (!QUOTABLE_SOURCES.has(row?.source_kind)) return null;
+  let sentence = String(row?.source_sentence ?? "").replace(/\s+/g, " ").trim();
+  if (WIKI_LIST_ITEM.test(sentence)) return null;
+  if (row.source_kind === "open_plaques") sentence = sentence.replace(/''/g, "'");
+  if (!sentence || sentence.length > MAX_QUOTE_CHARS) return null;
+  if (!statesSomething(sentence)) return null;
+  return sentence;
 }
