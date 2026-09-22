@@ -81,6 +81,8 @@ GAP_SECONDS="${GAP_SECONDS:-120}"
 # problem rather than a passing one. Enough of those in a row and looping is just a
 # hot loop against a wall.
 TOO_FAST_SECONDS=90
+# The run's own "come back after the model's daily allowance resets" status.
+QUOTA_SPENT_EXIT=75
 GIVE_UP_AFTER=10
 
 [ -f "$ENV_FILE" ] || { echo "no env file at $ENV_FILE" >&2; exit 1; }
@@ -146,6 +148,32 @@ while true; do
       "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$LOG"
     exit 0
   fi
+
+  # **The model's daily allowance is spent** (status 75, see dailyQuotaSpent). Not a failure
+  # and not a reason to go round again in two minutes: every call until the reset gets the
+  # same refusal, and every work read meanwhile is a Wikipedia fetch thrown away. Wait for
+  # 00:05 UTC. If a run started after that is refused again within half an hour, the reset
+  # has not happened where we assumed it would — wait an hour and ask again, rather than a
+  # whole day on a guess.
+  if [ "$status" -eq "$QUOTA_SPENT_EXIT" ]; then
+    now=$(date -u +%s)
+    if [ "$elapsed" -lt 1800 ] && [ "${quota_waited:-0}" -eq 1 ]; then
+      wait_s=3600
+    else
+      next_reset=$(( (now / 86400 + 1) * 86400 + 300 ))
+      wait_s=$(( next_reset - now ))
+    fi
+    quota_waited=1
+    fast_failures=0
+    printf '===== the model quota is spent after %ss — waiting %ss, until %s =====\n' \
+      "$elapsed" "$wait_s" "$(date -u -r $(( now + wait_s )) '+%Y-%m-%dT%H:%M:%SZ')" >> "$LOG"
+    sleep "$wait_s" &
+    child=$!
+    wait "$child"
+    child=""
+    continue
+  fi
+  quota_waited=0
 
   if [ "$elapsed" -lt "$TOO_FAST_SECONDS" ]; then
     fast_failures=$(( fast_failures + 1 ))

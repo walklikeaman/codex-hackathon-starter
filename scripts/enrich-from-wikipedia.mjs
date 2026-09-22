@@ -47,7 +47,7 @@ import { WIKIDATA_LICENSE } from "../app/lib/geocode-wikidata.mjs";
 import { createGeocoder } from "../app/lib/geocode-client.mjs";
 import { samePlaceWritten } from "../app/lib/place-name-head.mjs";
 import { normalizePlaceName } from "../app/lib/place-dedup.mjs";
-import { createModelClient, createThrottle, parseStructured } from "../app/lib/model-client.mjs";
+import { createModelClient, createThrottle, dailyQuotaSpent, parseStructured } from "../app/lib/model-client.mjs";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -64,6 +64,12 @@ const KIND = arg("kind", null);
 // Re-read works that have already been attempted. For when the extractor itself has
 // changed and the old verdicts are worth revisiting — not for ordinary runs.
 const AGAIN = process.argv.includes("--again");
+
+// The exit status that tells scripts/enrich-loop.sh "the model's daily allowance is spent —
+// start again after it resets", as distinct from a crash (1) or a finished catalogue (0).
+// 75 is EX_TEMPFAIL: a temporary failure, try later.
+const QUOTA_SPENT_EXIT = 75;
+let quotaSpent = false;
 
 // Extraction outcomes that say nothing about the article and so leave the work open.
 const TRANSIENT_EXTRACTION = new Set(["request_failed", "rate_limited"]);
@@ -223,6 +229,9 @@ async function main() {
   }
 
   for (const work of works) {
+    // Checked at the top, so the work that met the refusal still writes what its earlier
+    // editions produced; it stays unstamped and is read again tomorrow.
+    if (quotaSpent) break;
     console.log(`\n${work.title}`);
     const entity = entities.entities?.[work.wikidata_id];
     const languages = languagesForWork(entity, { limit: LANGUAGES });
@@ -311,6 +320,10 @@ async function main() {
         // or a truncated answer does — asking the same model the same thing again is not
         // a retry, it is a repeat — so only the first kind leaves the work open.
         if (TRANSIENT_EXTRACTION.has(extraction.reason)) unreadEdition = true;
+        // The day's allowance is gone: every further call gets this answer, and every work
+        // read meanwhile is a Wikipedia fetch thrown away. This work stays unstamped, and
+        // the attempt ends here — see dailyQuotaSpent.
+        if (dailyQuotaSpent(extraction)) { quotaSpent = true; break; }
         continue;
       }
 
@@ -340,6 +353,7 @@ async function main() {
     // alone, all 575 would have been recorded as read and never asked about again.
     if (!unreadEdition) await stamp(work);
     else console.log("   not stamped: an edition could not be read, so the next run asks again");
+
 
     if (accepted.length === 0) continue;
 
@@ -413,6 +427,11 @@ async function main() {
       const placed = rows.filter((row) => row.lat !== undefined).length;
       console.log(`   queued ${rows.length} as pending (${placed} with coordinates)`);
     }
+  }
+
+  if (quotaSpent) {
+    console.log("\nThe model's daily allowance is spent — stopping here, to start again once it resets.");
+    process.exitCode = QUOTA_SPENT_EXIT;
   }
 }
 

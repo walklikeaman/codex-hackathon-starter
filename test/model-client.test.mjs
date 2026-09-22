@@ -11,6 +11,7 @@ import {
   parseStructured,
   TIERS,
   unwrapJson,
+  dailyQuotaSpent,
 } from "../app/lib/model-client.mjs";
 
 // A stand-in for the OpenAI SDK that records how it was constructed.
@@ -276,4 +277,24 @@ test("a task that got the tier it asked for is not marked downgraded", () => {
     { tier: TIERS.CAREFUL, OpenAIImpl }).downgraded, false);
   assert.equal(createModelClient({ OPENROUTER_API_KEY: "free" },
     { tier: TIERS.CHEAP, OpenAIImpl }).downgraded, false);
+});
+
+// ---------- a refusal that lasts until tomorrow ----------
+
+test("the daily allowance, spent, is told apart from a busy endpoint", () => {
+  // Both verbatim from the live run's log, 22.09.
+  assert.equal(dailyQuotaSpent({
+    ok: false, reason: "rate_limited", status: 429,
+    detail: "429 Rate limit exceeded: free-models-per-day-high-balance. ",
+  }), true);
+  assert.equal(dailyQuotaSpent({
+    ok: false, reason: "rate_limited", status: 429, detail: "429 Provider returned error",
+  }), false, "a free endpoint busy for a moment: the next work may get through");
+});
+
+test("nothing but a refusal can spend the quota", () => {
+  assert.equal(dailyQuotaSpent({ ok: true }), false);
+  assert.equal(dailyQuotaSpent({ ok: false, reason: "refused", detail: "daily" }), false);
+  assert.equal(dailyQuotaSpent({ ok: false, reason: "request_failed", status: 500, detail: "per-day" }), false);
+  assert.equal(dailyQuotaSpent(null), false);
 });
