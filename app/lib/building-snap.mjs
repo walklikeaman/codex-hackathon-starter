@@ -20,7 +20,8 @@
 
 import { haversineMeters } from "./geo.mjs";
 import { coordinateOrNull, finiteOrNull } from "./numbers.mjs";
-import { namesMatch } from "./place-dedup.mjs";
+import { namesMatch, normalizePlaceName } from "./place-dedup.mjs";
+import { placeHead } from "./place-name-head.mjs";
 
 // Precisions that describe an AREA, not a spot. Their coordinate is a centroid that
 // happens to land somewhere — in Shanghai's case, inside a building, which production
@@ -214,6 +215,28 @@ export function entranceFor(building, entrances) {
 
 // --- the decision ------------------------------------------------------------
 
+// Does this building confirm the place by what OSM says about it?
+//
+// Names are stored with their address after a comma — "Tate Modern, Bankside, London" —
+// and `namesMatch` allows one word more and no further, so the full name never matched
+// the footprint OSM calls "Tate Modern". The head, the part before the first comma, is
+// the name; the rest says where it is, which the coordinate already does.
+//
+// A street address names no building, but OSM tags the building with it: "22 Highbury
+// Terrace" is confirmed by addr:housenumber 22 on addr:street Highbury Terrace, and by
+// nothing less — a house number alone is on every street.
+const ADDRESS = /^(\d+[a-z]?)\s+(.+)$/i;
+
+export function buildingConfirms(name, building) {
+  const head = placeHead(name);
+  if (namesMatch(name, building?.name) || namesMatch(head, building?.name)) return true;
+  const address = head.match(ADDRESS);
+  const tags = building?.tags ?? {};
+  if (!address || !tags["addr:housenumber"] || !tags["addr:street"]) return false;
+  return normalizePlaceName(tags["addr:housenumber"]) === normalizePlaceName(address[1])
+    && normalizePlaceName(tags["addr:street"]) === normalizePlaceName(address[2]);
+}
+
 // Which building does this point refer to? Containment first, because in a dense
 // street every candidate is within a few metres of every other.
 export function chooseBuilding(point, buildings, { radiusM = DEFAULT_SEARCH_RADIUS_M } = {}) {
@@ -267,14 +290,28 @@ export function snapToBuilding({ lat, lng, buildings, entrances = [], radiusM, n
 
   if (!point) return unchanged("no_coordinate");
 
-  const { building, reason } = chooseBuilding(point, buildings, { radiusM });
-  if (!building) return unchanged(reason);
-
   // A place that is only known to its city or country needs the building itself to
   // confirm the match by name. "Gloucester Cathedral" inside a building OSM also calls
   // "Gloucester Cathedral" is evidence; "Shanghai" inside an unrelated tower is not.
-  if (isVaguePrecision(precision) && !namesMatch(name, building.name)) {
-    return unchanged("area_not_a_building");
+  //
+  // And the name is what picks the building, not the geometry: a published pin often
+  // stands in the street between several footprints — Drapers' Hall's does — and the
+  // one OSM calls Drapers' Hall is the answer. Exactly one confirming building in range,
+  // or nothing.
+  let building;
+  let reason;
+  if (isVaguePrecision(precision)) {
+    const radius = clampSearchRadius(radiusM);
+    const named = (Array.isArray(buildings) ? buildings : []).filter((candidate) => {
+      if (!buildingConfirms(name, candidate)) return false;
+      const metres = pointInRing(point, candidate.ring) ? 0 : metresToRing(point, candidate.ring);
+      return metres !== null && metres <= radius;
+    });
+    if (named.length !== 1) return unchanged(named.length > 1 ? "ambiguous_named" : "area_not_a_building");
+    [building, reason] = [named[0], "confirmed_by_name"];
+  } else {
+    ({ building, reason } = chooseBuilding(point, buildings, { radiusM }));
+    if (!building) return unchanged(reason);
   }
 
   const snap = snapPosition(point, building, entrances);

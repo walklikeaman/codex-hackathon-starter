@@ -32,11 +32,14 @@ import { statesSomething } from "./submission-review.mjs";
 //
 // A scraped coordinate is a point somebody published beside a name; it is not a geocode,
 // and calling it `building` would be inventing a precision nobody measured. `point` is
-// claimed only when the row carries a Wikidata entity, because then the coordinate IS that
-// entity's own. Everything else says `none` — we hold a point and make no claim about what
-// it is a point OF.
+// claimed only when the coordinate is a Wikidata entity's own: the row carries the entity,
+// or the geocoder took the coordinate from one (`geocode_source` wikidata, its Q-id in
+// `geocode_source_id`). The second was missed until 2026-10-03, and 162 places — Tate
+// Modern among them, at Q193375's own coordinate — were promoted as `none`. Everything
+// else says `none` — we hold a point and make no claim about what it is a point OF.
 export function geocodePrecisionFor(row) {
-  return isWikidataId(row?.wikidata_id) ? "point" : "none";
+  if (isWikidataId(row?.wikidata_id)) return "point";
+  return row?.geocode_source === "wikidata" && isWikidataId(row?.geocode_source_id) ? "point" : "none";
 }
 
 function isWikidataId(value) {

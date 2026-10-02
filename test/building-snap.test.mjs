@@ -7,6 +7,7 @@ import {
   DEFAULT_SEARCH_RADIUS_M,
   entranceFor,
   fetchBuildings,
+  buildingConfirms,
   isVaguePrecision,
   MAX_SEARCH_RADIUS_M,
   MAX_SNAP_DISTANCE_M,
@@ -173,8 +174,9 @@ test("a street-centroid pin moves onto the building and earns the badge", () => 
 
 test("an ambiguous case keeps the original point AND the original precision", () => {
   // The fail-safe the issue asks for: no confident match means no change at all.
+  // A known point: an unknown one is decided by name instead (see "among neighbours").
   const result = snapToBuilding({
-    lat: OUTSIDE.lat, lng: OUTSIDE.lng,
+    lat: OUTSIDE.lat, lng: OUTSIDE.lng, precision: "point",
     buildings: [building({ osm_id: "way/1" }), building({ osm_id: "way/2", ring: square(0.0008, 0) })],
   });
   assert.equal(result.snapped, false);
@@ -363,4 +365,59 @@ test("a live-shaped response resolves end to end", async () => {
   assert.equal(result.snapped, true);
   assert.equal(result.via, "entrance");
   assert.equal(result.osm_building_id, "way/1");
+});
+
+// Names arrive with their address after a comma, and the full string never matched the
+// footprint's own name — so Tate Modern, pinned inside Tate Modern, was not confirmed.
+test("a vague place is confirmed by the name before its address", () => {
+  const result = snapToBuilding({
+    lat: INSIDE.lat, lng: INSIDE.lng, name: "Tate Modern, Bankside, London", precision: "none",
+    buildings: [building({ name: "Tate Modern" })],
+  });
+  assert.equal(result.snapped, true);
+  assert.equal(result.geocode_precision, "building");
+});
+
+test("the head must still BE the building's name, not share a word with it", () => {
+  assert.equal(buildingConfirms("Senate House, Malet Street", { name: "Senate House" }), true);
+  assert.equal(buildingConfirms("National Gallery, Trafalgar Square", { name: "National Portrait Gallery" }), false);
+  assert.equal(buildingConfirms("London", { name: "London Wall Place" }), false);
+});
+
+test("a street address is confirmed by the building OSM tags with that address", () => {
+  const house = { name: null, tags: { building: "house", "addr:housenumber": "22", "addr:street": "Highbury Terrace" } };
+  assert.equal(buildingConfirms("22 Highbury Terrace", house), true);
+  assert.equal(buildingConfirms("22 Highbury Terrace, Islington, London N5", house), true);
+  assert.equal(buildingConfirms("24 Highbury Terrace", house), false);
+  assert.equal(buildingConfirms("22 Highbury Place", house), false);
+  // A house number alone is on every street.
+  assert.equal(buildingConfirms("22 Highbury Terrace", { tags: { "addr:housenumber": "22" } }), false);
+});
+
+// Drapers' Hall's published pin stands in Throgmorton Street, between footprints.
+test("among neighbours, a vague place snaps to the one building its name confirms", () => {
+  const neighbours = [
+    building({ osm_id: "way/1", name: null, ring: square(0, -0.0004) }),
+    building({ osm_id: "way/2", name: "Drapers' Hall", ring: square(0, 0.0004) }),
+  ];
+  const result = snapToBuilding({ lat: INSIDE.lat, lng: INSIDE.lng, name: "Drapers' Hall", precision: "none", buildings: neighbours });
+  assert.equal(result.snapped, true);
+  assert.equal(result.osm_building_id, "way/2");
+  assert.equal(result.reason, "confirmed_by_name");
+});
+
+test("a vague place inside an unnamed building is still not confirmed by being inside it", () => {
+  const result = snapToBuilding({ lat: INSIDE.lat, lng: INSIDE.lng, name: "Drapers' Hall", precision: "none", buildings: [building({ name: null })] });
+  assert.equal(result.snapped, false);
+  assert.equal(result.reason, "area_not_a_building");
+});
+
+test("two buildings both answering to the name is no answer", () => {
+  const twins = [
+    building({ osm_id: "way/1", name: "Old Royal Naval College", ring: square(0, -0.0004) }),
+    building({ osm_id: "way/2", name: "Old Royal Naval College", ring: square(0, 0.0004) }),
+  ];
+  const result = snapToBuilding({ lat: INSIDE.lat, lng: INSIDE.lng, name: "Old Royal Naval College", precision: "none", buildings: twins });
+  assert.equal(result.snapped, false);
+  assert.equal(result.reason, "ambiguous_named");
 });

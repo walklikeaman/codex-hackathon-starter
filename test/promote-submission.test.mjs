@@ -72,6 +72,15 @@ test("only a Wikidata coordinate is called a point", () => {
   assert.equal(geocodePrecisionFor({ wikidata_id: "not-a-qid" }), "none");
 });
 
+// A row the geocoder resolved through Wikidata holds that entity's coordinate as much as
+// a row that arrived carrying the entity — Tate Modern was promoted as `none` for this.
+test("a coordinate the geocoder took from a Wikidata entity is a point too", () => {
+  const tate = { place_name: "Tate Modern, Bankside, London", geocode_source: "wikidata", geocode_source_id: "Q193375" };
+  assert.equal(geocodePrecisionFor(tate), "point");
+  assert.equal(geocodePrecisionFor({ ...tate, geocode_source_id: null }), "none");
+  assert.equal(geocodePrecisionFor({ ...tate, geocode_source: "moviemaps" }), "none");
+});
+
 test("the place a group becomes says what we know and no more", () => {
   const [group] = groupIntoPlaces([biltmoreB]);
   const place = placeFromGroup(group, { scoreOf: () => 0.72 });

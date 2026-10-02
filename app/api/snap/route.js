@@ -10,8 +10,9 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-import { MAX_SEARCH_RADIUS_M, resolveBuildingSnap } from "../../lib/building-snap.mjs";
+import { isVaguePrecision, MAX_SEARCH_RADIUS_M, resolveBuildingSnap } from "../../lib/building-snap.mjs";
 import { enrichGuard } from "../../lib/enrich-auth.mjs";
+import { resolveStreet, streetName } from "../../lib/street-confirm.mjs";
 
 export const runtime = "nodejs";
 // Overpass calls are paced, so a batch takes real time.
@@ -48,6 +49,7 @@ function defaultCreateStore(env) {
         .from("places")
         .select("id, name, lat, lng, geocode_precision")
         .is("osm_building_id", null)
+        .is("osm_street_id", null)
         .not("lat", "is", null)
         .neq("geocode_precision", "building")
         .limit(limit);
@@ -81,6 +83,14 @@ function defaultCreateStore(env) {
         .eq("id", place.id);
       if (error) throw new Error(`snap save failed: ${error.message}`);
     },
+    // A street confirms and never moves: the pin stays where its source put it.
+    async saveStreet(place, street) {
+      const { error } = await client
+        .from("places")
+        .update({ geocode_precision: "street", osm_street_id: street.osm_street_id, snapped_at: new Date().toISOString() })
+        .eq("id", place.id);
+      if (error) throw new Error(`street save failed: ${error.message}`);
+    },
   };
 }
 
@@ -96,6 +106,7 @@ export function createSnapHandler({
   env = process.env,
   createStore = defaultCreateStore,
   resolveSnap = resolveBuildingSnap,
+  confirmStreet = resolveStreet,
   pauseMs = PAUSE_BETWEEN_CALLS_MS,
   wait = sleep,
   logError = console.error,
@@ -157,6 +168,35 @@ export function createSnapHandler({
       // Being throttled is the one signal Overpass gives us about our own pace, so we
       // act on it for the rest of the run rather than reading it as a fact about the place.
       if (snap.rate_limited) pause = Math.min(pause * 2, MAX_PAUSE_MS);
+
+      // No building confirmed it, and its name is a street: the street may (street-confirm.mjs).
+      // A vague place only — a known point's precision is already better than a street's.
+      if (!snap.snapped && !snap.rate_limited && snap.reason !== "overpass_unavailable"
+        && isVaguePrecision(place.geocode_precision) && streetName(place.name)) {
+        await wait(pause);
+        let street;
+        try {
+          street = await confirmStreet({ lat: place.lat, lng: place.lng, name: place.name });
+        } catch (error) {
+          logError(`snap: street lookup failed for ${place.id}`, error);
+          street = { confirmed: false, reason: "overpass_failed" };
+        }
+        if (street.rate_limited) pause = Math.min(pause * 2, MAX_PAUSE_MS);
+        if (street.confirmed) {
+          try {
+            await store.saveStreet(place, street);
+            results.push({
+              place_id: place.id, name: place.name, snapped: true, reason: street.reason,
+              osm_street_id: street.osm_street_id, street_name: street.street_name,
+              was: place.geocode_precision, now: "street",
+            });
+          } catch (error) {
+            logError(`snap: street save failed for ${place.id}`, error);
+            results.push({ place_id: place.id, name: place.name, snapped: false, reason: "save_failed" });
+          }
+          continue;
+        }
+      }
 
       if (!snap.snapped) {
         // Nothing is written. A place that could not be resolved today stays in the
