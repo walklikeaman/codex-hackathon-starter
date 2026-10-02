@@ -20,7 +20,7 @@
 
 import { haversineMeters } from "./geo.mjs";
 import { coordinateOrNull, finiteOrNull } from "./numbers.mjs";
-import { namesMatch, normalizePlaceName } from "./place-dedup.mjs";
+import { normalizePlaceName } from "./place-dedup.mjs";
 import { placeHead } from "./place-name-head.mjs";
 
 // Precisions that describe an AREA, not a spot. Their coordinate is a centroid that
@@ -218,18 +218,38 @@ export function entranceFor(building, entrances) {
 // Does this building confirm the place by what OSM says about it?
 //
 // Names are stored with their address after a comma — "Tate Modern, Bankside, London" —
-// and `namesMatch` allows one word more and no further, so the full name never matched
-// the footprint OSM calls "Tate Modern". The head, the part before the first comma, is
-// the name; the rest says where it is, which the coordinate already does.
+// so the head, the part before the first comma, is the name; the rest says where it is,
+// which the coordinate already does.
+//
+// Stricter than `namesMatch`, which lets ANY one extra word through and so let "London"
+// confirm a hotel OSM calls "Momento London" (2026-10-03; the snap was rolled back). Here
+// the one word may only be "the", or a word that says what kind of building it is: "St
+// Clement Danes Church" is OSM's "St Clement Danes". A one-word name must match exactly.
 //
 // A street address names no building, but OSM tags the building with it: "22 Highbury
 // Terrace" is confirmed by addr:housenumber 22 on addr:street Highbury Terrace, and by
 // nothing less — a house number alone is on every street.
 const ADDRESS = /^(\d+[a-z]?)\s+(.+)$/i;
+const KIND_OF_BUILDING = new Set([
+  "the", "church", "chapel", "cathedral", "abbey", "building", "hotel", "theatre", "theater",
+  "station", "museum", "pub", "tower",
+]);
+
+function sameBuildingName(place, building) {
+  const left = normalizePlaceName(place).split(" ").filter(Boolean);
+  const right = normalizePlaceName(building).split(" ").filter(Boolean);
+  if (left.length === 0 || right.length === 0) return false;
+  if (left.join(" ") === right.join(" ")) return true;
+  const [shorter, longer] = left.length < right.length ? [left, right] : [right, left];
+  if (shorter.length < 2 || longer.length - shorter.length !== 1) return false;
+  const extra = longer[0] === shorter[0] ? longer.at(-1) : longer[0];
+  return KIND_OF_BUILDING.has(extra)
+    && (longer.slice(1).join(" ") === shorter.join(" ") || longer.slice(0, -1).join(" ") === shorter.join(" "));
+}
 
 export function buildingConfirms(name, building) {
   const head = placeHead(name);
-  if (namesMatch(name, building?.name) || namesMatch(head, building?.name)) return true;
+  if (sameBuildingName(name, building?.name) || sameBuildingName(head, building?.name)) return true;
   const address = head.match(ADDRESS);
   const tags = building?.tags ?? {};
   if (!address || !tags["addr:housenumber"] || !tags["addr:street"]) return false;

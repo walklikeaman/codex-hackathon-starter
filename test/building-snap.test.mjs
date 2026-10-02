@@ -384,6 +384,20 @@ test("the head must still BE the building's name, not share a word with it", () 
   assert.equal(buildingConfirms("London", { name: "London Wall Place" }), false);
 });
 
+// Production, 2026-10-03: Skyfall's "London" snapped to a hotel 54 m away.
+test("a one-word name confirms only a building of exactly that name", () => {
+  assert.equal(buildingConfirms("London", { name: "Momento London" }), false);
+  assert.equal(buildingConfirms("London", { name: "London Hotel" }), false);
+  assert.equal(buildingConfirms("Selfridges", { name: "Selfridges" }), true);
+});
+
+test("the one extra word must say what kind of building it is", () => {
+  assert.equal(buildingConfirms("St Clement Danes Church, Strand, London", { name: "St Clement Danes" }), true);
+  assert.equal(buildingConfirms("Bradbury Building", { name: "The Bradbury Building" }), true);
+  assert.equal(buildingConfirms("Royal Exchange", { name: "Royal Exchange Square" }), false);
+  assert.equal(buildingConfirms("Old Vic", { name: "The Old Vic Tunnels" }), false);
+});
+
 test("a street address is confirmed by the building OSM tags with that address", () => {
   const house = { name: null, tags: { building: "house", "addr:housenumber": "22", "addr:street": "Highbury Terrace" } };
   assert.equal(buildingConfirms("22 Highbury Terrace", house), true);
