@@ -13,7 +13,15 @@
 //
 // --redo re-extracts films that already have a trail. It removes only what a trail
 // added — the scenes, their evidence rows, and the scene number on each filming link —
-// never the links themselves, which carry their own evidence and predate any trail.
+// never a filming link itself, which carries its own evidence and predates any trail.
+// The one kind of link it does delete is what the OLD extractor inserted: a link with a
+// scene that is not a filming link. Those were written from a model's memory, carry no
+// evidence row at all (the trigger that now requires one came later), and claim the story
+// is SET at the place; six existed (Skyfall ×5, Harry Potter ×1). Unsourced, they cannot
+// even be edited — the evidence trigger refuses the update.
+//
+// --older-than N redoes only trails whose scenes are older than N minutes, so a run that
+// stops halfway can be resumed without paying again for what it already did.
 //
 // Costs money: three passes of gpt-5-mini per film, about a cent and a half.
 
@@ -37,6 +45,7 @@ const box = CITIES[city];
 const limit = Number(option("limit", 20));
 const minWalkable = Number(option("min-walkable", 3));
 const REDO = args.includes("--redo");
+const OLDER_THAN_MIN = option("older-than") === null ? null : Number(option("older-than"));
 const DRY = args.includes("--dry");
 
 if (!box) {
@@ -91,7 +100,7 @@ async function candidates() {
 }
 
 async function existingScenes(workIds) {
-  const { data, error } = await db.from("scenes").select("id, work_id").in("work_id", workIds);
+  const { data, error } = await db.from("scenes").select("id, work_id, created_at").in("work_id", workIds);
   if (error) throw new Error(error.message);
   return data;
 }
@@ -103,6 +112,7 @@ async function clearTrail(workId) {
   const ids = scenes.map((scene) => scene.id);
   if (ids.length === 0) return 0;
   for (const [step, run] of [
+    ["old scene links", () => db.from("work_place_links").delete().in("scene_id", ids).neq("relation_kind", "filming_location")],
     ["unlink", () => db.from("work_place_links").update({ scene_id: null, narrative_order: null }).in("scene_id", ids)],
     ["evidence", () => db.from("place_evidence").delete().eq("subject_type", "scene").in("subject_id", ids)],
     ["scenes", () => db.from("scenes").delete().in("id", ids)],
@@ -114,7 +124,14 @@ async function clearTrail(workId) {
 }
 
 const works = await candidates();
-const already = new Set((await existingScenes(works.map((work) => work.id))).map((row) => row.work_id));
+const sceneRows = await existingScenes(works.map((work) => work.id));
+const already = new Set(sceneRows.map((row) => row.work_id));
+const newest = new Map();
+for (const row of sceneRows) {
+  const at = Date.parse(row.created_at);
+  if (!newest.has(row.work_id) || at > newest.get(row.work_id)) newest.set(row.work_id, at);
+}
+const fresh = (workId) => OLDER_THAN_MIN !== null && Date.now() - (newest.get(workId) ?? 0) < OLDER_THAN_MIN * 60_000;
 console.log(`${works.length} films in ${city} with ${minWalkable}+ walkable places; ${already.size} already have a trail${REDO ? " (redoing)" : ""}`);
 
 if (DRY) {
@@ -133,6 +150,7 @@ let filled = 0;
 for (const work of works) {
   if (already.has(work.id)) {
     if (!REDO) { console.log(`  skip   ${work.title} (has a trail)`); continue; }
+    if (fresh(work.id)) { console.log(`  skip   ${work.title} (redone ${Math.round((Date.now() - newest.get(work.id)) / 60_000)} min ago)`); continue; }
     await clearTrail(work.id);
   }
   const started = Date.now();
