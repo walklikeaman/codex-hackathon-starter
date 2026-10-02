@@ -1,17 +1,41 @@
 import { createClient } from "@supabase/supabase-js";
 
+import { normalizeTrailPlace } from "../../lib/story-trail.mjs";
 import {
-  normalizeTrail,
-  normalizeTrailPlace,
-  storyTrailInstructions,
-  storyTrailSchema,
-} from "../../lib/story-trail.mjs";
+  findPlotSection,
+  placeInPlot,
+  plotPositionInput,
+  plotPositionInstructions,
+  plotPositionSchema,
+  scenesFromPlacement,
+} from "../../lib/plot-order.mjs";
+import { sceneNote } from "../../lib/place-note.mjs";
+import {
+  articleTitleFromEntity,
+  buildEntitiesUrl,
+  buildSectionUrl,
+  buildTocUrl,
+  cleanWikitext,
+  permalink,
+} from "../../lib/wikipedia-source.mjs";
 import { enrichGuard } from "../../lib/enrich-auth.mjs";
 import { createModelClient, parseStructured, TIERS } from "../../lib/model-client.mjs";
 
 export const runtime = "nodejs";
 
 const noStoreHeaders = { "Cache-Control": "private, no-store" };
+const WIKIPEDIA = { "User-Agent": "GloryMap/1.0 (story trail ordering)" };
+
+// Two passes over the same plot. Each quote is checked against the text, so the union of
+// two cannot add a claim the plot does not support — it only recovers what one pass
+// missed (Sherlock Holmes: 6 and 4 locations placed by two runs of the same model).
+export const PLOT_PASSES = 2;
+
+// The model that copies quotes. Measured on 2026-10-02: gpt-5-nano returned one quote for
+// thirteen locations and that one was not in the text; gpt-5-mini returned six, all
+// verbatim. The free OpenRouter model configured for the cheap tier cannot take a JSON
+// schema at all.
+export const DEFAULT_TRAIL_MODEL = "gpt-5-mini";
 const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 function jsonError(message, status) {
@@ -28,15 +52,15 @@ function defaultCreateStore(env) {
     async loadWork(workId) {
       const { data, error } = await client
         .from("works")
-        .select("id, title, kind, year")
+        .select("id, title, kind, year, wikidata_id")
         .eq("id", workId)
         .maybeSingle();
       if (error) throw new Error(`work load failed: ${error.message}`);
       return data;
     },
-    // The places we already hold for this work. Handed to the model so it picks a
-    // known place rather than naming one the story uses ("Notting Hill Bookshop"),
-    // which is right for a story and unmappable for us.
+    // The places we already hold for this work, each with what the location guide says it
+    // plays in this work — "Appears as 'Grand Hotel (exterior)'". The guide line is what
+    // lets the plot be searched for the scene at all.
     async workPlaces(workId) {
       const { data, error } = await client
         .from("work_place_links")
@@ -44,25 +68,59 @@ function defaultCreateStore(env) {
         .eq("work_id", workId)
         .is("scene_id", null);
       if (error) throw new Error(`work places load failed: ${error.message}`);
-      return (data ?? [])
+      const places = (data ?? [])
         .map((row) => row.places)
         .filter((place) => place && place.lat !== null && place.lng !== null);
+
+      const { data: notes, error: notesError } = await client
+        .from("location_submissions")
+        .select("place_id, source_sentence")
+        .eq("work_id", workId)
+        .not("place_id", "is", null);
+      if (notesError) throw new Error(`guide lines load failed: ${notesError.message}`);
+      const plays = new Map();
+      for (const row of notes ?? []) {
+        const note = sceneNote(row.source_sentence, { limit: 160 });
+        if (note && !plays.has(row.place_id)) plays.set(row.place_id, note);
+      }
+      return places.map((place) => ({ ...place, plays: plays.get(place.id) ?? null }));
     },
-    // The scene→place edge. `work_place_links.scene_id` is where this belongs —
-    // the schema already modelled it, and the spoiler-safe RPC already reads it.
+    // The film's plot as Wikipedia tells it: the text the order is read from.
+    async plotOf(work) {
+      if (!work?.wikidata_id) return null;
+      const entities = await (await fetch(buildEntitiesUrl([work.wikidata_id], ["en"]), { headers: WIKIPEDIA })).json();
+      const title = articleTitleFromEntity(entities?.entities?.[work.wikidata_id], "en");
+      if (!title) return null;
+      const toc = await (await fetch(buildTocUrl(title, "en"), { headers: WIKIPEDIA })).json();
+      const index = findPlotSection(toc?.parse?.tocdata);
+      if (!index) return null;
+      const section = await (await fetch(buildSectionUrl(title, index, "en"), { headers: WIKIPEDIA })).json();
+      const plot = cleanWikitext(section?.parse?.wikitext ?? "");
+      // The revision, so the evidence points at the text that was read, not whatever the
+      // article says later.
+      const revid = toc?.parse?.revid ?? null;
+      return plot ? { title, text: plot, url: revid ? permalink(title, revid, "en") : `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}` } : null;
+    },
+    // A scene is set ON the link that says the work was filmed at the place — never a new
+    // link beside it, which the evidence trigger refuses and which would read as "the
+    // story is set here". The quote that placed it goes in as its evidence, in the same
+    // transaction (see place_scene_on_link).
     async linkScenes(workId, links) {
-      if (links.length === 0) return 0;
-      const { error } = await client.from("work_place_links").insert(
-        links.map((link) => ({
-          work_id: workId,
-          place_id: link.place_id,
-          scene_id: link.scene_id,
-          relation_kind: "narrative_location",
-          narrative_order: link.sequence_index,
-        })),
-      );
-      if (error) throw new Error(`scene link insert failed: ${error.message}`);
-      return links.length;
+      let linked = 0;
+      for (const link of links) {
+        const { data, error } = await client.rpc("place_scene_on_link", {
+          p_work_id: workId,
+          p_place_id: link.place_id,
+          p_scene_id: link.scene_id,
+          p_order: link.sequence_index,
+          p_source_url: link.source_url,
+          p_quote: link.quote,
+          p_model: link.model ?? null,
+        });
+        if (error) throw new Error(`scene link failed: ${error.message}`);
+        if (data) linked += 1;
+      }
+      return linked;
     },
     // The cache IS the scenes table: if a work already has a trail, there is nothing
     // to extract and no model call to pay for.
@@ -94,15 +152,27 @@ function defaultCreateStore(env) {
 
 // POST /api/trail { work_id }
 //
-// Extract the ordered sequence of places a story visits, so the map can be walked in
-// STORY order rather than by geographic convenience.
+// Put a work's known locations in STORY order, so the map can be walked as the story
+// goes rather than by geographic convenience.
 //
-// The model proposes place NAMES; it is given no field for a coordinate, and the
-// resolver turns names into points from sources afterwards. Extraction is cached in
-// the scenes table — the story does not change, so a second request costs nothing.
+// The order is read from the plot as Wikipedia tells it, never from a model's memory — see
+// plot-order.mjs for what that cost to learn. The model only copies the passage where each
+// location's scene happens; this route finds the passage in the text, and its position is
+// the order. Every stop is one of our places, chosen from a closed list, so a trail can only
+// ever point at somewhere we already hold. Cached in the scenes table: the plot does not
+// change, so a second request costs nothing.
+// Nothing to order is an honest answer, not an error — and it must not be cached as if
+// it were a trail, or the work would be marked as having no story for good.
+function notYet(workId, reason) {
+  return Response.json({ work_id: workId, cached: false, scenes: [], reason }, { headers: noStoreHeaders });
+}
+
 export function createTrailHandler({
   env = process.env,
-  createRuntime = (env) => createModelClient(env, { tier: TIERS.CHEAP }),
+  createRuntime = (env) => createModelClient(
+    { ...env, OPENAI_MODEL: env.OPENAI_TRAIL_MODEL || DEFAULT_TRAIL_MODEL },
+    { tier: TIERS.CAREFUL },
+  ),
   createStore,
   logError = (...args) => console.error(...args),
 } = {}) {
@@ -131,59 +201,51 @@ export function createTrailHandler({
 
       const work = await store.loadWork(workId);
       if (!work) return jsonError("No such work", 404);
-      // Cheap tier: this runs once per work, is cached in `scenes` forever, and is
-      // never called from the UI. Its output is narrative ordering, not evidence.
       const runtime = createRuntime(env);
       if (!runtime) return jsonError("No model key is configured.", 503);
 
-      // The list the model must choose from. Loaded before the call, because grounding
-      // the extraction beats trying to match free-text place names afterwards.
+      // Neither of these is cached: a work gains places and an article gains a plot.
       const knownPlaces = await store.workPlaces(workId);
+      if (knownPlaces.length === 0) return notYet(workId, "no_known_places");
+      const plot = await store.plotOf(work);
+      if (!plot?.text) return notYet(workId, "no_plot_to_order_by");
 
-      const extraction = await parseStructured({
-        runtime,
-        schema: storyTrailSchema,
-        schemaName: "story_trail",
-        instructions: storyTrailInstructions(knownPlaces),
-        input: `Work: ${work.title}${work.year ? ` (${work.year})` : ""}. Kind: ${work.kind}.`,
-        maxTokens: 4000,
-      });
-
-      if (!extraction.ok) {
-        throw new Error(`Trail extraction ${extraction.reason}`);
+      const locations = knownPlaces.map((place) => (
+        place.plays ? { location: place.name, appears_as: place.plays } : { location: place.name }));
+      const passes = [];
+      for (let pass = 0; pass < PLOT_PASSES; pass += 1) {
+        const result = await parseStructured({
+          runtime,
+          schema: plotPositionSchema,
+          schemaName: "plot_positions",
+          instructions: plotPositionInstructions(),
+          input: plotPositionInput({ title: work.title, year: work.year, locations, plot: plot.text }),
+          maxTokens: 12000,
+        });
+        // One pass failing is a smaller trail, not a lost one; both failing is an error.
+        if (result.ok) passes.push(result.parsed);
       }
+      if (passes.length === 0) throw new Error("Trail extraction: no pass succeeded");
 
-      const scenes = normalizeTrail(extraction.parsed);
-      if (scenes.length === 0) {
-        // Nothing usable is an honest answer for a work whose story we cannot place;
-        // it is not an error, and it must not be cached as if it were a trail.
-        return Response.json(
-          { work_id: workId, cached: false, scenes: [], reason: "no_extractable_trail" },
-          { headers: noStoreHeaders },
-        );
-      }
+      const placed = placeInPlot(plot.text, passes, locations);
+      if (placed.length === 0) return notYet(workId, "nothing_placed_in_plot");
 
+      const scenes = scenesFromPlacement(placed, { title: plot.title });
       const saved = await store.saveScenes(workId, scenes);
 
-      // Link the scenes the model tied to a place we hold. `known_place` is only ever
-      // a KEY into our own list — a value that is not in it finds nothing and the
-      // scene simply has no place, which is a normal outcome.
+      // Every scene names one of OUR places by construction; the lookup is exact.
       const placeByKey = new Map(
         knownPlaces.map((place) => [normalizeTrailPlace(place.name), place.id]),
       );
       const sceneIdByIndex = new Map(saved.map((row) => [row.sequence_index, row.id]));
       const links = scenes
         .map((scene) => ({
-          // `known_place` first, then the scene's own name against the SAME closed
-          // list. Measured: the model names places exactly as we do — "National
-          // Gallery", "Hashima Island" — while leaving known_place null in 21 of 22
-          // cases. Both paths are an exact match into our own set, so "Diagon Alley"
-          // still links to nothing; this recovers real links without loosening
-          // anything into a guess.
-          place_id: placeByKey.get(normalizeTrailPlace(scene.known_place))
-            ?? placeByKey.get(normalizeTrailPlace(scene.place_name)),
+          place_id: placeByKey.get(normalizeTrailPlace(scene.known_place)),
           scene_id: sceneIdByIndex.get(scene.sequence_index),
           sequence_index: scene.sequence_index,
+          source_url: plot.url ?? null,
+          quote: scene.quote,
+          model: runtime.model ?? null,
         }))
         .filter((link) => link.place_id && link.scene_id);
 
@@ -193,11 +255,11 @@ export function createTrailHandler({
       } catch (error) {
         // The scenes are saved and useful on their own; a failed link is a missing
         // pin, not a reason to lose the extraction.
-        logError("trail: scene linking failed", error);
+        logError("trail: scene linking failed", { message: error?.message });
       }
 
       return Response.json(
-        { work_id: workId, cached: false, extracted: saved.length, linked, scenes },
+        { work_id: workId, cached: false, extracted: saved.length, linked, known: knownPlaces.length, scenes },
         { headers: noStoreHeaders },
       );
     } catch (error) {

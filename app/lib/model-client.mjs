@@ -149,7 +149,12 @@ export async function parseStructured({
     // body is fenced, and we would rather normalise the wrapper and still validate.
     completion = await runtime.client.chat.completions.create({
       model: runtime.model,
-      max_tokens: maxTokens,
+      // OpenAI's gpt-5 family refuses `max_tokens` outright ("Unsupported parameter …
+      // use 'max_completion_tokens'"), so every careful-tier call on OpenAI failed with a
+      // 400 before a single token was generated. OpenRouter takes `max_tokens`.
+      ...(runtime.provider === "openai"
+        ? { max_completion_tokens: maxTokens }
+        : { max_tokens: maxTokens }),
       messages: [
         { role: "system", content: instructions },
         { role: "user", content: input },

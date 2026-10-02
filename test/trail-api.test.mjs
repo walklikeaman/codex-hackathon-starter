@@ -1,60 +1,61 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createTrailHandler } from "../app/api/trail/route.js";
+import { createTrailHandler, PLOT_PASSES } from "../app/api/trail/route.js";
 
 const WORK = "11111111-1111-1111-1111-111111111111";
 
-const parsedTrail = {
-  scenes: [
-    {
-      sequence_index: 1, place_name: "Trafalgar Square", geo_hint: "London",
-      plot_beat: "They meet under the column.", safe_teaser: "Where it begins",
-      spoiler_tier: 1, is_fictional_setting: false, known_place: null,
-    },
-    {
-      sequence_index: 2, place_name: "Hogwarts", geo_hint: "",
-      plot_beat: "The letter arrives.", safe_teaser: "A journey starts",
-      spoiler_tier: 3, is_fictional_setting: true, known_place: null,
-    },
-  ],
+// Sherlock Holmes (2009), cut down: the plot as Wikipedia tells it, and the places we hold
+// with what the location guide says each plays.
+const PLOT = {
+  title: "Sherlock Holmes (2009 film)",
+  url: "https://en.wikipedia.org/w/index.php?title=Sherlock_Holmes_(2009_film)&oldid=1",
+  text: "Holmes visits Blackwood in his cell at Pentonville Prison before the hanging. "
+    + "Days later the groundskeeper finds the Blackwood family tomb shattered from within. "
+    + "Holmes and Watson cross the unfinished Tower Bridge to stop the final ritual.",
 };
+const PLACES = [
+  { id: "p-somerset", name: "Somerset House", plays: "Appears as \"Pentonville Prison (cell)\"." },
+  { id: "p-brompton", name: "Brompton Cemetery", plays: "Appears as \"Blackwood Family Vault\"." },
+  { id: "p-stanley", name: "Stanley Dock", plays: "Appears as \"Bridge Construction\"." },
+  { id: "p-cliveden", name: "Cliveden House", plays: "Appears as \"Grand Hotel (interior)\"." },
+];
 
-// What the model layer actually returns now: a chat completion whose content is the
-// JSON, validated against the real schema on the way through. The old harness handed
-// back `output_parsed` and so never exercised the schema at all — which is how a
-// fixture missing a required field passed for weeks.
-const modelReply = (parsed) => ({
-  choices: [{ finish_reason: "stop", message: { content: JSON.stringify(parsed) } }],
+const reply = (matches) => ({
+  choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ matches }) } }],
 });
 
+// Out of order on purpose: the order must come from the TEXT, not from the reply.
+const GOOD = reply([
+  { location: "Stanley Dock", plot_quote: "cross the unfinished Tower Bridge to stop the final ritual", fictional: false },
+  { location: "Somerset House", plot_quote: "Holmes visits Blackwood in his cell at Pentonville Prison", fictional: false },
+  { location: "Brompton Cemetery", plot_quote: "finds the Blackwood family tomb shattered from within", fictional: true },
+  // Paraphrased — not in the text, so not placed anywhere.
+  { location: "Cliveden House", plot_quote: "Irene meets Holmes at a grand hotel in London", fictional: true },
+]);
+
 function handlerWith(overrides = {}) {
-  const calls = { generated: 0, saved: null };
+  const calls = { generated: 0, saved: null, linked: null };
+  const replies = overrides.replies ?? [GOOD, GOOD];
   const handler = createTrailHandler({
-    env: { ENRICH_TOKEN: "test-token", OPENAI_API_KEY: "k", ...overrides.env },
+    env: { ENRICH_TOKEN: "test-token", OPENAI_API_KEY: "k" },
     createRuntime: () => ("runtime" in overrides ? overrides.runtime : {
-      provider: "openrouter", tier: "cheap", model: "free-model", extraBody: {},
+      provider: "openai", tier: "careful", model: "m", extraBody: {},
       client: { chat: { completions: { create: async (body) => {
-        calls.instructions = body.messages[0].content;
+        calls.input = body.messages[1].content;
+        const answer = replies[Math.min(calls.generated, replies.length - 1)];
         calls.generated += 1;
-        return overrides.response ?? {
-          choices: [{ finish_reason: "stop", message: { content: JSON.stringify(parsedTrail) } }],
-        };
+        return answer;
       } } } },
     }),
     createStore: overrides.createStore ?? (() => ({
-      // `??` cannot tell "not supplied" from "deliberately null", which is exactly
-      // what the 404 case needs to express.
       loadWork: async () => ("work" in overrides
         ? overrides.work
-        : { id: WORK, title: "Notting Hill", kind: "film", year: 1999 }),
+        : { id: WORK, title: "Sherlock Holmes", kind: "film", year: 2009, wikidata_id: "Q206374" }),
       existingScenes: async () => overrides.existingScenes ?? [],
-      workPlaces: async () => overrides.places ?? [],
-      linkScenes: async (workId, links) => {
-        if (overrides.linkThrows) throw new Error("db down");
-        calls.linked = links;
-        return links.length;
-      },
+      workPlaces: async () => overrides.places ?? PLACES,
+      plotOf: async () => ("plot" in overrides ? overrides.plot : PLOT),
+      linkScenes: async (workId, links) => { calls.linked = links; return links.length; },
       saveScenes: async (workId, scenes) => {
         calls.saved = scenes;
         return scenes.map((scene, index) => ({ id: `s${index}`, sequence_index: scene.sequence_index }));
@@ -65,58 +66,82 @@ function handlerWith(overrides = {}) {
   return { handler, calls };
 }
 
-const trailRequest = (body) =>
-  new Request("http://localhost/api/trail", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-enrich-token": "test-token" },
-    body: JSON.stringify(body),
-  });
-
-test("a work that already has a trail costs no model call", async () => {
-  // Extraction is the expensive step and the story does not change, so the scenes
-  // table IS the cache.
-  const { handler, calls } = handlerWith({
-    existingScenes: [{ id: "s1", sequence_index: 1, plot_beat: "…" }],
-  });
-  const body = await (await handler(trailRequest({ work_id: WORK }))).json();
-
-  assert.equal(body.cached, true);
-  assert.equal(calls.generated, 0);
-  assert.equal(body.scenes.length, 1);
+const trailRequest = (body) => new Request("http://localhost/api/trail", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", "x-enrich-token": "test-token" },
+  body: JSON.stringify(body),
 });
 
-test("a first extraction saves the scenes for next time", async () => {
+test("a work that already has a trail costs no model call", async () => {
+  const { handler, calls } = handlerWith({ existingScenes: [{ id: "s1", sequence_index: 1, plot_beat: "…" }] });
+  const body = await (await handler(trailRequest({ work_id: WORK }))).json();
+  assert.equal(body.cached, true);
+  assert.equal(calls.generated, 0);
+});
+
+test("the order is the order of the plot text, whatever order the model answered in", async () => {
   const { handler, calls } = handlerWith();
   const body = await (await handler(trailRequest({ work_id: WORK }))).json();
 
-  assert.equal(body.cached, false);
-  assert.equal(calls.generated, 1);
-  assert.equal(body.extracted, 2);
-  assert.equal(calls.saved.length, 2);
-  // The fictional scene is KEPT as a scene — it is real content; it simply must not
-  // be given a coordinate later.
-  assert.equal(calls.saved[1].is_fictional_setting, true);
+  assert.equal(calls.generated, PLOT_PASSES);
+  assert.deepEqual(calls.saved.map((scene) => scene.known_place), ["Somerset House", "Brompton Cemetery", "Stanley Dock"]);
+  assert.deepEqual(calls.saved.map((scene) => scene.sequence_index), [1, 2, 3]);
+  // What the guide says each place plays, not what the model calls it.
+  assert.deepEqual(calls.saved.map((scene) => scene.place_name), ["Pentonville Prison (cell)", "Blackwood Family Vault", "Bridge Construction"]);
+  assert.equal(body.extracted, 3);
+  assert.equal(body.linked, 3);
+  assert.deepEqual(calls.linked.map((link) => link.place_id), ["p-somerset", "p-brompton", "p-stanley"]);
+  // Each link carries the evidence for its place in the story: the passage, and where from.
+  assert.equal(calls.linked[0].quote, "Holmes visits Blackwood in his cell at Pentonville Prison");
+  assert.equal(calls.linked[0].source_url, PLOT.url);
 });
 
-test("an empty extraction is an honest answer, not a cached trail", async () => {
-  // Caching "nothing" would permanently mark a work as having no story.
-  const { handler, calls } = handlerWith({
-    response: modelReply({ scenes: [] }),
-  });
-  const body = await (await handler(trailRequest({ work_id: WORK }))).json();
-
-  assert.deepEqual(body.scenes, []);
-  assert.equal(body.reason, "no_extractable_trail");
-  assert.equal(calls.saved, null); // nothing written
+test("a quote that is not in the plot places nothing", async () => {
+  const { handler, calls } = handlerWith();
+  await handler(trailRequest({ work_id: WORK }));
+  assert.equal(calls.saved.some((scene) => scene.known_place === "Cliveden House"), false);
 });
 
-test("a refused or truncated response fails loudly rather than saving junk", async () => {
-  const { handler, calls } = handlerWith({
-    response: { choices: [{ finish_reason: "length", message: { content: "{" } }] },
-  });
-  const response = await handler(trailRequest({ work_id: WORK }));
-  assert.equal(response.status, 502);
-  assert.equal(calls.saved, null);
+test("the plot and the guide lines are what the model is shown", async () => {
+  const { handler, calls } = handlerWith();
+  await handler(trailRequest({ work_id: WORK }));
+  assert.match(calls.input, /Pentonville Prison \(cell\)/);
+  assert.match(calls.input, /PLOT TEXT \(Sherlock Holmes, 2009\)/);
+  assert.match(calls.input, /tomb shattered from within/);
+});
+
+// Each pass's quotes are checked against the text, so their union cannot add a claim the
+// plot does not support; it only recovers what one pass missed.
+test("two passes are merged, and a pass that fails costs only its own finds", async () => {
+  const onlyDock = reply([{ location: "Stanley Dock", plot_quote: "cross the unfinished Tower Bridge to stop the final ritual", fictional: false }]);
+  const onlyCell = reply([{ location: "Somerset House", plot_quote: "Holmes visits Blackwood in his cell at Pentonville Prison", fictional: false }]);
+  const merged = handlerWith({ replies: [onlyDock, onlyCell] });
+  await merged.handler(trailRequest({ work_id: WORK }));
+  assert.deepEqual(merged.calls.saved.map((scene) => scene.known_place), ["Somerset House", "Stanley Dock"]);
+
+  const broken = { choices: [{ finish_reason: "length", message: { content: "{" } }] };
+  const half = handlerWith({ replies: [broken, onlyCell] });
+  await half.handler(trailRequest({ work_id: WORK }));
+  assert.deepEqual(half.calls.saved.map((scene) => scene.known_place), ["Somerset House"]);
+
+  const none = handlerWith({ replies: [broken, broken] });
+  assert.equal((await none.handler(trailRequest({ work_id: WORK }))).status, 502);
+  assert.equal(none.calls.saved, null);
+});
+
+// Each of these is "not yet", never a cached empty trail: a work gains places and an
+// article gains a plot.
+test("nothing to order by is an honest answer, and nothing is saved", async () => {
+  for (const [overrides, reason] of [
+    [{ places: [] }, "no_known_places"],
+    [{ plot: null }, "no_plot_to_order_by"],
+    [{ replies: [reply([]), reply([])] }, "nothing_placed_in_plot"],
+  ]) {
+    const { handler, calls } = handlerWith(overrides);
+    const body = await (await handler(trailRequest({ work_id: WORK }))).json();
+    assert.equal(body.reason, reason);
+    assert.equal(calls.saved, null);
+  }
 });
 
 test("the request is validated before any work is done", async () => {
@@ -128,106 +153,11 @@ test("the request is validated before any work is done", async () => {
 
 test("an unknown work is a 404, not an extraction", async () => {
   const { handler, calls } = handlerWith({ work: null });
-  const response = await handler(trailRequest({ work_id: WORK }));
-  assert.equal(response.status, 404);
+  assert.equal((await handler(trailRequest({ work_id: WORK }))).status, 404);
   assert.equal(calls.generated, 0);
 });
 
 test("without the service role the route says so instead of half-working", async () => {
   const { handler } = handlerWith({ createStore: () => null });
   assert.equal((await handler(trailRequest({ work_id: WORK }))).status, 503);
-});
-
-// --- grounded extraction ---------------------------------------------------------
-
-const PLACES = [
-  { id: "p1", name: "Portobello Road Market", lat: 51.5156, lng: -0.2057 },
-  { id: "p2", name: "Leadenhall Market", lat: 51.5127, lng: -0.0835 },
-];
-
-test("the model is handed the places we already hold, and told null is fine", async () => {
-  // Without this it named places as the STORY does — "Notting Hill Bookshop" — which
-  // is right for a story and unmappable for us, and matching that afterwards would be
-  // guessing.
-  const { handler, calls } = handlerWith({ places: PLACES });
-  await handler(trailRequest({ work_id: WORK }));
-
-  assert.match(calls.instructions, /Portobello Road Market/);
-  assert.match(calls.instructions, /Leadenhall Market/);
-  assert.match(calls.instructions, /null is a normal/i);
-  assert.match(calls.instructions, /Never invent a value/i);
-});
-
-test("a scene tied to a known place gets linked to it", async () => {
-  const { handler, calls } = handlerWith({
-    places: PLACES,
-    response: modelReply({ scenes: [
-      { ...parsedTrail.scenes[0], known_place: "Portobello Road Market" },
-    ] }),
-  });
-  const body = await (await handler(trailRequest({ work_id: WORK }))).json();
-
-  assert.equal(body.linked, 1);
-  assert.equal(calls.linked[0].place_id, "p1");
-  assert.equal(calls.linked[0].scene_id, "s0");
-});
-
-test("a place the model invented links to nothing", async () => {
-  // `known_place` is only ever a KEY into our list; a value outside it finds nothing
-  // and the scene simply has no place, which is a normal outcome.
-  const { handler, calls } = handlerWith({
-    places: PLACES,
-    response: modelReply({ scenes: [
-      { ...parsedTrail.scenes[0], known_place: "The Bookshop That Never Was" },
-    ] }),
-  });
-  const body = await (await handler(trailRequest({ work_id: WORK }))).json();
-
-  assert.equal(body.linked, 0);
-  assert.deepEqual(calls.linked, []);
-});
-
-test("a failed link loses a pin, not the extraction", async () => {
-  const { handler, calls } = handlerWith({
-    places: PLACES, linkThrows: true,
-    response: modelReply({ scenes: [
-      { ...parsedTrail.scenes[0], known_place: "Portobello Road Market" },
-    ] }),
-  });
-  const body = await (await handler(trailRequest({ work_id: WORK }))).json();
-
-  assert.equal(body.extracted, 1);   // the scenes survived
-  assert.equal(body.linked, 0);
-  assert.ok(calls.saved.length > 0);
-});
-
-test("a work with no mapped places says so rather than listing nothing", async () => {
-  const { handler, calls } = handlerWith({ places: [] });
-  await handler(trailRequest({ work_id: WORK }));
-  assert.match(calls.instructions, /known_place must be null/i);
-});
-
-test("a scene whose own name matches ours links, even with known_place null", async () => {
-  // The model names places exactly as we do but leaves known_place null in almost
-  // every case. This is still an exact match into our own closed list — not fuzzy
-  // matching — so it recovers the link without loosening the rule.
-  const { handler, calls } = handlerWith({
-    places: PLACES,
-    response: modelReply({ scenes: [
-      { ...parsedTrail.scenes[0], place_name: "Leadenhall Market", known_place: null },
-    ] }),
-  });
-  const body = await (await handler(trailRequest({ work_id: WORK }))).json();
-  assert.equal(body.linked, 1);
-  assert.equal(calls.linked[0].place_id, "p2");
-});
-
-test("a name outside our list still links to nothing", async () => {
-  const { handler } = handlerWith({
-    places: PLACES,
-    response: modelReply({ scenes: [
-      { ...parsedTrail.scenes[0], place_name: "Diagon Alley", known_place: null },
-    ] }),
-  });
-  assert.equal((await (await handler(trailRequest({ work_id: WORK }))).json()).linked, 0);
 });
