@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  EMPTY_REASON, MIN_VOTES, labelledPlaces, notability, notableEmptyReason, notableHere, ratingOf,
+  EMPTY_REASON, IMDB_VOTES_PER_TMDB_VOTE, MIN_VOTES, MIN_VOTES_BY_SOURCE, labelledPlaces, notability,
+  notableEmptyReason, notableHere, ratingOf,
 } from "../app/lib/notable-here.mjs";
 
 // Real rows from the Los Angeles set, so the ordering can be checked against what a person
@@ -189,13 +190,42 @@ test("a film IMDb does not rate is ranked by TMDB instead of vanishing", () => {
 // number nobody published.
 test("IMDb answers when both are present, and says so", () => {
   const both = { title: "Both", imdb: 7, imdb_votes: 500000, tmdb: 9.9, tmdb_votes: 10 };
-  assert.deepEqual(ratingOf(both), { score: 7, votes: 500000, source: "imdb" });
+  assert.deepEqual(ratingOf(both), { score: 7, votes: 500000, fame: 500000, source: "imdb" });
   assert.equal(notability(both), 7 * Math.log10(500000));
 });
 
-test("the vote floor applies to whichever source answered", () => {
-  assert.equal(notability({ tmdb: 9.9, tmdb_votes: MIN_VOTES - 1 }), null);
-  assert.ok(notability({ tmdb: 9.9, tmdb_votes: MIN_VOTES }) > 0);
+// TMDB's audience is ~53× smaller (median over 4,919 works that carry both). Held to
+// IMDb's 1,000 votes it looked like a source that would lose 60% of "Known for"; held to
+// the same floor in its own units it ranks 92% of what IMDb ranks.
+test("each source is held to its own vote floor, in its own votes", () => {
+  assert.equal(MIN_VOTES_BY_SOURCE.imdb, MIN_VOTES);
+  assert.equal(MIN_VOTES_BY_SOURCE.tmdb, 19);
+  assert.equal(notability({ tmdb: 9.9, tmdb_votes: 18 }), null);
+  assert.ok(notability({ tmdb: 7, tmdb_votes: 19 }) > 0);
+  assert.equal(notability({ imdb: 9.9, imdb_votes: 999 }), null);
+});
+
+// A TMDB-ranked film must not sink for having been voted on a smaller site.
+test("a TMDB vote counts as what it is worth in IMDb's units", () => {
+  const sameFilm = notability({ imdb: 8, imdb_votes: 53_000 });
+  const viaTmdb = notability({ tmdb: 8, tmdb_votes: 1_000 });
+  assert.equal(viaTmdb, sameFilm);
+  assert.equal(ratingOf({ tmdb: 8, tmdb_votes: 1_000 }).fame, 1_000 * IMDB_VOTES_PER_TMDB_VOTE);
+});
+
+// The licence switch: IMDb's dataset is non-commercial. Taking "imdb" out of the list is
+// the whole change, and it must leave nothing of IMDb's in the ranking.
+test("ranking can run without IMDb at all", () => {
+  const films = [
+    { title: "IMDb only", imdb: 9, imdb_votes: 2_000_000 },
+    { title: "Both", imdb: 7, imdb_votes: 500_000, tmdb: 8.2, tmdb_votes: 20_000 },
+    { title: "TMDB only", tmdb: 7.5, tmdb_votes: 5_000 },
+  ];
+  // 7.5 on 5,000 TMDB votes (~265,000 in IMDb's units) outranks 7.0 on 500,000 IMDb votes.
+  assert.deepEqual(notableHere(films).map((film) => film.title), ["IMDb only", "TMDB only", "Both"]);
+  const withoutImdb = notableHere(films, { sources: ["tmdb"] });
+  assert.deepEqual(withoutImdb.map((film) => film.title), ["Both", "TMDB only"]);
+  assert.equal(ratingOf(films[1], { sources: ["tmdb"] }).source, "tmdb");
 });
 
 test("a film with neither rating has no rating, not a zero", () => {
