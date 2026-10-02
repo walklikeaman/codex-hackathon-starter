@@ -96,6 +96,22 @@ test("the request goes to chat/completions with a json_schema response_format", 
   assert.equal(body.messages[0].role, "system");
 });
 
+// gpt-5 models answer `max_tokens` with a 400 before generating anything, so every
+// careful-tier call on OpenAI failed. OpenRouter takes the old name.
+test("each provider is given the token limit by the name it accepts", async () => {
+  const openai = fakeSdk({ choices: [{ finish_reason: "stop", message: { content: '{"places":[]}' } }] });
+  await call(createModelClient({ OPENAI_API_KEY: "k" }, { tier: "careful", OpenAIImpl: openai.OpenAIImpl }));
+  const sentToOpenAI = openai.built[0].lastCall.body;
+  assert.equal(sentToOpenAI.max_completion_tokens, 4000);
+  assert.equal("max_tokens" in sentToOpenAI, false);
+
+  const router = fakeSdk({ choices: [{ finish_reason: "stop", message: { content: '{"places":[]}' } }] });
+  await call(createModelClient({ OPENROUTER_API_KEY: "k" }, { OpenAIImpl: router.OpenAIImpl }));
+  const sentToRouter = router.built[0].lastCall.body;
+  assert.equal(sentToRouter.max_tokens, 4000);
+  assert.equal("max_completion_tokens" in sentToRouter, false);
+});
+
 // --- bad answers are outcomes, not crashes -------------------------------------------
 
 test("a good answer comes back with what served it", async () => {
