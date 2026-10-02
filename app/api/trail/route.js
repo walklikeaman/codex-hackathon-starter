@@ -27,10 +27,12 @@ export const runtime = "nodejs";
 const noStoreHeaders = { "Cache-Control": "private, no-store" };
 const WIKIPEDIA = { "User-Agent": "GloryMap/1.0 (story trail ordering)" };
 
-// Two passes over the same plot. Each quote is checked against the text, so the union of
-// two cannot add a claim the plot does not support — it only recovers what one pass
-// missed (Sherlock Holmes: 6 and 4 locations placed by two runs of the same model).
-export const PLOT_PASSES = 2;
+// Three passes over the same plot. Each quote is checked against the text, so their union
+// cannot add a claim the plot does not support — it only recovers what one pass missed.
+// Measured: two runs of two passes each over the same 17 films found different subsets —
+// Love Actually placed Selfridges and Elliott School in one and neither in the other —
+// so recall, not precision, is what more passes buy. A pass costs about half a cent.
+export const PLOT_PASSES = 3;
 
 // The model that copies quotes. Measured on 2026-10-02: gpt-5-nano returned one quote for
 // thirteen locations and that one was not in the text; gpt-5-mini returned six, all
