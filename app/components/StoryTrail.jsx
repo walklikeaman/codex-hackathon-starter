@@ -26,15 +26,45 @@ import { MapMarker, RouteLine } from "./map/layers.jsx";
 // These stay DOM markers rather than a GPU layer, and that is deliberate. There are a
 // handful of them, they carry a number and a title, and they are clicked — a layer would be
 // the same mistake as a marker per pin, made in the other direction.
-function stopClasses({ isNext, walkable }) {
+function stopClasses({ isNext, walkable, walking = false }) {
   // An area gets a different mark on purpose. A numbered pin says "stand here", and for a
   // city centroid there is no here — the film was shot somewhere in that city, and we do not
   // know where. Saying that plainly is the whole product.
-  return ["trail-stop", isNext ? "is-next" : "", walkable ? "" : "is-area"]
+  return ["trail-stop", isNext ? "is-next" : "", walkable ? "" : "is-area", walking ? "is-walk" : ""]
     .filter(Boolean).join(" ");
 }
 
-export default function StoryTrail({ stops, nextStopId = null, onSelect }) {
+// The trail in walking order (#73): the same walkable stops, numbered by the walk, joined
+// by the street route where they are a walk and by a faint dashed line where they are a
+// ride. It is drawn unlike the story trail on purpose — solid, square stops — so a glance
+// says which order is on: the story's dashed line must never be mistaken for directions.
+function WalkingTrail({ stops, walk, nextStopId, onSelect }) {
+  return (
+    <>
+      {(walk?.routes ?? []).map((route, index) => (
+        <RouteLine key={`walk-${index}`} id={`trail-walk-${index}`} positions={route.positions} color="#7cc4ff" />
+      ))}
+      {(walk?.rides ?? []).map((ride, index) => (
+        <RouteLine key={`ride-${index}`} id={`trail-ride-${index}`} positions={ride} dashed color="#e8f4ff" />
+      ))}
+      {stops.map((stop) => (
+        <MapMarker
+          key={stop.id}
+          position={stop.position}
+          className={stopClasses({ isNext: stop.id === nextStopId, walkable: true, walking: true })}
+          onClick={onSelect ? () => onSelect(stop) : undefined}
+          title={`${stop.walk_index}. ${stop.place} — scene ${stop.sequence_index} of the story`}
+        >
+          {stop.walk_index}
+        </MapMarker>
+      ))}
+    </>
+  );
+}
+
+export default function StoryTrail({ stops, walkOrder = null, walk = null, nextStopId = null, onSelect }) {
+  if (walkOrder?.length) return <WalkingTrail stops={walkOrder} walk={walk} nextStopId={nextStopId} onSelect={onSelect} />;
+
   const ordered = [...(stops ?? [])].sort((a, b) => a.sequence_index - b.sequence_index);
   if (ordered.length === 0) return null;
 

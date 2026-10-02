@@ -58,6 +58,7 @@ import {
 } from "../lib/place-card.mjs";
 import WorkProfile from "./WorkProfile.jsx";
 import { isWalkableStop, trailStops } from "../lib/story-trail.mjs";
+import { onFootNote, orderTrail, TRAIL_ORDER, trailOrderNote, walkRuns } from "../lib/trail-order.mjs";
 import { normalizePlaceName } from "../lib/place-dedup.mjs";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
 import { libraryImportSummary, matchLibrary } from "../lib/library-match.mjs";
@@ -1616,6 +1617,11 @@ export default function SceneMapApp() {
   // reversible choice.
   const [trailSpoilers, setTrailSpoilers] = useState(false);
   const [nextStopId, setNextStopId] = useState(null);
+  // The same stops in the plot's order or in the order a walker would take them (#73). The
+  // story is the default: it is what the trail is for, and the switch beside it says what
+  // walking it that way costs.
+  const [trailOrder, setTrailOrder] = useState(TRAIL_ORDER.story);
+  const [trailWalk, setTrailWalk] = useState({ routes: [], rides: [] });
 
   // "My films only", decided here and nowhere else. The library is in localStorage and
   // never reaches the server ([[personal-library]]), so the server cannot filter by it —
@@ -1857,12 +1863,14 @@ export default function SceneMapApp() {
   // and gets better when the trail fills in.
   // Whether walkStops is the story trail (plot order, followed in order) or the film's
   // place list (no order; the next stop is the nearest).
-  const walkStopsAreStory = useMemo(() => trailStopList.some(isWalkableStop), [trailStopList]);
+  // Only somewhere you can walk TO. Routing a walker to a city centroid would send
+  // them to an arbitrary point that no scene happened at.
+  const walkableTrail = useMemo(() => trailStopList.filter(isWalkableStop), [trailStopList]);
+  const walkStopsAreStory = walkableTrail.length > 0;
+  // Two stops are one walk either way round; the switch is offered from three.
+  const trailOrderable = walkableTrail.length >= 3;
   const walkStops = useMemo(() => {
-    // Only somewhere you can walk TO. Routing a walker to a city centroid would send
-    // them to an arbitrary point that no scene happened at.
-    const walkable = trailStopList.filter(isWalkableStop);
-    if (walkable.length > 0) return walkable;
+    if (walkableTrail.length > 0) return orderTrail(walkableTrail, trailOrderable ? trailOrder : TRAIL_ORDER.story);
     // The same rule for the fallback. It was applied to the story trail only, so a
     // film's list of places walked the reader to "London" — the city's centroid.
     return trailPlaces
@@ -1874,7 +1882,21 @@ export default function SceneMapApp() {
         position: [place.lat, place.lng],
         sentence: place.sentence ?? null,
       }));
-  }, [trailStopList, trailPlaces]);
+  }, [walkableTrail, trailOrderable, trailOrder, trailPlaces]);
+
+  // The walking order on the streets: each stretch a person walks is asked of the same
+  // router every other walk uses, and the legs between stretches are rides, drawn as such.
+  const walkingTrail = trailOrderable && trailOrder === TRAIL_ORDER.walk ? walkStops : null;
+  useEffect(() => {
+    if (!walkingTrail) { setTrailWalk({ routes: [], rides: [] }); return undefined; }
+    let current = true;
+    const { runs, rides } = walkRuns(walkingTrail);
+    const ridePositions = rides.map(([from, to]) => [from.position, to.position]);
+    setTrailWalk({ routes: runs.map(makeFallbackRoute), rides: ridePositions });
+    Promise.all(runs.map((run) => requestWalkingRoute(run).catch(() => makeFallbackRoute(run))))
+      .then((routes) => { if (current) setTrailWalk({ routes, rides: ridePositions }); });
+    return () => { current = false; };
+  }, [walkingTrail]);
 
   // One selected work, one trail — and it keys off the GRAPH layer's work id, not the
   // live chips. Only a grounded work has scenes and a uuid; a live chip carries a
@@ -2943,6 +2965,8 @@ export default function SceneMapApp() {
 
           <StoryTrail
             stops={trailStopList}
+            walkOrder={walkingTrail}
+            walk={trailWalk}
             nextStopId={nextStopId}
             onSelect={(stop) => setMapCenter(stop.position)}
           />
@@ -2950,26 +2974,50 @@ export default function SceneMapApp() {
 
         {/* Over the map, not inside the panel: a control you need while walking must
             not live in a sheet you have to open first. */}
-        {/* Only offered when there IS a trail to reveal — an option that does nothing
-            is worse than no option. */}
-        {trailScenes.length > 0 && (
-          <label className="trail-spoilers">
-            <input
-              type="checkbox"
-              checked={trailSpoilers}
-              onChange={(event) => setTrailSpoilers(event.target.checked)}
-            />
-            <span>Show the whole story trail <small>reveals plot order</small></span>
-          </label>
-        )}
-
         <WalkControls
           stops={walkStops}
           ordered={walkStopsAreStory}
           onNextStopChange={setNextStopId}
           onNarrate={(stop) => setMapCenter(stop.position)}
           onAmbientPlace={(place) => setMapCenter(place.position)}
-        />
+        >
+          {/* Only offered when there IS a trail to reveal — an option that does nothing
+              is worse than no option. */}
+          {trailScenes.length > 0 && (
+            <div className="trail-controls" role="group" aria-label="Story trail">
+              {trailOrderable && (
+                <>
+                  <div className="trail-order" role="radiogroup" aria-label="Walk the trail in">
+                    {[[TRAIL_ORDER.story, "Story order"], [TRAIL_ORDER.walk, "Walking order"]].map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={trailOrder === value}
+                        className={trailOrder === value ? "is-active" : ""}
+                        onClick={() => setTrailOrder(value)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="trail-order-note">
+                    {trailOrderNote(walkableTrail, trailOrder)}
+                    {walkingTrail && onFootNote(trailWalk.routes) ? ` ${onFootNote(trailWalk.routes)}` : ""}
+                  </small>
+                </>
+              )}
+              <label className="trail-spoilers">
+                <input
+                  type="checkbox"
+                  checked={trailSpoilers}
+                  onChange={(event) => setTrailSpoilers(event.target.checked)}
+                />
+                <span>Show the whole story trail <small>reveals plot order</small></span>
+              </label>
+            </div>
+          )}
+        </WalkControls>
       </section>
 
       <aside className={`command-panel${panelOpen ? " is-open" : ""}`} aria-label="Story selection">

@@ -13,6 +13,10 @@
   --gold: #f7b733;
   --gold-strong: #ffcf5b;
   --green: #72d49c;
+  /* Used 31 times and never declared, so the 15 uses without a fallback drew nothing —
+     the next stop of a walk was not highlighted. The value is the fallback the other 16
+     already carry, so they look exactly as before. */
+  --accent: #f0a83c;
 }
 
 html,
@@ -3193,11 +3197,13 @@ figcaption a {
   /* On a phone the BOTTOM is contested by two things — the location sheet and the
      collapsed command panel — and a floating control there lands on top of whichever
      is open. The top of the map is the only free edge, so that is where it goes. */
+  /* It stops short of the right edge, where the map's own buttons are: the story trail's
+     card is opaque, and at full width it sat on zoom and "my location". */
   .walk-controls {
     top: calc(12px + env(safe-area-inset-top));
     bottom: auto;
     left: 12px;
-    right: 12px;
+    right: 64px;
     transform: none;
     max-width: none;
   }
@@ -3211,21 +3217,66 @@ figcaption a {
 /* The one control that trades spoiler safety for completeness. Sits with the walk
    control on the map, and states its cost in the label rather than in a tooltip
    nobody opens. */
+/* The story trail's own controls: which order to walk it in, what that costs, and whether
+   to see it whole. One card above the walk control, never two floating pills. */
+/* The story trail's own controls: which order to walk it in, what that costs, and whether
+   to see it whole. The top of the walk control's column, so the two stack and never
+   overlap — on a phone too, where that column moves to the top edge. */
+.trail-controls {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel-solid);
+  color: var(--text);
+}
+
+.trail-order {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.trail-order button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trail-order button.is-active {
+  background: var(--accent);
+  color: #1b1306;
+}
+
+.trail-order button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.trail-order-note {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .trail-spoilers {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(78px + env(safe-area-inset-bottom));
-  z-index: 1000;
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel-solid);
-  color: var(--text);
+  min-height: 36px;
+  padding: 0 6px;
   font-size: 0.8rem;
   white-space: nowrap;
   cursor: pointer;
@@ -3234,12 +3285,18 @@ figcaption a {
 .trail-spoilers small { display: block; color: var(--muted); font-size: 0.68rem; }
 .trail-spoilers input { width: 16px; height: 16px; accent-color: var(--accent); }
 
-@media (max-width: 860px) {
-  /* Under the walk control, which owns the free top edge on a phone. */
-  .trail-spoilers {
-    top: calc(72px + env(safe-area-inset-top));
-    bottom: auto;
-  }
+/* A stop of the walking order: square and solid, so it cannot be read as the story's
+   round, numbered scenes — the number here is the walk, not the plot. */
+.trail-stop.is-walk {
+  border-radius: 7px;
+  background: #7cc4ff;
+  color: #06121e;
+}
+
+.trail-stop.is-walk.is-next {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #1b1306;
 }
 
 /* An area, not a stop. Hollow and marked "~" because the film was shot somewhere in
