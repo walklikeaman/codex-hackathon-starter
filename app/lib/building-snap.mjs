@@ -174,6 +174,36 @@ export function metresToRing(point, ring) {
 
 // --- parsing -----------------------------------------------------------------
 
+// A multipolygon relation carries no geometry of its own: Overpass puts it on the member
+// ways, and an outer ring may be split across several of them. Reading `element.geometry`
+// found nothing, so every building OSM maps as a relation — Senate House, the British
+// Museum — was dropped before it could be considered (found 2026-10-03). The outer
+// segments are joined end to end into rings, and the largest ring is the building. Inner
+// rings (courtyards) are not subtracted: a pin in a courtyard is still at the building.
+function relationRing(members) {
+  const segments = (Array.isArray(members) ? members : [])
+    .filter((member) => member?.type === "way" && member?.role === "outer" && Array.isArray(member.geometry))
+    .map((member) => member.geometry.map((node) => coordinateOrNull(node?.lat, node?.lon ?? node?.lng)).filter(Boolean))
+    .filter((segment) => segment.length >= 2);
+  const same = (a, b) => a.lat === b.lat && a.lng === b.lng;
+  const rings = [];
+  while (segments.length > 0) {
+    const ring = segments.shift();
+    while (!same(ring[0], ring.at(-1))) {
+      const index = segments.findIndex((segment) => same(segment[0], ring.at(-1)) || same(segment.at(-1), ring.at(-1)));
+      if (index < 0) break;
+      const [next] = segments.splice(index, 1);
+      ring.push(...(same(next[0], ring.at(-1)) ? next : [...next].reverse()).slice(1));
+    }
+    rings.push(ring);
+  }
+  const area = (ring) => Math.abs(ring.reduce((sum, node, i) => {
+    const next = ring[(i + 1) % ring.length];
+    return sum + node.lng * next.lat - next.lng * node.lat;
+  }, 0));
+  return rings.sort((left, right) => area(right) - area(left))[0] ?? [];
+}
+
 export function parseBuildings(response) {
   const elements = Array.isArray(response?.elements) ? response.elements : [];
   return elements
@@ -185,7 +215,9 @@ export function parseBuildings(response) {
       osm_id: `${element.type}/${element.id}`,
       name: element.tags?.name ?? null,
       tags: element.tags ?? {},
-      ring: toRing(element.geometry),
+      ring: element.type === "relation"
+        ? toRing(relationRing(element.members).map((node) => ({ lat: node.lat, lon: node.lng })))
+        : toRing(element.geometry),
     }))
     .filter((building) => building.ring.length >= 3);
 }

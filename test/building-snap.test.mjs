@@ -435,3 +435,25 @@ test("two buildings both answering to the name is no answer", () => {
   assert.equal(result.snapped, false);
   assert.equal(result.reason, "ambiguous_named");
 });
+
+// Senate House is a multipolygon relation, and Overpass gives a relation's outline on its
+// member ways, not on itself — so it, and every building mapped that way, was dropped.
+test("a building mapped as a relation is read from its outer member ways", () => {
+  const [a, b, c, e] = [[51.52, -0.13], [51.52, -0.128], [51.522, -0.128], [51.522, -0.13]]
+    .map(([lat, lon]) => ({ lat, lon }));
+  const [parsed] = parseBuildings({ elements: [{
+    type: "relation", id: 11948662, tags: { building: "university", name: "Senate House" },
+    members: [
+      // The outer ring split in two, the second written backwards.
+      { type: "way", role: "outer", geometry: [a, b, c] },
+      { type: "way", role: "outer", geometry: [a, e, c] },
+      { type: "way", role: "inner", geometry: [{ lat: 51.521, lon: -0.129 }, { lat: 51.5211, lon: -0.129 }, { lat: 51.5211, lon: -0.1289 }, { lat: 51.521, lon: -0.129 }] },
+    ],
+  }] });
+  assert.equal(parsed.osm_id, "relation/11948662");
+  assert.equal(parsed.ring.length, 4);
+  assert.equal(pointInRing({ lat: 51.521, lng: -0.129 }, parsed.ring), true);
+  assert.equal(snapToBuilding({
+    lat: 51.5205, lng: -0.1295, name: "Senate House, University of London, Malet Street", precision: "none", buildings: [parsed],
+  }).snapped, true);
+});
