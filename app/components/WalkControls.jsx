@@ -29,7 +29,9 @@ import { trailStopText } from "../lib/ambient-walk.mjs";
 import { advanceTriggers, hasMovedEnough, isUsableFix, playbackState, UNLOCK_PROMPT } from "../lib/geo-trigger.mjs";
 import { nextStop, ROAD_SAFETY_REMINDER, walkBanner } from "../lib/walk-mode.mjs";
 
-export default function WalkControls({ stops, ordered = false, onNarrate, onNextStopChange, onAmbientPlace }) {
+// `children` sits at the top of the column: the story trail's own controls, which belong
+// beside the walk they shape and must not float over it.
+export default function WalkControls({ stops, ordered = false, onNarrate, onNextStopChange, onAmbientPlace, children }) {
   const [walking, setWalking] = useState(false);
   // Listening and walking a trail are two voices; only one may run.
   const [listening, setListening] = useState(false);
@@ -119,6 +121,7 @@ export default function WalkControls({ stops, ordered = false, onNarrate, onNext
 
   return (
     <div className="walk-controls" role="region" aria-label="Walk mode">
+      {children}
       {!walking && (
         <AmbientGuide onPlace={onAmbientPlace} onListeningChange={setListening} />
       )}
