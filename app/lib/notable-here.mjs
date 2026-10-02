@@ -40,41 +40,66 @@ function numberOrNull(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-// Which public rating this film is ranked by, and from where (#224).
+// The two public sources, and how a TMDB vote compares with an IMDb one (#224).
 //
-// IMDb first, because it has the votes: 5,495 of the 6,392 works on the map carry one. The
-// other 897 had no public rating at all, so "Known for" could not see them however famous
-// they were — and IMDb's dataset is licensed for non-commercial use only, which makes a
-// second source a licence question rather than a nicety.
+// Measured on the 4,919 works that carry both, 2026-10-02:
 //
-// Never averaged across sources. 8.8 on IMDb and 8.8 on TMDB are two different populations
-// voting on two different scales of habit; a mean of them is a number nobody published.
-// One source answers, and the row says which.
-export function ratingOf(film) {
-  const imdb = numberOrNull(film?.imdb);
-  const imdbVotes = numberOrNull(film?.imdb_votes);
-  if (imdb !== null && imdbVotes !== null) return { score: imdb, votes: imdbVotes, source: "imdb" };
+//   IMDb votes per TMDB vote     53× median   (41× and 68× at the quartiles)
+//   correlation of log votes     0.977
+//   TMDB votes at ~1,000 IMDb    22 median    (162 works between 800 and 1,250)
+//   TMDB score − IMDb score      −0.07 mean, 0.52 sd — the same 0–10 habit
+//
+// So the scores can stand side by side, and the vote counts cannot: TMDB's audience is
+// fifty times smaller. Held to IMDb's floor of 1,000, TMDB could rank 1,943 works and
+// looked like a source that would lose 60% of "Known for" — which is what #224 first
+// concluded. Held to the same floor in TMDB's own votes (1,000 / 53 = 19) it ranks 4,433,
+// against IMDb's 4,808. The rest are works TMDB does not list at all.
+export const IMDB_VOTES_PER_TMDB_VOTE = 53;
+export const MIN_VOTES_BY_SOURCE = Object.freeze({
+  imdb: MIN_VOTES,
+  tmdb: Math.round(MIN_VOTES / IMDB_VOTES_PER_TMDB_VOTE),
+});
 
-  const tmdb = numberOrNull(film?.tmdb);
-  const tmdbVotes = numberOrNull(film?.tmdb_votes);
-  if (tmdb !== null && tmdbVotes !== null) return { score: tmdb, votes: tmdbVotes, source: "tmdb" };
+// Which sources may rank, in order of preference. IMDb leads because it has the votes —
+// but its dataset is licensed for non-commercial use only, and the day anything here is
+// sold, "imdb" comes out of this list. That is the whole switch. What it costs was
+// measured before it was built: in 14 neighbourhoods across six cities, a TMDB-only "Known
+// for" kept 3.2 of the same five films on average, and what it swapped in was famous too
+// — Lucifer and Harry Potter where IMDb had The Usual Suspects and Batman Begins. A
+// different audience's taste, not a worse list.
+export const RANKED_SOURCES = Object.freeze(["imdb", "tmdb"]);
 
+// Which public rating this film is ranked by, and from where.
+//
+// Never averaged across sources. 8.8 on IMDb and 8.8 on TMDB are two populations; a mean
+// of them is a number nobody published. One source answers, and the row says which.
+// `fame` is the vote count in IMDb's units, so a TMDB-ranked film is not pushed down the
+// list for having a smaller audience on a smaller site.
+export function ratingOf(film, { sources = RANKED_SOURCES } = {}) {
+  for (const source of sources) {
+    const score = numberOrNull(film?.[source]);
+    const votes = numberOrNull(film?.[`${source}_votes`]);
+    if (score === null || votes === null) continue;
+    const fame = source === "tmdb" ? votes * IMDB_VOTES_PER_TMDB_VOTE : votes;
+    return { score, votes, fame, source };
+  }
   return null;
 }
 
-export function notability(film) {
-  const rating = ratingOf(film);
+export function notability(film, options = {}) {
+  const rating = ratingOf(film, options);
   if (rating === null) return null;
-  if (rating.votes < MIN_VOTES) return null;
+  // Each source held to its own floor, in its own votes.
+  if (rating.votes < MIN_VOTES_BY_SOURCE[rating.source]) return null;
 
-  return rating.score * Math.log10(rating.votes);
+  return rating.score * Math.log10(rating.fame);
 }
 
 // The list itself. Ranked, capped, and honest about ties: two works with the same score
 // fall back to the title so the order does not reshuffle as the map is nudged.
-export function notableHere(films, { limit = 5 } = {}) {
+export function notableHere(films, { limit = 5, sources = RANKED_SOURCES } = {}) {
   return (Array.isArray(films) ? films : [])
-    .map((film) => ({ film, score: notability(film) }))
+    .map((film) => ({ film, score: notability(film, { sources }) }))
     .filter((entry) => entry.score !== null)
     .sort((a, b) => b.score - a.score
       || String(a.film.title ?? "").localeCompare(String(b.film.title ?? "")))
