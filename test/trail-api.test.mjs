@@ -36,7 +36,7 @@ const GOOD = reply([
 
 function handlerWith(overrides = {}) {
   const calls = { generated: 0, saved: null, linked: null };
-  const replies = overrides.replies ?? [GOOD, GOOD];
+  const replies = overrides.replies ?? [GOOD, GOOD, GOOD];
   const handler = createTrailHandler({
     env: { ENRICH_TOKEN: "test-token", OPENAI_API_KEY: "k" },
     createRuntime: () => ("runtime" in overrides ? overrides.runtime : {
@@ -115,16 +115,16 @@ test("the plot and the guide lines are what the model is shown", async () => {
 test("two passes are merged, and a pass that fails costs only its own finds", async () => {
   const onlyDock = reply([{ location: "Stanley Dock", plot_quote: "cross the unfinished Tower Bridge to stop the final ritual", fictional: false }]);
   const onlyCell = reply([{ location: "Somerset House", plot_quote: "Holmes visits Blackwood in his cell at Pentonville Prison", fictional: false }]);
-  const merged = handlerWith({ replies: [onlyDock, onlyCell] });
+  const merged = handlerWith({ replies: [onlyDock, onlyCell, onlyDock] });
   await merged.handler(trailRequest({ work_id: WORK }));
   assert.deepEqual(merged.calls.saved.map((scene) => scene.known_place), ["Somerset House", "Stanley Dock"]);
 
   const broken = { choices: [{ finish_reason: "length", message: { content: "{" } }] };
-  const half = handlerWith({ replies: [broken, onlyCell] });
+  const half = handlerWith({ replies: [broken, onlyCell, broken] });
   await half.handler(trailRequest({ work_id: WORK }));
   assert.deepEqual(half.calls.saved.map((scene) => scene.known_place), ["Somerset House"]);
 
-  const none = handlerWith({ replies: [broken, broken] });
+  const none = handlerWith({ replies: [broken, broken, broken] });
   assert.equal((await none.handler(trailRequest({ work_id: WORK }))).status, 502);
   assert.equal(none.calls.saved, null);
 });
@@ -135,7 +135,7 @@ test("nothing to order by is an honest answer, and nothing is saved", async () =
   for (const [overrides, reason] of [
     [{ places: [] }, "no_known_places"],
     [{ plot: null }, "no_plot_to_order_by"],
-    [{ replies: [reply([]), reply([])] }, "nothing_placed_in_plot"],
+    [{ replies: [reply([]), reply([]), reply([])] }, "nothing_placed_in_plot"],
   ]) {
     const { handler, calls } = handlerWith(overrides);
     const body = await (await handler(trailRequest({ work_id: WORK }))).json();
