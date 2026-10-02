@@ -123,3 +123,20 @@ test("a film with no rating carries null rather than zero", () => {
   assert.equal(film.imdb, null);
   assert.equal(film.imdb_votes, null);
 });
+
+// The map has sent TMDB for films IMDb does not rate since #224, and this dropped it — so
+// "Known for" never ranked a single film by TMDB. Measured on the Soho response with the
+// licence switch on: 92 films carried a TMDB rating, and the panel saw none of them.
+test("a film in view keeps a TMDB rating too, so the ranking can use it", async () => {
+  const { notableHere } = await import("../app/lib/notable-here.mjs");
+  const films = filmsInView([{
+    geometry: { type: "Point", coordinates: [-0.13, 51.51] },
+    properties: {
+      name: "Somewhere",
+      films: [{ work_id: "w3", title: "Rated by TMDB", tmdb: 7.9, tmdb_votes: 4200 }],
+    },
+  }]);
+  assert.equal(films[0].tmdb, 7.9);
+  assert.equal(films[0].tmdb_votes, 4200);
+  assert.deepEqual(notableHere(films).map((film) => film.title), ["Rated by TMDB"]);
+});
