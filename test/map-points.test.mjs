@@ -510,3 +510,16 @@ test("the candidates flag is opt-in and parsed strictly", () => {
   // layer on by accident.
   assert.equal(parseMapQuery(params({ ...LA, z: "13", candidates: "true" })).candidates, false);
 });
+
+// The map must send the rating of whichever source the ranking may use. Before, the SQL
+// decided on its own, IMDb first, and taking "imdb" out of the ranking's list would have
+// ranked nothing (#224).
+test("the queue is asked for ratings from the sources the ranking uses", async () => {
+  const { RANKED_SOURCES } = await import("../app/lib/notable-here.mjs");
+  let params = null;
+  const handler = candidateHandler([], {
+    reader: { candidatePoints: async (asked) => { params = asked; return []; } },
+  });
+  await handler(mapRequest({ ...LA, z: "15", candidates: "1" }));
+  assert.deepEqual(params.p_rating_sources, [...RANKED_SOURCES]);
+});

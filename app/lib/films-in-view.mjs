@@ -51,6 +51,10 @@ export function filmsInView(features) {
           // wins rather than the last.
           imdb: film.imdb ?? null,
           imdb_votes: film.imdb_votes ?? null,
+          // The second source, which this dropped: the map has sent TMDB for films IMDb
+          // does not rate since #224, and "Known for" never saw a single one (#224).
+          tmdb: film.tmdb ?? null,
+          tmdb_votes: film.tmdb_votes ?? null,
           places: [],
           // A film seen only on a backlot is a different answer from one seen on the
           // street, and the list says which before the reader walks anywhere.

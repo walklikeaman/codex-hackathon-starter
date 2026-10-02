@@ -7,6 +7,7 @@ import {
   parseMapQuery,
   viewportCenter,
 } from "../../../lib/map-points.mjs";
+import { RANKED_SOURCES } from "../../../lib/notable-here.mjs";
 
 export const runtime = "nodejs";
 
@@ -118,6 +119,9 @@ export function createMapPointsHandler({
               p_west: params.p_west, p_south: params.p_south, p_east: params.p_east,
               p_north: params.p_north, p_zoom: params.p_zoom, p_kinds: params.p_kinds,
               p_max_points: MAX_ROWS_PER_RESPONSE, p_cluster_below_zoom: CLUSTER_BELOW_ZOOM,
+              // The same list "Known for" ranks by, so the map sends the number the ranking
+              // is allowed to use — and nothing of IMDb's once "imdb" is out of it (#224).
+              p_rating_sources: [...RANKED_SOURCES],
             }))
           : [],
       ]);
