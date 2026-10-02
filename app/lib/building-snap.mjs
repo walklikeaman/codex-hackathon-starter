@@ -20,7 +20,8 @@
 
 import { haversineMeters } from "./geo.mjs";
 import { coordinateOrNull, finiteOrNull } from "./numbers.mjs";
-import { namesMatch } from "./place-dedup.mjs";
+import { normalizePlaceName } from "./place-dedup.mjs";
+import { placeHead } from "./place-name-head.mjs";
 
 // Precisions that describe an AREA, not a spot. Their coordinate is a centroid that
 // happens to land somewhere — in Shanghai's case, inside a building, which production
@@ -173,6 +174,36 @@ export function metresToRing(point, ring) {
 
 // --- parsing -----------------------------------------------------------------
 
+// A multipolygon relation carries no geometry of its own: Overpass puts it on the member
+// ways, and an outer ring may be split across several of them. Reading `element.geometry`
+// found nothing, so every building OSM maps as a relation — Senate House, the British
+// Museum — was dropped before it could be considered (found 2026-10-03). The outer
+// segments are joined end to end into rings, and the largest ring is the building. Inner
+// rings (courtyards) are not subtracted: a pin in a courtyard is still at the building.
+function relationRing(members) {
+  const segments = (Array.isArray(members) ? members : [])
+    .filter((member) => member?.type === "way" && member?.role === "outer" && Array.isArray(member.geometry))
+    .map((member) => member.geometry.map((node) => coordinateOrNull(node?.lat, node?.lon ?? node?.lng)).filter(Boolean))
+    .filter((segment) => segment.length >= 2);
+  const same = (a, b) => a.lat === b.lat && a.lng === b.lng;
+  const rings = [];
+  while (segments.length > 0) {
+    const ring = segments.shift();
+    while (!same(ring[0], ring.at(-1))) {
+      const index = segments.findIndex((segment) => same(segment[0], ring.at(-1)) || same(segment.at(-1), ring.at(-1)));
+      if (index < 0) break;
+      const [next] = segments.splice(index, 1);
+      ring.push(...(same(next[0], ring.at(-1)) ? next : [...next].reverse()).slice(1));
+    }
+    rings.push(ring);
+  }
+  const area = (ring) => Math.abs(ring.reduce((sum, node, i) => {
+    const next = ring[(i + 1) % ring.length];
+    return sum + node.lng * next.lat - next.lng * node.lat;
+  }, 0));
+  return rings.sort((left, right) => area(right) - area(left))[0] ?? [];
+}
+
 export function parseBuildings(response) {
   const elements = Array.isArray(response?.elements) ? response.elements : [];
   return elements
@@ -184,7 +215,9 @@ export function parseBuildings(response) {
       osm_id: `${element.type}/${element.id}`,
       name: element.tags?.name ?? null,
       tags: element.tags ?? {},
-      ring: toRing(element.geometry),
+      ring: element.type === "relation"
+        ? toRing(relationRing(element.members).map((node) => ({ lat: node.lat, lon: node.lng })))
+        : toRing(element.geometry),
     }))
     .filter((building) => building.ring.length >= 3);
 }
@@ -213,6 +246,48 @@ export function entranceFor(building, entrances) {
 }
 
 // --- the decision ------------------------------------------------------------
+
+// Does this building confirm the place by what OSM says about it?
+//
+// Names are stored with their address after a comma — "Tate Modern, Bankside, London" —
+// so the head, the part before the first comma, is the name; the rest says where it is,
+// which the coordinate already does.
+//
+// Stricter than `namesMatch`, which lets ANY one extra word through and so let "London"
+// confirm a hotel OSM calls "Momento London" (2026-10-03; the snap was rolled back). Here
+// the one word may only be "the", or a word that says what kind of building it is: "St
+// Clement Danes Church" is OSM's "St Clement Danes". A one-word name must match exactly.
+//
+// A street address names no building, but OSM tags the building with it: "22 Highbury
+// Terrace" is confirmed by addr:housenumber 22 on addr:street Highbury Terrace, and by
+// nothing less — a house number alone is on every street.
+const ADDRESS = /^(\d+[a-z]?)\s+(.+)$/i;
+const KIND_OF_BUILDING = new Set([
+  "the", "church", "chapel", "cathedral", "abbey", "building", "hotel", "theatre", "theater",
+  "station", "museum", "pub", "tower",
+]);
+
+function sameBuildingName(place, building) {
+  const left = normalizePlaceName(place).split(" ").filter(Boolean);
+  const right = normalizePlaceName(building).split(" ").filter(Boolean);
+  if (left.length === 0 || right.length === 0) return false;
+  if (left.join(" ") === right.join(" ")) return true;
+  const [shorter, longer] = left.length < right.length ? [left, right] : [right, left];
+  if (shorter.length < 2 || longer.length - shorter.length !== 1) return false;
+  const extra = longer[0] === shorter[0] ? longer.at(-1) : longer[0];
+  return KIND_OF_BUILDING.has(extra)
+    && (longer.slice(1).join(" ") === shorter.join(" ") || longer.slice(0, -1).join(" ") === shorter.join(" "));
+}
+
+export function buildingConfirms(name, building) {
+  const head = placeHead(name);
+  if (sameBuildingName(name, building?.name) || sameBuildingName(head, building?.name)) return true;
+  const address = head.match(ADDRESS);
+  const tags = building?.tags ?? {};
+  if (!address || !tags["addr:housenumber"] || !tags["addr:street"]) return false;
+  return normalizePlaceName(tags["addr:housenumber"]) === normalizePlaceName(address[1])
+    && normalizePlaceName(tags["addr:street"]) === normalizePlaceName(address[2]);
+}
 
 // Which building does this point refer to? Containment first, because in a dense
 // street every candidate is within a few metres of every other.
@@ -267,14 +342,28 @@ export function snapToBuilding({ lat, lng, buildings, entrances = [], radiusM, n
 
   if (!point) return unchanged("no_coordinate");
 
-  const { building, reason } = chooseBuilding(point, buildings, { radiusM });
-  if (!building) return unchanged(reason);
-
   // A place that is only known to its city or country needs the building itself to
   // confirm the match by name. "Gloucester Cathedral" inside a building OSM also calls
   // "Gloucester Cathedral" is evidence; "Shanghai" inside an unrelated tower is not.
-  if (isVaguePrecision(precision) && !namesMatch(name, building.name)) {
-    return unchanged("area_not_a_building");
+  //
+  // And the name is what picks the building, not the geometry: a published pin often
+  // stands in the street between several footprints — Drapers' Hall's does — and the
+  // one OSM calls Drapers' Hall is the answer. Exactly one confirming building in range,
+  // or nothing.
+  let building;
+  let reason;
+  if (isVaguePrecision(precision)) {
+    const radius = clampSearchRadius(radiusM);
+    const named = (Array.isArray(buildings) ? buildings : []).filter((candidate) => {
+      if (!buildingConfirms(name, candidate)) return false;
+      const metres = pointInRing(point, candidate.ring) ? 0 : metresToRing(point, candidate.ring);
+      return metres !== null && metres <= radius;
+    });
+    if (named.length !== 1) return unchanged(named.length > 1 ? "ambiguous_named" : "area_not_a_building");
+    [building, reason] = [named[0], "confirmed_by_name"];
+  } else {
+    ({ building, reason } = chooseBuilding(point, buildings, { radiusM }));
+    if (!building) return unchanged(reason);
   }
 
   const snap = snapPosition(point, building, entrances);

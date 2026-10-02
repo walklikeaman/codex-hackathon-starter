@@ -19,7 +19,7 @@ const SNAPPED = {
 };
 
 function handlerWith(overrides = {}) {
-  const calls = { resolved: [], saved: [], waited: [] };
+  const calls = { resolved: [], saved: [], waited: [], streets: [], streetSaved: [] };
   const handler = createSnapHandler({
     env: { ENRICH_TOKEN: "test-token", NEXT_PUBLIC_SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "k" },
     createStore: overrides.createStore ?? (() => ({
@@ -29,7 +29,12 @@ function handlerWith(overrides = {}) {
         if (overrides.saveThrows) throw new Error("db down");
         calls.saved.push({ place, snap });
       },
+      saveStreet: async (place, street) => { calls.streetSaved.push({ place, street }); },
     })),
+    confirmStreet: async (args) => {
+      calls.streets.push(args);
+      return overrides.street ?? { confirmed: false, reason: "no_such_street_here" };
+    },
     resolveSnap: overrides.resolveSnap ?? (async (args) => {
       calls.resolved.push(args);
       return overrides.snap ?? SNAPPED;
@@ -199,4 +204,45 @@ test("a malformed body falls back to a default batch rather than failing", async
   });
   assert.equal((await handler(request)).status, 200);
   assert.equal(calls.limit, DEFAULT_BATCH);
+});
+
+// --- a street, when no building confirms it ----------------------------------
+
+const CABLE = { id: "22222222-2222-2222-2222-222222222222", name: "Cable Street, London E1", lat: 51.511, lng: -0.065, geocode_precision: "none" };
+const ON_CABLE = { confirmed: true, reason: "on_named_street", geocode_precision: "street", osm_street_id: "way/4", street_name: "Cable Street", metres: 6 };
+
+test("a vague street that no building confirms is confirmed by the street, and not moved", async () => {
+  const { handler, calls } = handlerWith({ places: [CABLE], snap: { snapped: false, reason: "area_not_a_building" }, street: ON_CABLE });
+  const body = await (await handler(snapRequest({}))).json();
+
+  assert.equal(body.snapped, 1);
+  assert.equal(calls.saved.length, 0, "no building snap is written");
+  assert.equal(calls.streetSaved[0].street.osm_street_id, "way/4");
+  assert.deepEqual(body.results[0], {
+    place_id: CABLE.id, name: CABLE.name, snapped: true, reason: "on_named_street",
+    osm_street_id: "way/4", street_name: "Cable Street", was: "none", now: "street",
+  });
+  // The street is a second Overpass call, and it is paced like the first.
+  assert.equal(calls.waited.length, 1);
+});
+
+test("the street is not asked when Overpass is busy, or the name is not a street", async () => {
+  for (const [place, snap] of [
+    [CABLE, { snapped: false, reason: "overpass_unavailable", rate_limited: true }],
+    [{ ...CABLE, name: "Drapers' Hall" }, { snapped: false, reason: "area_not_a_building" }],
+    [{ ...CABLE, geocode_precision: "point" }, { snapped: false, reason: "ambiguous_neighbours" }],
+  ]) {
+    const { handler, calls } = handlerWith({ places: [place], snap, street: ON_CABLE });
+    const body = await (await handler(snapRequest({}))).json();
+    assert.equal(calls.streets.length, 0, place.name);
+    assert.equal(body.snapped, 0);
+  }
+});
+
+test("a street that is not confirmed writes nothing and reports the building's reason", async () => {
+  const { handler, calls } = handlerWith({ places: [CABLE], snap: { snapped: false, reason: "area_not_a_building" } });
+  const body = await (await handler(snapRequest({}))).json();
+  assert.equal(calls.streets.length, 1);
+  assert.equal(calls.streetSaved.length, 0);
+  assert.equal(body.results[0].reason, "area_not_a_building");
 });
