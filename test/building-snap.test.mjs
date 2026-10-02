@@ -457,3 +457,10 @@ test("a building mapped as a relation is read from its outer member ways", () =>
     lat: 51.5205, lng: -0.1295, name: "Senate House, University of London, Malet Street", precision: "none", buildings: [parsed],
   }).snapped, true);
 });
+
+test("the query asks for relation members, where a multipolygon keeps its outline", () => {
+  const query = overpassQuery(51.521, -0.129);
+  assert.match(query, /relation\["building"\]/);
+  assert.match(query, /\);\nout geom;\n/);
+  assert.doesNotMatch(query, /out geom tags/);
+});

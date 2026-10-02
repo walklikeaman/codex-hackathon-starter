@@ -66,6 +66,10 @@ export function clampSearchRadius(value) {
 
 // Buildings around the point, plus any tagged entrance nodes in the same area. The
 // timeout is inside the query because that is where Overpass enforces it.
+//
+// `out geom`, not `out geom tags`: the `tags` verbosity leaves out a relation's members,
+// and a multipolygon relation's outline is ON its members — Senate House came back as a
+// name and nothing to stand in (measured 2026-10-03).
 export function overpassQuery(lat, lng, radiusM = DEFAULT_SEARCH_RADIUS_M) {
   const point = coordinateOrNull(lat, lng);
   if (!point) return null;
@@ -77,7 +81,7 @@ export function overpassQuery(lat, lng, radiusM = DEFAULT_SEARCH_RADIUS_M) {
   way["building"](around:${at});
   relation["building"](around:${at});
 );
-out geom tags;
+out geom;
 node(around:${at})["entrance"];
 out tags;`;
 }
