@@ -78,3 +78,26 @@ test("the scenes keep the order as their spoiler tier, credit the quote, and spo
     is_fictional_setting: false,
   });
 });
+
+// Love Actually's opening quote placed both "London" and "London Heathrow Airport"; two
+// sources spelled Grosvenor Chapel two ways. Walked, each pair is two stops at one door.
+test("one quote is one scene, kept at its most precise place, and one building is one stop", async () => {
+  const { distinctStops } = await import("../app/lib/plot-order.mjs");
+  const places = new Map([
+    ["London", { lat: 51.5072, lng: -0.1276, precision: "city" }],
+    ["London Heathrow Airport", { lat: 51.4700, lng: -0.4543, precision: "point" }],
+    ["Grosvenor Chapel, Mayfair", { lat: 51.50906, lng: -0.15132, precision: "point" }],
+    ["Grosvenor Chapel, South Audley Street, Mayfair, London", { lat: 51.50910, lng: -0.15140, precision: "point" }],
+    ["Selfridges", { lat: 51.5145, lng: -0.1527, precision: "building" }],
+  ]);
+  const placed = [
+    { location: "London", at: 10 },
+    { location: "London Heathrow Airport", at: 10 },
+    { location: "Grosvenor Chapel, Mayfair", at: 200 },
+    { location: "Grosvenor Chapel, South Audley Street, Mayfair, London", at: 230 },
+    { location: "Selfridges", at: 400 },
+  ];
+  assert.deepEqual(distinctStops(placed, places).map((entry) => entry.location), [
+    "London Heathrow Airport", "Grosvenor Chapel, Mayfair", "Selfridges",
+  ]);
+});

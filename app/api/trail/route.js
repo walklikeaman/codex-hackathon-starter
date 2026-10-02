@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 import { normalizeTrailPlace } from "../../lib/story-trail.mjs";
 import {
+  distinctStops,
   findPlotSection,
   placeInPlot,
   plotPositionInput,
@@ -64,7 +65,7 @@ function defaultCreateStore(env) {
     async workPlaces(workId) {
       const { data, error } = await client
         .from("work_place_links")
-        .select("place_id, places ( id, name, lat, lng )")
+        .select("place_id, places ( id, name, lat, lng, geocode_precision )")
         .eq("work_id", workId)
         .is("scene_id", null);
       if (error) throw new Error(`work places load failed: ${error.message}`);
@@ -227,7 +228,12 @@ export function createTrailHandler({
       }
       if (passes.length === 0) throw new Error("Trail extraction: no pass succeeded");
 
-      const placed = placeInPlot(plot.text, passes, locations);
+      const placed = distinctStops(
+        placeInPlot(plot.text, passes, locations),
+        new Map(knownPlaces.map((place) => [place.name, {
+          lat: place.lat, lng: place.lng, precision: place.geocode_precision,
+        }])),
+      );
       if (placed.length === 0) return notYet(workId, "nothing_placed_in_plot");
 
       const scenes = scenesFromPlacement(placed, { title: plot.title });

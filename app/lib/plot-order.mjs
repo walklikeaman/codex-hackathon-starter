@@ -139,3 +139,41 @@ export function scenesFromPlacement(placed, { title }) {
     is_fictional_setting: entry.fictional,
   }));
 }
+
+// One stop per spot. The graph can hold one building twice — "Grosvenor Chapel, Mayfair"
+// and "Grosvenor Chapel, South Audley Street", from two sources that spelled it apart — and
+// a city beside a building in it: Love Actually's opening quote placed both "London" and
+// "London Heathrow Airport". Walked, each pair is two stops at one door.
+//
+//   * one quote is one scene: of the locations a single passage placed, the most precisely
+//     located is kept — the airport, not the city;
+//   * a location within SAME_SPOT_M of one already kept is that building again.
+//
+// `places` maps a location name to { lat, lng, precision }.
+export const SAME_SPOT_M = 40;
+const PRECISION_RANK = Object.freeze({ building: 4, point: 4, street: 3, city: 1, region: 0, country: 0 });
+
+function metresBetween(a, b) {
+  if (![a?.lat, a?.lng, b?.lat, b?.lng].every(Number.isFinite)) return Infinity;
+  const toRad = (degrees) => (degrees * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.sqrt(h));
+}
+
+export function distinctStops(placed, places) {
+  const rank = (entry) => PRECISION_RANK[String(places.get(entry.location)?.precision ?? "").toLowerCase()] ?? 2;
+  const byQuote = new Map();
+  for (const entry of placed) {
+    const seen = byQuote.get(entry.at);
+    if (!seen || rank(entry) > rank(seen)) byQuote.set(entry.at, entry);
+  }
+  const kept = [];
+  for (const entry of [...byQuote.values()].sort((left, right) => left.at - right.at)) {
+    const here = places.get(entry.location);
+    if (kept.some((other) => metresBetween(places.get(other.location), here) <= SAME_SPOT_M)) continue;
+    kept.push(entry);
+  }
+  return kept;
+}
