@@ -8,11 +8,11 @@ import {
   tmdbIdFromEntity,
 } from "../../../lib/work-artwork.mjs";
 import { enrichGuard } from "../../../lib/enrich-auth.mjs";
+import { USER_AGENT } from "../../../lib/user-agent.mjs";
 
 export const runtime = "nodejs";
 
 const noStoreHeaders = { "Cache-Control": "private, no-store" };
-const USER_AGENT = "GloryMap/1.1 (https://codex-hackathon-starter.vercel.app/)";
 const TMDB_API_BASE_URL = "https://api.themoviedb.org/3";
 const MAX_WORKS = 60;
 

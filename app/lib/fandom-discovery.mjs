@@ -12,7 +12,9 @@
 //
 // Related: [[personal-library]], [[source-evaluation]], [[wikipedia-enrichment]].
 
-export const WIKIDATA_SPARQL = "https://query.wikidata.org/sparql";
+import { WIKIDATA_SPARQL } from "./user-agent.mjs";
+
+export { WIKIDATA_SPARQL };
 
 // **Ask about the works we hold, not about all of Wikidata.**
 //

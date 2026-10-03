@@ -26,6 +26,7 @@ import {
 import { buildWikidataEntitiesUrl, entityClaimValues } from "../../../lib/location-search.mjs";
 import { tmdbImageUrl } from "../../../lib/tmdb-images.mjs";
 import { enrichGuard } from "../../../lib/enrich-auth.mjs";
+import { USER_AGENT } from "../../../lib/user-agent.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -104,7 +105,7 @@ function defaultCreateStore(env) {
 async function referenceImageFor(place, { fetchImpl }) {
   try {
     const response = await fetchImpl(buildWikidataEntitiesUrl([place.wikidata_id]), {
-      headers: { Accept: "application/json", "User-Agent": "GloryMap/1.0" },
+      headers: { Accept: "application/json", "User-Agent": USER_AGENT },
       signal: AbortSignal.timeout(10_000),
     });
     if (!response?.ok) return null;

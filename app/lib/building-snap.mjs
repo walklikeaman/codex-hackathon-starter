@@ -22,6 +22,7 @@ import { haversineMeters } from "./geo.mjs";
 import { coordinateOrNull, finiteOrNull } from "./numbers.mjs";
 import { normalizePlaceName } from "./place-dedup.mjs";
 import { placeHead } from "./place-name-head.mjs";
+import { USER_AGENT } from "./user-agent.mjs";
 
 // Precisions that describe an AREA, not a spot. Their coordinate is a centroid that
 // happens to land somewhere — in Shanghai's case, inside a building, which production
@@ -54,7 +55,7 @@ export const MAX_SNAP_DISTANCE_M = 100;
 
 // Overpass asks callers to bound their own queries and identify themselves.
 export const OVERPASS_TIMEOUT_S = 25;
-export const USER_AGENT = "GloryMap/1.0 (+https://github.com/walklikeaman/glorymap)";
+export { USER_AGENT };
 
 export function clampSearchRadius(value) {
   const radius = finiteOrNull(value);

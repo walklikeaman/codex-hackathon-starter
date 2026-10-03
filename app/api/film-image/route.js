@@ -31,6 +31,7 @@ import {
   sceneMatchSigningSecret,
   verifySceneMatchToken,
 } from "../../lib/scene-match-token.mjs";
+import { USER_AGENT } from "../../lib/user-agent.mjs";
 
 const TMDB_API_BASE_URL = "https://api.themoviedb.org/3";
 
@@ -214,7 +215,7 @@ export function createFilmImageHandler({
       const wikidataResponse = await fetchUpstream("wikidata", fetchImpl, buildWikidataSceneEntitiesUrl(sceneRequest), {
         headers: {
           Accept: "application/json",
-          "User-Agent": "GloryMap/1.0 (location-specific film image matcher)",
+          "User-Agent": USER_AGENT,
         },
         next: { revalidate: 86400 },
       }, { request, timeoutMs: WIKIDATA_BUDGET_MS, retries: 1 });

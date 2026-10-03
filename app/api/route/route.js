@@ -3,6 +3,7 @@ import {
   parseFootRoute,
   validateRouteStops,
 } from "../../lib/walking-route.mjs";
+import { USER_AGENT } from "../../lib/user-agent.mjs";
 
 const ROUTER_TIMEOUT_MS = 8_000;
 
@@ -31,8 +32,7 @@ export async function POST(request) {
       cache: "no-store",
       headers: {
         Accept: "application/json",
-        "User-Agent":
-          "GloryMap-Hackathon/1.0 (+https://github.com/walklikeaman/codex-hackathon-starter)",
+        "User-Agent": USER_AGENT,
         Referer: `${appOrigin}/`,
       },
       signal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
