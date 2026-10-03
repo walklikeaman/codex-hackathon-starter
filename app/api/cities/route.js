@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { cityRadiusKm, isWikidataId } from "../../lib/location-search.mjs";
 import { USER_AGENT } from "../../lib/user-agent.mjs";
 import { upstreamFailed } from "../../lib/upstream-error.mjs";
@@ -10,7 +9,7 @@ const NOMINATIM_ENDPOINT = "https://nominatim.openstreetmap.org/search";
 export async function GET(request) {
   const query = new URL(request.url).searchParams.get("q")?.trim();
   if (!query || query.length > 80) {
-    return NextResponse.json({ error: "Enter a city name up to 80 characters" }, { status: 400 });
+    return Response.json({ error: "Enter a city name up to 80 characters" }, { status: 400 });
   }
 
   const endpoint = new URL(NOMINATIM_ENDPOINT);
@@ -39,7 +38,7 @@ export async function GET(request) {
     const lat = Number(city?.lat);
     const lng = Number(city?.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return NextResponse.json({ error: "City not found" }, { status: 404 });
+      return Response.json({ error: "City not found" }, { status: 404 });
     }
 
     const boundingBox = city.boundingbox?.map(Number);
@@ -51,7 +50,7 @@ export async function GET(request) {
       ?? city.address?.municipality
       ?? city.display_name.split(",")[0];
 
-    return NextResponse.json(
+    return Response.json(
       {
         name,
         lat,

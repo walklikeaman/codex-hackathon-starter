@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import JSZip from "jszip";
 import { parseLetterboxdArchive } from "../app/lib/letterboxd-archive.mjs";
 import {
@@ -32,15 +33,18 @@ test("parses a Letterboxd ratings export", () => {
   });
 });
 
+// The fixture is IMDb's own export header, so the parser and the file check each other
+// rather than the test restating the format inline (#87).
 test("parses an IMDb ratings export", () => {
-  const [movie] = parseMediaCsv(
-    "Const,Your Rating,Date Rated,Title,URL,Title Type,IMDb Rating,Year\ntt0111161,10,2026-07-19,The Shawshank Redemption,https://www.imdb.com/title/tt0111161/,movie,9.3,1994",
-    "imdb",
-  );
+  const movies = parseMediaCsv(readFileSync(new URL("./fixtures/imdb-ratings.csv", import.meta.url), "utf8"), "imdb");
 
-  assert.equal(movie.imdbId, "tt0111161");
-  assert.equal(movie.rating, 10);
-  assert.equal(movie.year, 1994);
+  assert.equal(movies.length, 2);
+  const [shawshank, heat] = movies;
+  assert.equal(shawshank.imdbId, "tt0111161");
+  assert.equal(shawshank.rating, 10);
+  assert.equal(shawshank.year, 1994);
+  assert.equal(heat.title, "Heat");
+  assert.equal(heat.rating, 9);
 });
 
 test("the two services' scales meet as one number", () => {

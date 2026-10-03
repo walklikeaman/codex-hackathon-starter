@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { MAX_SEARCH_RADIUS_KM } from "../../lib/nearby.mjs";
 import {
   buildLocationsSparql,
@@ -526,14 +525,14 @@ export async function GET(request) {
   const excludeLocationId = searchParams.get("exclude");
 
   if ([lat, lng, radius, limit].some((value) => value === null) || !isWorkKind(kind)) {
-    return NextResponse.json(
+    return Response.json(
       { error: "lat, lng, radius, limit, or kind is outside the supported range" },
       { status: 400 },
     );
   }
 
   if (searchParams.has("q") && !workQuery) {
-    return NextResponse.json({ error: "Enter a work title up to 160 characters" }, { status: 400 });
+    return Response.json({ error: "Enter a work title up to 160 characters" }, { status: 400 });
   }
 
   try {
@@ -546,7 +545,7 @@ export async function GET(request) {
     if (workQuery && workIds.length === 0) {
       // Wikidata does not know the title. Our own records still might.
       const own = await findOwnWorkPlaces({ query: workQuery, kind, center: { lat, lng } });
-      return NextResponse.json(
+      return Response.json(
         {
           center: { lat, lng },
           radius_km: radius,
@@ -611,7 +610,7 @@ export async function GET(request) {
         }
       }
 
-      return NextResponse.json(
+      return Response.json(
         {
           center: { lat, lng },
           radius_km: radius,
@@ -652,7 +651,7 @@ export async function GET(request) {
     // three.
     const locations = rankNearbyLocations(nearby, { limit, balanced: isEveryKind(kind) });
 
-    return NextResponse.json(
+    return Response.json(
       {
         center: { lat, lng },
         radius_km: radius,
