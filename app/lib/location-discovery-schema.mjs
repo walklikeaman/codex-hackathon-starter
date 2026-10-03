@@ -14,6 +14,7 @@
 
 import { z } from "zod";
 import { distanceKm } from "./location-search.mjs";
+import { isDuplicatePlace } from "./place-dedup.mjs";
 
 export const discoveryRequestSchema = z.object({
   city: z.object({
@@ -51,9 +52,6 @@ export const discoveredLocationsSchema = z.object({
   })).max(5),
 });
 
-// How close two points must be to be the same place. A building's Wikidata coordinate
-// and a web source's description of the same building differ by metres, not hundreds.
-const SAME_PLACE_KM = 0.05;
 
 function canonicalUrl(value) {
   try {
@@ -118,8 +116,11 @@ export function acceptDiscoveries(parsed, request, consultedSources) {
 // instead of quietly returning fewer results than it found.
 export function placeDiscoveries(claims, request, located) {
   const center = { lat: request.city.lat, lng: request.city.lng };
-  const existing = request.existingLocations;
-  const knownIds = new Set(existing.map((location) => location.wikidataId).filter(Boolean));
+  // What is on the map, and what this research has already added to it: a second claim
+  // beside the first is as much a duplicate as one beside an existing pin.
+  const taken = request.existingLocations.map((known) => ({
+    name: known.place, lat: known.lat, lng: known.lng, wikidataId: known.wikidataId ?? null,
+  }));
   const locations = [];
   const unplaced = [];
 
@@ -132,14 +133,11 @@ export function placeDiscoveries(claims, request, located) {
 
     const point = { lat: chosen.place.lat, lng: chosen.place.lng };
 
-    // Same Wikidata entity as something already on the map. This check did not exist
-    // before because there was no entity to compare — a recalled coordinate has no
-    // identity, only a position.
-    if (knownIds.has(chosen.place.wikidata_id)) {
-      unplaced.push({ place: claim.place, reason: "already_on_map" });
-      continue;
-    }
-    if (existing.some((known) => distanceKm(point, known) < SAME_PLACE_KM)) {
+    // Same Wikidata entity, same name, or the same spot as something already on the map.
+    // The entity check did not exist before there was an entity to compare — a recalled
+    // coordinate has no identity, only a position.
+    const candidate = { name: claim.place, ...point, wikidataId: chosen.place.wikidata_id };
+    if (taken.some((known) => isDuplicatePlace(known, candidate))) {
       unplaced.push({ place: claim.place, reason: "already_on_map" });
       continue;
     }
@@ -149,7 +147,7 @@ export function placeDiscoveries(claims, request, located) {
       continue;
     }
 
-    knownIds.add(chosen.place.wikidata_id);
+    taken.push(candidate);
     locations.push({
       work_wikidata_id: request.work.id,
       work_title: request.work.title,

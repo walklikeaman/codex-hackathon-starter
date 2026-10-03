@@ -205,3 +205,19 @@ test("uses a story-setting relation for researched book locations", () => {
   assert.equal(locations[0].relation_kind, "researched_story_setting");
   assert.equal(locations[0].relation_label, "Researched story setting");
 });
+
+// The client used to catch this with its own thresholds after the server had answered
+// (#88). Two researched places a few metres apart, two different entities: one pin.
+test("a second researched place beside the first is not a second pin", () => {
+  const { claims } = acceptDiscoveries(discoveredLocationsSchema.parse({ locations: [
+    claim({ place: "Royal Exchange" }),
+    claim({ place: "Royal Exchange steps" }),
+  ] }), request, SOURCES);
+  const { locations, unplaced } = placeDiscoveries(claims, request, new Map([
+    ["Royal Exchange", found(51.5134, -0.0886, { wikidata_id: "Q1" })],
+    ["Royal Exchange steps", found(51.5135, -0.0886, { wikidata_id: "Q2" })],
+  ]));
+
+  assert.equal(locations.length, 1);
+  assert.deepEqual(unplaced.map((entry) => entry.reason), ["already_on_map"]);
+});

@@ -58,6 +58,24 @@ export function metresApart(a, b) {
   return Math.round(haversineMeters([aLat, aLng], [bLat, bLng]));
 }
 
+// Is a researched place already on the map? (#88) One rule, on the server that researches
+// and anywhere else that asks: the same Wikidata entity, the same name, or within
+// SAME_PLACE_M. The client used to re-check with its own thresholds — 0.0005° in each
+// axis, ~55 m north-south and ~35 m east-west in London — after the server had already
+// checked with 50 m, so the two disagreed about the same pair of points.
+//
+// Looser than `canMerge`, on purpose: that rule decides two rows ARE one place and must
+// not be wrong; this one only declines to add a pin beside one that is already there.
+export const SAME_PLACE_M = 50;
+
+export function isDuplicatePlace(a, b) {
+  if (a?.wikidataId && a.wikidataId === b?.wikidataId) return true;
+  const name = normalizePlaceName(a?.name);
+  if (name && name === normalizePlaceName(b?.name)) return true;
+  const metres = metresApart(a, b);
+  return metres !== null && metres <= SAME_PLACE_M;
+}
+
 // Do two names refer to the same thing? Normalised equality, plus the common case of
 // one being a qualified form of the other ("Bradbury Building" vs "The Bradbury
 // Building"). Deliberately NOT fuzzy — "National Gallery" and "National Portrait

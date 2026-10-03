@@ -2608,16 +2608,9 @@ export default function SceneMapApp() {
         return;
       }
 
-      const researchedLocations = locationsFromApi(discovery.locations ?? []);
-      const merged = [...nextLocations];
-      for (const location of researchedLocations) {
-        const duplicate = merged.some((known) =>
-          known.place.toLowerCase() === location.place.toLowerCase()
-          || (Math.abs(known.position[0] - location.position[0]) < 0.0005
-            && Math.abs(known.position[1] - location.position[1]) < 0.0005),
-        );
-        if (!duplicate) merged.push(location);
-      }
+      // Already free of duplicates: the server checked every researched place against
+      // `existingLocations` — these — and against each other, with isDuplicatePlace (#88).
+      const merged = [...nextLocations, ...locationsFromApi(discovery.locations ?? [])];
       applyLocationResults(merged, { openFirst: true });
       // Places the research named but could not pin down. Saying so is the difference
       // between "found one" and "found three, could place one" — only one is true, and
