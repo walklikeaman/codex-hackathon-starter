@@ -236,14 +236,20 @@ test("film image API returns the location-matched candidate instead of the top b
       assert.equal(body.max_output_tokens, 1000);
       assert.match(body.instructions, /already been verified/);
       assert.match(body.instructions, /up to three distinct candidate frames/);
+      assert.equal(body.text.format.name, "scene_image_match");
+      assert.equal(body.store, false);
       assert.equal(
         body.input[0].content.filter((item) => item.type === "input_image").length,
         3,
       );
       assert.equal(options.signal, request.signal);
+      assert.equal(options.timeout, 20_000);
     },
-    onVerify: (body) => {
+    onVerify: (body, options) => {
       assert.match(body.instructions, /final verifier/);
+      assert.equal(body.max_output_tokens, 800);
+      assert.equal(body.text.format.name, "verified_scene_images");
+      assert.equal(options.timeout, 20_000);
       assert.equal(
         body.input[0].content.filter((item) => item.type === "input_image").length,
         1,
