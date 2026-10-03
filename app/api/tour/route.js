@@ -1,3 +1,4 @@
+import { modelFailed, notConfigured, readJsonBody } from "../../lib/ai-route.mjs";
 import { createModelClient, parseStructured, TIERS } from "../../lib/model-client.mjs";
 import {
   assertCompleteTour,
@@ -14,6 +15,7 @@ export const runtime = "nodejs";
 export function createTourHandler({
   env = process.env,
   createRuntime = (environment) => createModelClient(environment, { tier: TIERS.CHEAP }),
+  logError = (...args) => console.error(...args),
 } = {}) {
   return async function POST(request) {
     // Cheap tier: narration over locations that are already verified, and a failure is
@@ -21,10 +23,10 @@ export function createTourHandler({
     // scripted guide. Named for the capability rather than for one vendor's key.
     const model = createRuntime(env);
     if (!model) {
-      return Response.json({ error: "AI tours are not configured." }, { status: 503 });
+      return notConfigured("AI tours are not configured.");
     }
 
-    const body = await request.json().catch(() => null);
+    const body = await readJsonBody(request);
     const parsedBody = tourRequestSchema.safeParse(body);
 
     if (!parsedBody.success) {
@@ -92,15 +94,9 @@ export function createTourHandler({
         ...tour,
       });
     } catch (error) {
-      console.error("AI tour generation failed", {
-        name: error?.name,
-        status: error?.status,
+      return modelFailed({
+        error, label: "AI tour generation failed", message: "Could not build the AI tour. Try again.", log: logError,
       });
-
-      return Response.json(
-        { error: "Could not build the AI tour. Try again." },
-        { status: 502 },
-      );
     }
   };
 }
