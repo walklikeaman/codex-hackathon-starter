@@ -6,10 +6,12 @@ import {
   DEDUP_RADIUS_M,
   dedupePlaces,
   groupPlaces,
+  isDuplicatePlace,
   mergeGroup,
   metresApart,
   namesMatch,
   normalizePlaceName,
+  SAME_PLACE_M,
 } from "../app/lib/place-dedup.mjs";
 
 const place = (overrides = {}) => ({
@@ -188,4 +190,21 @@ test("dedupePlaces survives junk", () => {
   assert.deepEqual(dedupePlaces([]), []);
   assert.equal(mergeGroup([]), null);
   assert.equal(mergeGroup(null), null);
+});
+
+// --- is a researched place already on the map? (#88) -------------------------
+
+test("a researched place is a duplicate by entity, by name, or by standing on the same spot", () => {
+  const gallery = { name: "National Gallery", lat: 51.5089, lng: -0.1283, wikidataId: "Q180788" };
+  assert.equal(isDuplicatePlace(gallery, { name: "Trafalgar Square gallery", lat: 51.6, lng: -0.2, wikidataId: "Q180788" }), true);
+  assert.equal(isDuplicatePlace(gallery, { name: "national  gallery", lat: 51.6, lng: -0.2 }), true);
+  assert.equal(isDuplicatePlace(gallery, { name: "Somewhere", lat: 51.5092, lng: -0.1283 }), true, "33 m away");
+  assert.equal(isDuplicatePlace(gallery, { name: "National Portrait Gallery", lat: 51.5094, lng: -0.1281 }), false, "60 m away, another museum");
+  assert.equal(SAME_PLACE_M, 50);
+});
+
+test("one side without an id or a coordinate is compared on what it has", () => {
+  assert.equal(isDuplicatePlace({ name: "A", wikidataId: null }, { name: "B", wikidataId: null }), false);
+  assert.equal(isDuplicatePlace({ name: "A", lat: null, lng: null }, { name: "B", lat: 51.5, lng: -0.1 }), false);
+  assert.equal(isDuplicatePlace({ name: "" }, { name: "" }), false);
 });
