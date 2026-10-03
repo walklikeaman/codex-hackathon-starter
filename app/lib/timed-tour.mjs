@@ -222,3 +222,52 @@ export function createFallbackGuide({ city, budgetMinutes, stops }) {
     })),
   };
 }
+
+// The two halves of building a timed tour, out of the 124-line function in SceneMapApp
+// that did them inline (#82). Both take what they call, so both are tested without a
+// router or a model.
+
+// Which candidate to walk: longest first, at most four tries per length, the first whose
+// routed walk fits the budget. A router that fails falls back to straight lines for the
+// best candidate, and is still held to the budget. Null when nothing fits.
+export async function pickRouteThatFitsBudget(candidates, budgetMinutes, { requestRoute, fallbackRoute }) {
+  try {
+    const tries = [5, 4, 3].flatMap((stopCount) =>
+      candidates.filter((candidate) => candidate.stops.length === stopCount).slice(0, 4));
+    for (const candidate of tries) {
+      const route = await requestRoute(candidate.stops);
+      if (routeFitsBudget(route, budgetMinutes)) return { plan: candidate, route, usedRouteFallback: false };
+    }
+    return null;
+  } catch {
+    const plan = candidates[0];
+    const route = fallbackRoute(plan.stops);
+    return routeFitsBudget(route, budgetMinutes) ? { plan, route, usedRouteFallback: true } : null;
+  }
+}
+
+// The written guide for the chosen stops. The model must return every stop, in the given
+// order; anything else — a refusal, a reordering, a dropped stop — is the scripted guide.
+export async function fetchTimedTourGuide(stops, { city, budgetMinutes, fetchImpl = fetch }) {
+  try {
+    const response = await fetchImpl("/api/tour", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        city,
+        durationMinutes: budgetMinutes,
+        preserveOrder: true,
+        locations: stops.map(({ id, place, scene, description, film }) => ({ id, place, scene, description, film })),
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    const expectedIds = stops.map((stop) => stop.id);
+    const returnedIds = payload?.stops?.map((stop) => stop.locationId);
+    if (!response.ok || !Array.isArray(returnedIds) || returnedIds.some((id, index) => id !== expectedIds[index])) {
+      throw new Error(payload.error || "The AI guide returned an invalid route.");
+    }
+    return { guide: payload, usedAiFallback: false };
+  } catch {
+    return { guide: createFallbackGuide({ city, budgetMinutes, stops }), usedAiFallback: true };
+  }
+}

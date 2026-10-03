@@ -118,9 +118,9 @@ import { EVERY_KIND, workKindLabel } from "../lib/location-search.mjs";
 import { filmLocationImageKey } from "../lib/tmdb-images.mjs";
 import {
   TOUR_BUDGETS,
-  createFallbackGuide,
   createTimedTourCandidates,
-  routeFitsBudget,
+  fetchTimedTourGuide,
+  pickRouteThatFitsBudget,
 } from "../lib/timed-tour.mjs";
 import { ACCESS, accessNote, isRoutable, MAX_PLACES_PER_QUERY } from "../lib/place-access.mjs";
 import VoiceGuide from "./VoiceGuide";
@@ -1216,16 +1216,12 @@ export default function SceneMapApp() {
     if (preserveContext) return;
 
     setTourFilmId(nextFilms[0]?.id ?? "");
-    setAiTour(null);
-    setAiTourStatus("idle");
-    setAiTourError("");
-    setTimedTour(null);
-    setTimedTourStatus("idle");
-    setTimedTourMessage("");
+    resetAiTour();
+    resetTimedTour();
     setRouteStops([]);
-    setRouteResult(null);
-    setRouteStatus("idle");
-    setRouteMessage("");
+    // Through invalidateRoute, not by hand: clearing the result without bumping the
+    // request id let a route asked for the old results land on the new ones (#82).
+    invalidateRoute();
   }
 
   useEffect(() => {
@@ -2015,12 +2011,22 @@ export default function SceneMapApp() {
     setRouteMessage("");
   }
 
-  function toggleFilm(filmId) {
+  // The two tours, cleared the same way everywhere they are cleared (#82).
+  function resetAiTour() {
     setAiTour(null);
+    setAiTourStatus("idle");
     setAiTourError("");
+  }
+
+  function resetTimedTour() {
     setTimedTour(null);
     setTimedTourStatus("idle");
     setTimedTourMessage("");
+  }
+
+  function toggleFilm(filmId) {
+    resetAiTour();
+    resetTimedTour();
     setSelectedFilms((current) => {
       const next = current.includes(filmId)
         ? current.filter((id) => id !== filmId)
@@ -2033,8 +2039,7 @@ export default function SceneMapApp() {
   function addRouteStop(location) {
     if (routeStops.some((stop) => stop.id === location.id) || routeStops.length >= 5) return;
 
-    setAiTour(null);
-    setAiTourError("");
+    resetAiTour();
     // Functional, because two taps inside one render both read the same `routeStops` and
     // the second overwrites the first: adding three stops quickly added one.
     setRouteStops((current) => (current.some((stop) => stop.id === location.id)
@@ -2044,8 +2049,7 @@ export default function SceneMapApp() {
   }
 
   function removeRouteStop(locationId) {
-    setAiTour(null);
-    setAiTourError("");
+    resetAiTour();
     setRouteStops((current) => current.filter((stop) => stop.id !== locationId));
     invalidateRoute();
   }
@@ -2310,93 +2314,24 @@ export default function SceneMapApp() {
     setTimedTourStatus("loading");
     setTimedTourMessage("Checking nearby walking routes...");
 
-    let selectedPlan = null;
-    let plannedRoute = null;
-    let usedRouteFallback = false;
-
-    try {
-      const routeCandidates = [5, 4, 3].flatMap((stopCount) =>
-        candidates
-          .filter((candidate) => candidate.stops.length === stopCount)
-          .slice(0, 4),
-      );
-
-      for (const candidate of routeCandidates) {
-        const candidateRoute = await requestWalkingRoute(candidate.stops);
-
-        if (routeFitsBudget(candidateRoute, tourBudget)) {
-          selectedPlan = candidate;
-          plannedRoute = candidateRoute;
-          break;
-        }
-      }
-
-      if (!selectedPlan) {
-        setTimedTourStatus("error");
-        setTimedTourMessage(
-          `No three-stop walk fits ${tourBudget} minutes near this location. Try a larger budget.`,
-        );
-        return;
-      }
-    } catch {
-      selectedPlan = candidates[0];
-      plannedRoute = makeFallbackRoute(selectedPlan.stops);
-      usedRouteFallback = true;
-
-      if (!routeFitsBudget(plannedRoute, tourBudget)) {
-        setTimedTourStatus("error");
-        setTimedTourMessage(
-          `No three-stop walk fits ${tourBudget} minutes near this location. Try a larger budget.`,
-        );
-        return;
-      }
-    }
-
-    const fallbackGuide = createFallbackGuide({
-      city: cityName,
-      budgetMinutes: tourBudget,
-      stops: selectedPlan.stops,
+    const picked = await pickRouteThatFitsBudget(candidates, tourBudget, {
+      requestRoute: requestWalkingRoute,
+      fallbackRoute: makeFallbackRoute,
     });
-    let guide = fallbackGuide;
-    let usedAiFallback = false;
+    if (!picked) {
+      setTimedTourStatus("error");
+      setTimedTourMessage(
+        `No three-stop walk fits ${tourBudget} minutes near this location. Try a larger budget.`,
+      );
+      return;
+    }
+    const { plan: selectedPlan, route: plannedRoute, usedRouteFallback } = picked;
 
     setTimedTourMessage("Writing short stories for the selected stops...");
-
-    try {
-      const response = await fetch("/api/tour", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          city: cityName,
-          durationMinutes: tourBudget,
-          preserveOrder: true,
-          locations: selectedPlan.stops.map(
-            ({ id, place, scene, description, film }) => ({
-              id,
-              place,
-              scene,
-              description,
-              film,
-            }),
-          ),
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      const expectedIds = selectedPlan.stops.map((stop) => stop.id);
-      const returnedIds = payload?.stops?.map((stop) => stop.locationId);
-
-      if (
-        !response.ok ||
-        !Array.isArray(returnedIds) ||
-        returnedIds.some((id, index) => id !== expectedIds[index])
-      ) {
-        throw new Error(payload.error || "The AI guide returned an invalid route.");
-      }
-
-      guide = payload;
-    } catch {
-      usedAiFallback = true;
-    }
+    const { guide, usedAiFallback } = await fetchTimedTourGuide(selectedPlan.stops, {
+      city: cityName,
+      budgetMinutes: tourBudget,
+    });
 
     const unconfirmed = selectedPlan.stops.filter(
       (stop) => !isRoutable(access?.[stop.locationId ?? stop.id]),
@@ -2520,12 +2455,8 @@ export default function SceneMapApp() {
     setLiveLocations([]);
     setActiveLocation(null);
     setRouteStops([]);
-    setAiTour(null);
-    setAiTourStatus("idle");
-    setAiTourError("");
-    setTimedTour(null);
-    setTimedTourStatus("idle");
-    setTimedTourMessage("");
+    resetAiTour();
+    resetTimedTour();
     setLocationsStatus(`Finding ${workKind === EVERY_KIND ? "places" : `${workKindLabel(workKind)} locations`} in ${name}…`);
     invalidateRoute();
   }
@@ -3502,9 +3433,7 @@ export default function SceneMapApp() {
                 disabled={timedTourStatus === "loading"}
                 onClick={() => {
                   setTourBudget(minutes);
-                  setTimedTour(null);
-                  setTimedTourStatus("idle");
-                  setTimedTourMessage("");
+                  resetTimedTour();
                 }}
               >
                 {minutes} min
@@ -3623,8 +3552,7 @@ export default function SceneMapApp() {
               clearWalk(window.localStorage);
               setRestoredWalk(null);
               setRouteStops([]);
-              setRouteResult(null);
-              setRouteStatus("idle");
+              invalidateRoute();
             }}>Clear</button>
           </p>
         )}
