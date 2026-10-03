@@ -62,18 +62,24 @@ function WalkingTrail({ stops, walk, nextStopId, onSelect }) {
   );
 }
 
-export default function StoryTrail({ stops, walkOrder = null, walk = null, nextStopId = null, onSelect }) {
+// `chapters` (#74): the dashed story line is drawn inside each city chapter and never
+// between them — a line from Westminster to Shanghai is not a path anyone takes.
+export default function StoryTrail({ stops, chapters = null, walkOrder = null, walk = null, nextStopId = null, onSelect }) {
   if (walkOrder?.length) return <WalkingTrail stops={walkOrder} walk={walk} nextStopId={nextStopId} onSelect={onSelect} />;
 
   const ordered = [...(stops ?? [])].sort((a, b) => a.sequence_index - b.sequence_index);
   if (ordered.length === 0) return null;
 
-  const path = trailPath(ordered);
+  const paths = chapters?.length
+    ? chapters.map((chapter) => trailPath([...chapter.stops].sort((a, b) => a.sequence_index - b.sequence_index)))
+    : [trailPath(ordered)];
 
   return (
     <>
       {/* Dashed and thinner than the walking route, deliberately — see above. */}
-      <RouteLine id="story-trail" positions={path} dashed color="#7cc4ff" />
+      {paths.map((path, index) => (
+        <RouteLine key={`story-${index}`} id={`story-trail-${index}`} positions={path} dashed color="#7cc4ff" />
+      ))}
 
       {ordered.map((stop) => {
         const walkable = isWalkableStop(stop);

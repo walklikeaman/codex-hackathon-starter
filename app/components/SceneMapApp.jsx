@@ -59,6 +59,8 @@ import {
 import WorkProfile from "./WorkProfile.jsx";
 import { isWalkableStop, trailStops } from "../lib/story-trail.mjs";
 import { onFootNote, orderTrail, TRAIL_ORDER, trailOrderNote, walkRuns } from "../lib/trail-order.mjs";
+import { defaultChapter, trailChapters } from "../lib/trail-chapters.mjs";
+import { ALL_CITIES } from "../lib/city-gazetteer.mjs";
 import { normalizePlaceName } from "../lib/place-dedup.mjs";
 import { parseLetterboxdArchive } from "../lib/letterboxd-archive.mjs";
 import { libraryImportSummary, matchLibrary } from "../lib/library-match.mjs";
@@ -1622,6 +1624,10 @@ export default function SceneMapApp() {
   // walking it that way costs.
   const [trailOrder, setTrailOrder] = useState(TRAIL_ORDER.story);
   const [trailWalk, setTrailWalk] = useState({ routes: [], rides: [] });
+  // Which city chapter is walked (#74); null until the reader picks one, so each new
+  // trail opens on its own best chapter.
+  const [trailChapterIndex, setTrailChapterIndex] = useState(null);
+  useEffect(() => { setTrailChapterIndex(null); }, [graphWorkId]);
 
   // "My films only", decided here and nowhere else. The library is in localStorage and
   // never reaches the server ([[personal-library]]), so the server cannot filter by it —
@@ -1865,12 +1871,21 @@ export default function SceneMapApp() {
   // place list (no order; the next stop is the nearest).
   // Only somewhere you can walk TO. Routing a walker to a city centroid would send
   // them to an arbitrary point that no scene happened at.
-  const walkableTrail = useMemo(() => trailStopList.filter(isWalkableStop), [trailStopList]);
-  const walkStopsAreStory = walkableTrail.length > 0;
+  //
+  // A trail across cities is walked one city at a time (#74): the order switch, its note
+  // and the walk all work inside the chosen chapter.
+  const trailChapterList = useMemo(() => trailChapters(trailStopList, { cities: ALL_CITIES }), [trailStopList]);
+  const activeChapter = trailChapterList[trailChapterIndex ?? defaultChapter(trailChapterList, isWalkableStop)] ?? null;
+  const walkableTrail = useMemo(
+    () => (activeChapter?.stops ?? trailStopList).filter(isWalkableStop),
+    [activeChapter, trailStopList],
+  );
+  const walkStopsAreStory = useMemo(() => trailStopList.some(isWalkableStop), [trailStopList]);
   // Two stops are one walk either way round; the switch is offered from three.
   const trailOrderable = walkableTrail.length >= 3;
   const walkStops = useMemo(() => {
-    if (walkableTrail.length > 0) return orderTrail(walkableTrail, trailOrderable ? trailOrder : TRAIL_ORDER.story);
+    // A chapter with nothing walkable walks nothing, rather than another chapter's places.
+    if (walkStopsAreStory) return orderTrail(walkableTrail, trailOrderable ? trailOrder : TRAIL_ORDER.story);
     // The same rule for the fallback. It was applied to the story trail only, so a
     // film's list of places walked the reader to "London" — the city's centroid.
     return trailPlaces
@@ -1882,7 +1897,7 @@ export default function SceneMapApp() {
         position: [place.lat, place.lng],
         sentence: place.sentence ?? null,
       }));
-  }, [walkableTrail, trailOrderable, trailOrder, trailPlaces]);
+  }, [walkStopsAreStory, walkableTrail, trailOrderable, trailOrder, trailPlaces]);
 
   // The walking order on the streets: each stretch a person walks is asked of the same
   // router every other walk uses, and the legs between stretches are rides, drawn as such.
@@ -2965,6 +2980,7 @@ export default function SceneMapApp() {
 
           <StoryTrail
             stops={trailStopList}
+            chapters={trailChapterList}
             walkOrder={walkingTrail}
             walk={trailWalk}
             nextStopId={nextStopId}
@@ -2985,6 +3001,22 @@ export default function SceneMapApp() {
               is worse than no option. */}
           {trailScenes.length > 0 && (
             <div className="trail-controls" role="group" aria-label="Story trail">
+              {trailChapterList.length > 1 && (
+                <div className="trail-chapters" role="radiogroup" aria-label="City chapter">
+                  {trailChapterList.map((chapter) => (
+                    <button
+                      key={chapter.index}
+                      type="button"
+                      role="radio"
+                      aria-checked={chapter === activeChapter}
+                      className={chapter === activeChapter ? "is-active" : ""}
+                      onClick={() => { setTrailChapterIndex(chapter.index); setMapCenter(chapter.centre); }}
+                    >
+                      {chapter.name} <small>{chapter.stops.length}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
               {trailOrderable && (
                 <>
                   <div className="trail-order" role="radiogroup" aria-label="Walk the trail in">
