@@ -4,11 +4,11 @@ import { buildWikidataEntitiesUrl, isWikidataId } from "../../../lib/location-se
 import { externalIdsFromEntity } from "../../../lib/work-artwork.mjs";
 import { ratingRows, ratingsFromOmdb } from "../../../lib/work-ratings.mjs";
 import { enrichGuard } from "../../../lib/enrich-auth.mjs";
+import { USER_AGENT } from "../../../lib/user-agent.mjs";
 
 export const runtime = "nodejs";
 
 const noStoreHeaders = { "Cache-Control": "private, no-store" };
-const USER_AGENT = "GloryMap/1.1 (https://codex-hackathon-starter.vercel.app/)";
 const OMDB_BASE_URL = "https://www.omdbapi.com/";
 const MAX_WORKS = 40;
 

@@ -16,8 +16,7 @@
 
 import { isWikidataId, wikidataId } from "../location-search.mjs";
 
-const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
-const USER_AGENT = "GloryMap/1.1 (https://codex-hackathon-starter.vercel.app/)";
+import { USER_AGENT, WIKIDATA_SPARQL as WIKIDATA_ENDPOINT } from "../user-agent.mjs";
 
 // Wikidata reverse-lookup properties, verified live:
 //   P4947 TMDb movie · P4983 TMDb TV series · P345 IMDb · P212 ISBN-13 ·

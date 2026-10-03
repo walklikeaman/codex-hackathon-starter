@@ -21,11 +21,12 @@ import {
 } from "../../lib/wikipedia-source.mjs";
 import { enrichGuard } from "../../lib/enrich-auth.mjs";
 import { createModelClient, parseStructured, TIERS } from "../../lib/model-client.mjs";
+import { USER_AGENT } from "../../lib/user-agent.mjs";
 
 export const runtime = "nodejs";
 
 const noStoreHeaders = { "Cache-Control": "private, no-store" };
-const WIKIPEDIA = { "User-Agent": "GloryMap/1.0 (story trail ordering)" };
+const WIKIPEDIA = { "User-Agent": USER_AGENT };
 
 // Three passes over the same plot. Each quote is checked against the text, so their union
 // cannot add a claim the plot does not support — it only recovers what one pass missed.

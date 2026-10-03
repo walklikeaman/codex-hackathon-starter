@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { cityRadiusKm, isWikidataId } from "../../lib/location-search.mjs";
+import { USER_AGENT } from "../../lib/user-agent.mjs";
+import { upstreamFailed } from "../../lib/upstream-error.mjs";
 
 export const runtime = "nodejs";
 
@@ -23,7 +25,7 @@ export async function GET(request) {
       headers: {
         Accept: "application/json",
         "Accept-Language": "en",
-        "User-Agent": "GloryMap/1.0 (city search for story locations)",
+        "User-Agent": USER_AGENT,
       },
       next: { revalidate: 86400 },
       signal: AbortSignal.timeout(6000),
@@ -62,10 +64,6 @@ export async function GET(request) {
     );
   } catch (error) {
     console.error("City search failed", error);
-    const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
-    return NextResponse.json(
-      { error: timedOut ? "City search timed out" : "Unable to search for a city" },
-      { status: timedOut ? 504 : 502 },
-    );
+    return upstreamFailed(error, { timeoutMessage: "City search timed out", failureMessage: "Unable to search for a city" });
   }
 }

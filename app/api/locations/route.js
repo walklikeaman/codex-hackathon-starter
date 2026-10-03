@@ -39,6 +39,8 @@ import { DISPLAY, gradePlace } from "../../lib/place-grade.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { MATCHED_BY, selectSubmissionPlaces } from "../../lib/submission-places.mjs";
 import { normalizeWorkTitle } from "../../lib/content-graph.mjs";
+import { USER_AGENT, WIKIDATA_SPARQL } from "../../lib/user-agent.mjs";
+import { upstreamFailed } from "../../lib/upstream-error.mjs";
 
 // How many queue rows one work may contribute. Person of Interest alone has 961.
 const MAX_SUBMISSION_PLACES = 12;
@@ -160,13 +162,11 @@ function gradeLocations(locations) {
 // node:crypto (via scene-match-token) requires the Node runtime, not edge.
 export const runtime = "nodejs";
 
-const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
 // Every kind, by default. It was "film", and nothing on screen said so: a visitor could
 // not see a single series or book location in this panel and was never told one existed
 // ([[location-search]] EVERY_KIND). A default that narrows silently is a filter nobody
 // can find to turn off.
 const DEFAULTS = { lat: 51.5072, lng: -0.1276, radius: 15, limit: 30, kind: "all" };
-const USER_AGENT = "GloryMap/1.1 (https://codex-hackathon-starter.vercel.app/)";
 const ENTITY_CHUNK_SIZE = 5;
 
 async function searchWorks(query) {
@@ -195,7 +195,7 @@ async function searchWorks(query) {
   if (!fameQuery) return matches;
 
   try {
-    const endpoint = new URL(WIKIDATA_ENDPOINT);
+    const endpoint = new URL(WIKIDATA_SPARQL);
     endpoint.searchParams.set("query", fameQuery);
     endpoint.searchParams.set("format", "json");
     const fameResponse = await fetch(endpoint, {
@@ -234,7 +234,7 @@ async function searchTypedWorks(query) {
 }
 
 async function fetchLocationBindings(query) {
-  const endpoint = new URL(WIKIDATA_ENDPOINT);
+  const endpoint = new URL(WIKIDATA_SPARQL);
   endpoint.searchParams.set("query", query);
   endpoint.searchParams.set("format", "json");
 
@@ -664,14 +664,13 @@ export async function GET(request) {
       { headers: { "Cache-Control": SCENE_MATCH_TOKEN_CACHE_CONTROL } },
     );
   } catch (error) {
-    const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
     console.error("Wikidata locations request failed", {
       name: error?.name,
       message: error?.message,
     });
-    return NextResponse.json(
-      { error: timedOut ? "Location search timed out. Try the title search again." : "Unable to retrieve locations from Wikidata" },
-      { status: timedOut ? 504 : 502 },
-    );
+    return upstreamFailed(error, {
+      timeoutMessage: "Location search timed out. Try the title search again.",
+      failureMessage: "Unable to retrieve locations from Wikidata",
+    });
   }
 }

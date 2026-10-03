@@ -29,6 +29,7 @@ import { TOUR_BUDGETS } from "../../../lib/timed-tour.mjs";
 import { MAX_ROWS_PER_RESPONSE } from "../../../lib/map-points.mjs";
 import { buildFootRouteUrl, parseFootRoute } from "../../../lib/walking-route.mjs";
 import { finiteOrNull } from "../../../lib/numbers.mjs";
+import { USER_AGENT } from "../../../lib/user-agent.mjs";
 
 export const runtime = "nodejs";
 
@@ -131,7 +132,7 @@ async function walkFor(stops, { fetchImpl, routerUrl, logError }) {
       cache: "no-store",
       headers: {
         Accept: "application/json",
-        "User-Agent": "GloryMap-Hackathon/1.0 (+https://github.com/walklikeaman/codex-hackathon-starter)",
+        "User-Agent": USER_AGENT,
       },
       signal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
     });

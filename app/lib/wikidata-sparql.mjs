@@ -13,7 +13,9 @@
 //
 // Related: [[fandom-discovery]].
 
-export const WIKIDATA_SPARQL = "https://query.wikidata.org/sparql";
+import { CONTACT_USER_AGENT, WIKIDATA_SPARQL } from "./user-agent.mjs";
+
+export { WIKIDATA_SPARQL };
 
 // Measured, not chosen: 400 ids per query answers in one go, where the unbounded scan did
 // not answer at all.
@@ -41,7 +43,7 @@ export function valuesClause(ids, pattern = /^tt\d+$/) {
 export function createSparqlClient({
   fetchImpl = fetch,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-  userAgent = "GloryMap/1.0 (filming locations; nakonechnyi.n@gmail.com)",
+  userAgent = CONTACT_USER_AGENT,
   attempts = ATTEMPTS,
   gapMs = QUERY_GAP_MS,
 } = {}) {

@@ -6,6 +6,8 @@
 // and under what terms. This module fetches exactly that, so attribution.mjs's
 // fail-safe has real data to pass instead of always refusing.
 
+import { USER_AGENT } from "./user-agent.mjs";
+
 const COMMONS_API = "https://commons.wikimedia.org/w/api.php";
 
 // The filename inside a Special:FilePath URL, which is what P18 gives us.
@@ -88,7 +90,7 @@ export function parseCommonsMetadata(payload) {
 // the fail-safe hides them rather than publishing them uncredited.
 export async function fetchCommonsAttribution(urls, {
   fetchImpl = (...args) => fetch(...args),
-  userAgent = "GloryMap/1.1 (https://codex-hackathon-starter.vercel.app/)",
+  userAgent = USER_AGENT,
   signal,
   revalidate = 86400,
 } = {}) {
@@ -173,7 +175,7 @@ export function parseCommonsGeosearch(payload) {
 
 export async function fetchCommonsNearby({ lat, lng, radius, limit }, {
   fetchImpl = (...args) => fetch(...args),
-  userAgent = "GloryMap/1.1 (https://codex-hackathon-starter.vercel.app/)",
+  userAgent = USER_AGENT,
   signal,
   revalidate = 86400,
 } = {}) {

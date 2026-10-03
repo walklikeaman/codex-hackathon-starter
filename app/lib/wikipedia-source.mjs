@@ -18,12 +18,12 @@
 //   * `prop=sections` is deprecated in favour of `prop=tocdata`.
 
 import { integerOrNull } from "./numbers.mjs";
+import { CONTACT_USER_AGENT } from "./user-agent.mjs";
 
 // One identity for every outbound call. Wikimedia requires a real contact; a
 // placeholder domain is itself a policy violation, and copying a browser's UA is
 // treated as malicious rather than merely rude.
-export const USER_AGENT =
-  "GloryMap/1.0 (https://codex-hackathon-starter.vercel.app/; nakonechnyi.n@gmail.com) node-fetch/3";
+export const USER_AGENT = CONTACT_USER_AGENT;
 
 // How far behind a replica may be before we agree to be turned away.
 //

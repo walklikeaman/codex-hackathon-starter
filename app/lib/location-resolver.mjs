@@ -30,10 +30,10 @@ import {
   workKindConfig,
 } from "./location-search.mjs";
 import { studioNameHint } from "./studio-lots.mjs";
+import { USER_AGENT } from "./user-agent.mjs";
 
 export const RESOLVER_VERSION = "wikidata-stage0.1";
 
-const USER_AGENT = "GloryMap/1.1 (https://codex-hackathon-starter.vercel.app/)";
 
 // Target types for Stage 1, every one verified live against Wikidata rather than
 // taken from the spec — the spec's studio id (Q1107679) is "animation studio", which

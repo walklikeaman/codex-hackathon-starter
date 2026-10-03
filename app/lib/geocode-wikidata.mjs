@@ -16,8 +16,9 @@
 import { haversineKm } from "./geo.mjs";
 import { finiteOrNull } from "./numbers.mjs";
 import { normalizePlaceName } from "./place-dedup.mjs";
+import { WIKIDATA_SPARQL } from "./user-agent.mjs";
 
-export const WIKIDATA_SPARQL = "https://query.wikidata.org/sparql";
+export { WIKIDATA_SPARQL };
 
 // Measured, not guessed. A 40-name batch returns HTTP 504: the label|altLabel union
 // across the whole geographic class tree is expensive per name, and WDQS hard-fails a

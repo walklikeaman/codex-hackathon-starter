@@ -25,13 +25,13 @@ import {
   WIKIDATA_SPARQL,
 } from "./place-search.mjs";
 import { metresApart, namesMatch } from "./place-dedup.mjs";
+import { CONTACT_USER_AGENT } from "./user-agent.mjs";
 
 export const INVERTED_RELATION_KIND = "candidate";
 export const INVERTED_EVIDENCE_SOURCE = "wikipedia_mention";
 
 // Wikimedia requires a real contact; a placeholder domain is itself a policy violation.
-export const USER_AGENT =
-  "GloryMap/1.1 (https://codex-hackathon-starter.vercel.app/; nakonechnyi.n@gmail.com)";
+export const USER_AGENT = CONTACT_USER_AGENT;
 
 // Two round trips per work search, and no more. This runs on the interactive path
 // behind somebody waiting for a map, so the budget is one fan-out and one search —
