@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
+import { modelFailed, notConfigured, readJsonBody } from "../../lib/ai-route.mjs";
 import { createSpeechRequest } from "../../lib/voice-guide.mjs";
 import { ttsCacheTarget, TTS_BUCKET } from "../../lib/tts-cache.mjs";
 
@@ -52,7 +53,7 @@ export function createNarrationHandler({
   const makeCache = createCache ?? (() => defaultCreateCache(env));
 
   return async function POST(request) {
-    const body = await request.json().catch(() => null);
+    const body = await readJsonBody(request);
 
     let speechRequest;
     try {
@@ -91,7 +92,7 @@ export function createNarrationHandler({
     }
 
     if (!env.OPENAI_API_KEY) {
-      return Response.json({ error: "The OpenAI API key is not configured." }, { status: 503 });
+      return notConfigured("The OpenAI API key is not configured.");
     }
 
     try {
@@ -112,14 +113,9 @@ export function createNarrationHandler({
 
       return new Response(bytes, { status: 200, headers: audioHeaders("miss") });
     } catch (error) {
-      logError("OpenAI narration generation failed", {
-        name: error?.name,
-        status: error?.status,
+      return modelFailed({
+        error, label: "OpenAI narration generation failed", message: "Could not generate the voice guide. Try again.", log: logError,
       });
-      return Response.json(
-        { error: "Could not generate the voice guide. Try again." },
-        { status: 502 },
-      );
     }
   };
 }
