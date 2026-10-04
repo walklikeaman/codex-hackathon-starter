@@ -200,3 +200,26 @@ export function distanceFromYou(position, location, { isDemo = false } = {}) {
   if (metres === null) return null;
   return `${formatDistance(metres)} from ${isDemo ? "the demo location" : "you"}`;
 }
+
+// A level every three places (#22). Like the points, it is read off the visits.
+export const GLORY_PER_LEVEL = GLORY_PER_VISIT * 3;
+
+export function levelOf(glory) {
+  const points = Math.max(0, Number(glory) || 0);
+  const level = 1 + Math.floor(points / GLORY_PER_LEVEL);
+  return { level, toNext: level * GLORY_PER_LEVEL - points };
+}
+
+// The collection screen (#22): what the reader wants to see and what they have seen,
+// newest first, and the works those visits were for.
+export function collectionOf(marks) {
+  const list = (map) => Object.entries(map ?? {})
+    .map(([key, mark]) => ({ key, ...mark }))
+    .sort((left, right) => right.at - left.at);
+  const visited = list(marks?.visited);
+  return {
+    want: list(marks?.want),
+    visited,
+    works: [...new Set(visited.map((visit) => visit.film).filter(Boolean))],
+  };
+}
