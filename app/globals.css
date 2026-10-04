@@ -2817,6 +2817,14 @@ figcaption a {
     -webkit-overflow-scrolling: touch;
   }
 
+  /* The sheet scrolls; its sections must not shrink to fit it. In a flex column a child
+     with its own overflow has a minimum height of zero, so the film strip and the
+     location list — the two that scroll themselves — were squeezed to 4 px and 0 px:
+     on a phone the list of places was not on screen at all (measured 2026-10-04, #114). */
+  .command-panel.is-open > * {
+    flex-shrink: 0;
+  }
+
   /* The detail sheet sits above the collapsed handle rather than fighting it, and
      is capped so a long card can never swallow the map again. */
   .location-sheet {
@@ -3089,7 +3097,13 @@ figcaption a {
   display: grid;
   gap: 8px;
   justify-items: center;
+  /* The column is wider than its buttons, and on a phone it spans the top of the map:
+     as a box it swallowed every drag that started there (#114). Only its contents
+     take the touch. */
+  pointer-events: none;
 }
+
+.walk-controls > * { pointer-events: auto; }
 
 .walk-start,
 .walk-active {
@@ -3199,8 +3213,10 @@ figcaption a {
      is open. The top of the map is the only free edge, so that is where it goes. */
   /* It stops short of the right edge, where the map's own buttons are: the story trail's
      card is opaque, and at full width it sat on zoom and "my location". */
+  /* Below "Only my films", which also lives at the top centre of the map: at 12 px the
+     listen button sat on top of it and hid all but its count (#114). */
   .walk-controls {
-    top: calc(12px + env(safe-area-inset-top));
+    top: calc(68px + env(safe-area-inset-top));
     bottom: auto;
     left: 12px;
     right: 64px;
@@ -4589,4 +4605,71 @@ figcaption a {
   margin: 0.5rem 0 0;
   font-size: 0.74rem;
   color: rgba(236, 232, 225, 0.62);
+}
+
+/* Wide enough for a map beside the panel, too short or too narrow for the desktop
+   layout: a tablet held upright, a phone on its side (#114). The bottom sheet rose to
+   78% of the height there and left 5% of a landscape phone's map; opened, the panel
+   is a side sheet instead, and the map keeps the rest of the width. */
+@media (max-width: 860px) and (min-width: 640px) {
+  .command-panel.is-open {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: auto;
+    width: min(380px, 50vw);
+    max-height: none;
+    border-radius: 0 16px 16px 0;
+    border-bottom: 1px solid var(--line);
+    padding-top: calc(8px + env(safe-area-inset-top));
+  }
+
+  /* What sits over the map moves into the map that is left, rather than over the sheet. */
+  .scene-shell:has(.command-panel.is-open) .walk-controls {
+    left: calc(min(380px, 50vw) + 12px);
+  }
+
+  .scene-shell:has(.command-panel.is-open) .map-mine {
+    left: calc(min(380px, 50vw) + (100% - min(380px, 50vw)) / 2);
+  }
+}
+
+/* Above the collapsed sheet, which owns the bottom 60-odd px of a phone: at 2.4rem the
+   legend button sat half under the sheet's handle (#114). */
+@media (max-width: 860px) {
+  .map-key { bottom: calc(80px + env(safe-area-inset-bottom)); }
+}
+
+/* A finger, not a cursor: every control is at least 44 px in its short dimension
+   (#114). Measured on 2026-10-04 at 393 px, 22 controls were smaller — the map's own
+   buttons at 38, the place list's rows at 28, the sort select at 23, the directory
+   link at 15. A mouse is precise enough for the desktop sizes, so they stay. */
+@media (pointer: coarse) {
+  .map-control {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .panel-handle,
+  .map-key-toggle,
+  .map-mine,
+  .directory-link,
+  .account-button,
+  .nearby-cta,
+  .notable-row,
+  .films-here-more,
+  .films-here-modes button,
+  .graph-toggle,
+  .kind-chip,
+  .budget-options button,
+  .timed-tour-button,
+  .layers-console-summary,
+  .work-search input,
+  .work-search select,
+  .work-filter select,
+  .list-control select {
+    min-height: 44px;
+  }
+
+  .location-row .icon-button { min-width: 44px; }
 }
