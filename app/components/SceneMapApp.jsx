@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   CheckCircle2,
+  Heart,
   BookOpen,
   Clapperboard,
   Copy,
@@ -59,6 +60,9 @@ import {
 import WorkProfile from "./WorkProfile.jsx";
 import { isWalkableStop, trailStops } from "../lib/story-trail.mjs";
 import { onFootNote, orderTrail, TRAIL_ORDER, trailOrderNote, walkRuns } from "../lib/trail-order.mjs";
+import {
+  checkIn, checkInMessage, distanceFromYou, emptyMarks, isWanted, loadMarks, saveMarks, toggleWant, visitOf,
+} from "../lib/place-marks.mjs";
 import { defaultChapter, trailChapters } from "../lib/trail-chapters.mjs";
 import { ALL_CITIES } from "../lib/city-gazetteer.mjs";
 import { normalizePlaceName } from "../lib/place-dedup.mjs";
@@ -1032,6 +1036,12 @@ export default function SceneMapApp() {
   // without the fetch's debounce. Null until the map has drawn once.
   const [mapBounds, setMapBounds] = useState(null);
   const [placeTab, setPlaceTab] = useState(DEFAULT_PLACE_TAB);
+  // "Want to visit" and "I'm here" (#23), kept in this browser only. Read after mount, so
+  // the server's render and the first client render agree.
+  const [placeMarks, setPlaceMarks] = useState(emptyMarks);
+  const [checkInNote, setCheckInNote] = useState(null);
+  const [checkingIn, setCheckingIn] = useState(false);
+  useEffect(() => { setPlaceMarks(loadMarks(window.localStorage)); }, []);
   const [copiedCoordinate, setCopiedCoordinate] = useState(false);
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
@@ -1809,7 +1819,40 @@ export default function SceneMapApp() {
   useEffect(() => {
     setPlaceTab(tabForLocation(DEFAULT_PLACE_TAB, true));
     setCopiedCoordinate(false);
+    setCheckInNote(null);
   }, [activeLocation?.id]);
+
+  function updateMarks(next) {
+    setPlaceMarks(next);
+    saveMarks(window.localStorage, next);
+  }
+
+  // "I'm here" asks for a fresh, precise position rather than trusting the last one: the
+  // last one may be the demo location, or from before the walk.
+  function checkInHere(location) {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setCheckInNote(checkInMessage({ status: "no_position" }));
+      return;
+    }
+    setCheckingIn(true);
+    setCheckInNote(null);
+    navigator.geolocation.getCurrentPosition(
+      (fix) => {
+        const coords = [fix.coords.latitude, fix.coords.longitude];
+        setUserPosition(coords);
+        setUserIsDemo(false);
+        const { marks, result } = checkIn(placeMarks, location, { coords, accuracy: fix.coords.accuracy });
+        if (marks !== placeMarks) updateMarks(marks);
+        setCheckInNote(checkInMessage(result));
+        setCheckingIn(false);
+      },
+      (error) => {
+        setCheckInNote((GEOLOCATION_ERRORS[error.code] ?? GEOLOCATION_ERRORS[2]).message);
+        setCheckingIn(false);
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
+    );
+  }
 
   const activeCoordinate = coordinateToCopy(activeLocation);
   const activeRoute = routeTabState({ location: activeLocation, stops: routeStops });
@@ -4020,6 +4063,37 @@ export default function SceneMapApp() {
                 )}
               </div>
             </div>
+            {userPosition && distanceFromYou(userPosition, activeLocation, { isDemo: userIsDemo }) && (
+              <p className="place-distance">{distanceFromYou(userPosition, activeLocation, { isDemo: userIsDemo })}</p>
+            )}
+            <div className="place-marks">
+              <button
+                type="button"
+                className={`ghost-button${isWanted(placeMarks, activeLocation) ? " is-on" : ""}`}
+                aria-pressed={isWanted(placeMarks, activeLocation)}
+                onClick={() => updateMarks(toggleWant(placeMarks, activeLocation))}
+              >
+                <Heart size={16} aria-hidden="true" />
+                {isWanted(placeMarks, activeLocation) ? "On your list" : "Want to visit"}
+              </button>
+              {visitOf(placeMarks, activeLocation) ? (
+                <span className="place-visited">
+                  <Check size={16} aria-hidden="true" />
+                  Visited {new Date(visitOf(placeMarks, activeLocation).at).toLocaleDateString()}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={checkingIn}
+                  onClick={() => checkInHere(activeLocation)}
+                >
+                  <MapPin size={16} aria-hidden="true" />
+                  {checkingIn ? "Finding you…" : "I'm here"}
+                </button>
+              )}
+            </div>
+            {checkInNote && <p className="place-marks-note" role="status">{checkInNote}</p>}
             {activeLocation.precisionCaveat && (
               <p className="precision-caveat" role="note">
                 <Maximize2 size={15} aria-hidden="true" />

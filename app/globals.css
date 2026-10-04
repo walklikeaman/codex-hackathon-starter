@@ -4673,3 +4673,46 @@ figcaption a {
 
   .location-row .icon-button { min-width: 44px; }
 }
+
+/* "Want to visit" and "I'm here" (#23): two equal buttons under the place's name. */
+.place-distance {
+  margin: -4px 0 10px 31px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.place-marks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.place-marks .ghost-button,
+.place-visited {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 0.85rem;
+}
+
+.place-marks .ghost-button.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.place-marks .ghost-button.is-on svg { fill: currentColor; }
+
+.place-visited {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--green);
+}
+
+.place-marks-note {
+  margin: -2px 0 10px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
