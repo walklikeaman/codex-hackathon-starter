@@ -6,12 +6,15 @@ import {
   CHECK_IN_RADIUS_M,
   checkIn,
   checkInMessage,
+  collectionOf,
   demoCheckIn,
   distanceFromYou,
   emptyMarks,
+  GLORY_PER_LEVEL,
   GLORY_PER_VISIT,
   gloryOf,
   isWanted,
+  levelOf,
   loadMarks,
   MARKS_KEY,
   progressOf,
@@ -153,4 +156,24 @@ test("a place visited under one film's row is visited under another's", () => {
   const wanted = toggleWant(emptyMarks(), jackal);
   assert.equal(isWanted(wanted, loveActually), true);
   assert.equal(isWanted(toggleWant(wanted, loveActually), jackal), false, "unmarking either row unmarks the place");
+});
+
+// --- profile and collection (#22) ---------------------------------------------
+
+test("a level every three places, with what is left to the next", () => {
+  assert.deepEqual(levelOf(0), { level: 1, toNext: GLORY_PER_LEVEL });
+  assert.deepEqual(levelOf(100), { level: 1, toNext: 50 });
+  assert.deepEqual(levelOf(150), { level: 2, toNext: 150 });
+  assert.deepEqual(levelOf(-5), { level: 1, toNext: 150 });
+});
+
+test("the collection lists wants and visits newest first, and the works visited", () => {
+  let marks = toggleWant(emptyMarks(), bankside, 5);
+  marks = checkIn(marks, tate, here, { now: 10 }).marks;
+  marks = demoCheckIn(marks, { id: "c", place: "Somewhere", film: "Skyfall", position: [51.6, -0.2] }, { now: 20 }).marks;
+  const collection = collectionOf(marks);
+  assert.deepEqual(collection.want.map((entry) => entry.place), ["Bankside"]);
+  assert.deepEqual(collection.visited.map((entry) => entry.place), ["Somewhere", "Tate Modern"]);
+  assert.deepEqual(collection.works, ["Skyfall", "Children of Men"]);
+  assert.deepEqual(collectionOf(emptyMarks()), { want: [], visited: [], works: [] });
 });

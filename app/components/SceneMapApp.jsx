@@ -47,6 +47,8 @@ import {
   zoomForRadius,
 } from "../lib/nearby.mjs";
 import StoryTrail from "./StoryTrail.jsx";
+import { AppNav, SectionSheet } from "./AppSections.jsx";
+import { loadSuggestions, saveSuggestions } from "../lib/suggestions.mjs";
 import WalkControls from "./WalkControls.jsx";
 import {
   DEFAULT_PLACE_TAB,
@@ -1044,6 +1046,11 @@ export default function SceneMapApp() {
   const [checkInNote, setCheckInNote] = useState(null);
   const [checkingIn, setCheckingIn] = useState(false);
   useEffect(() => { setPlaceMarks(loadMarks(window.localStorage)); }, []);
+  // Which section is open (#22). The others are views over this component's state, so
+  // switching never resets the city, the open place or the route.
+  const [section, setSection] = useState("map");
+  const [suggestions, setSuggestions] = useState([]);
+  useEffect(() => { setSuggestions(loadSuggestions(window.localStorage)); }, []);
   const [copiedCoordinate, setCopiedCoordinate] = useState(false);
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
@@ -2715,7 +2722,7 @@ export default function SceneMapApp() {
   }
 
   return (
-    <main className="scene-shell">
+    <main className={`scene-shell${section === "map" ? "" : " is-in-section"}`}>
       <section className="map-stage" aria-label="GloryMap locations map">
         {/* The furniture every map has, down the right edge where every map puts it.
             Before this the map had NO zoom buttons (`zoomControl={false}` with nothing in
@@ -3983,7 +3990,7 @@ export default function SceneMapApp() {
         </p>
       </aside>
 
-      {activeLocation && (
+      {activeLocation && section === "map" && (
         <section className="location-sheet" aria-label="Location details">
           {/* A way out. The card had none — no cross, and clicking the map did not dismiss
               it — so a reader who wanted to look at the map itself could not get rid of it.
@@ -4543,6 +4550,28 @@ export default function SceneMapApp() {
           }}
         />
       )}
+
+      <SectionSheet
+        section={section}
+        onClose={() => setSection("map")}
+        onShow={(position) => { setSection("map"); showOnMap(position); }}
+        routeStops={routeStops}
+        routeResult={routeResult}
+        routeStatus={routeStatus}
+        onBuildRoute={() => { setSection("map"); buildRoute(); }}
+        timedTour={timedTour}
+        onStartTimedTour={() => { setSection("map"); startTimedTour(); }}
+        restoredWalk={restoredWalk}
+        marks={placeMarks}
+        onMarks={updateMarks}
+        accountUser={accountUser}
+        suggestions={suggestions}
+        onSuggestions={(next) => { setSuggestions(next); saveSuggestions(window.localStorage, next); }}
+        mapCenter={mapCenter}
+        userPosition={userPosition}
+        userIsDemo={userIsDemo}
+      />
+      <AppNav section={section} onSection={setSection} />
     </main>
   );
 }
