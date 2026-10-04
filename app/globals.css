@@ -4716,3 +4716,23 @@ figcaption a {
   color: var(--muted);
   font-size: 0.8rem;
 }
+
+/* The demo check-in is labelled as one, and looks it: dashed, like everything on this map
+   that stands in for something not confirmed. */
+.place-marks .ghost-button.is-demo { border-style: dashed; }
+
+.place-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: -2px 0 12px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.place-achievement {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+}

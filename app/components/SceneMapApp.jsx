@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Award,
   Check,
   CheckCircle2,
   Heart,
@@ -61,7 +62,8 @@ import WorkProfile from "./WorkProfile.jsx";
 import { isWalkableStop, trailStops } from "../lib/story-trail.mjs";
 import { onFootNote, orderTrail, TRAIL_ORDER, trailOrderNote, walkRuns } from "../lib/trail-order.mjs";
 import {
-  checkIn, checkInMessage, distanceFromYou, emptyMarks, isWanted, loadMarks, saveMarks, toggleWant, visitOf,
+  achievementsOf, checkIn, checkInMessage, demoCheckIn, distanceFromYou, emptyMarks, gloryOf, isWanted, loadMarks,
+  progressOf, saveMarks, toggleWant, visitOf,
 } from "../lib/place-marks.mjs";
 import { defaultChapter, trailChapters } from "../lib/trail-chapters.mjs";
 import { ALL_CITIES } from "../lib/city-gazetteer.mjs";
@@ -1827,6 +1829,14 @@ export default function SceneMapApp() {
     saveMarks(window.localStorage, next);
   }
 
+  // A check-in's outcome, with the achievement it unlocked said at the moment it happens.
+  function recordCheckIn({ marks, result }) {
+    const before = achievementsOf(placeMarks).map((achievement) => achievement.id);
+    if (marks !== placeMarks) updateMarks(marks);
+    const unlocked = achievementsOf(marks).filter((achievement) => !before.includes(achievement.id));
+    setCheckInNote([checkInMessage(result), ...unlocked.map((achievement) => `Achievement unlocked: ${achievement.title}.`)].join(" "));
+  }
+
   // "I'm here" asks for a fresh, precise position rather than trusting the last one: the
   // last one may be the demo location, or from before the walk.
   function checkInHere(location) {
@@ -1841,9 +1851,7 @@ export default function SceneMapApp() {
         const coords = [fix.coords.latitude, fix.coords.longitude];
         setUserPosition(coords);
         setUserIsDemo(false);
-        const { marks, result } = checkIn(placeMarks, location, { coords, accuracy: fix.coords.accuracy });
-        if (marks !== placeMarks) updateMarks(marks);
-        setCheckInNote(checkInMessage(result));
+        recordCheckIn(checkIn(placeMarks, location, { coords, accuracy: fix.coords.accuracy }));
         setCheckingIn(false);
       },
       (error) => {
@@ -4080,7 +4088,19 @@ export default function SceneMapApp() {
                 <span className="place-visited">
                   <Check size={16} aria-hidden="true" />
                   Visited {new Date(visitOf(placeMarks, activeLocation).at).toLocaleDateString()}
+                  {visitOf(placeMarks, activeLocation).demo ? " · demo" : ""}
                 </span>
+              ) : userIsDemo ? (
+                // The stage demo (#19), said on the button: the demo location is not
+                // where anybody is, so this records a visit that is marked as a demo.
+                <button
+                  type="button"
+                  className="ghost-button is-demo"
+                  onClick={() => recordCheckIn(demoCheckIn(placeMarks, activeLocation))}
+                >
+                  <MapPin size={16} aria-hidden="true" />
+                  I&rsquo;m here · demo
+                </button>
               ) : (
                 <button
                   type="button"
@@ -4094,6 +4114,26 @@ export default function SceneMapApp() {
               )}
             </div>
             {checkInNote && <p className="place-marks-note" role="status">{checkInNote}</p>}
+            {(() => {
+              // Progress through this work's places, and what the visits add up to (#19).
+              const progress = progressOf(placeMarks, sourceLocations.filter((location) => location.filmId === activeLocation.filmId));
+              const glory = gloryOf(placeMarks);
+              if (!glory && !progress.visited) return null;
+              return (
+                <p className="place-progress">
+                  {progress.total > 0 && (
+                    <span>Visited {progress.visited} of {progress.total} {progress.total === 1 ? "place" : "places"} from {activeLocation.film} · {progress.percent}%</span>
+                  )}
+                  <span>{glory} Glory</span>
+                  {achievementsOf(placeMarks).map((achievement) => (
+                    <span key={achievement.id} className="place-achievement">
+                      <Award size={14} aria-hidden="true" />
+                      {achievement.title}
+                    </span>
+                  ))}
+                </p>
+              );
+            })()}
             {activeLocation.precisionCaveat && (
               <p className="precision-caveat" role="note">
                 <Maximize2 size={15} aria-hidden="true" />

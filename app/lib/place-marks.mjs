@@ -1,4 +1,6 @@
-// What a reader marks on a place: "want to visit", and "I'm here" (#23).
+// What a reader marks on a place: "want to visit", and "I'm here" (#23), and what the
+// visits add up to — Glory points, progress through a film's places, the first
+// achievement (#19).
 //
 // Both live in this browser and nowhere else, like the walk (walk-store.mjs): they are a
 // person's own plans and footsteps, and there is no account they would have agreed to
@@ -11,6 +13,7 @@
 // the reader knows whether to walk on or to wait for a better fix.
 
 import { isUsableFix } from "./geo-trigger.mjs";
+import { isDuplicatePlace } from "./place-dedup.mjs";
 import { formatDistance, metresBetween } from "./walk-mode.mjs";
 
 export const MARKS_KEY = "scenemap-place-marks";
@@ -65,23 +68,48 @@ export function saveMarks(storage, marks) {
   }
 }
 
-export function isWanted(marks, location) {
+// A place reaches the map from several sources under several ids: Somerset House is
+// Q1344889 on one film's row and a graph uuid on another's. So a mark is found by its key
+// first and then by the rule that decides whether a researched place is already on the
+// map — same entity, same name, or within 50 m (place-dedup.mjs). Without the second
+// step a place visited for one film was unvisited for the next (measured 2026-10-04).
+function asPlace(value) {
+  const position = positionOf(value?.position);
+  return { name: value?.place ?? null, lat: position?.[0], lng: position?.[1], wikidataId: null };
+}
+
+function keyOfMark(map, location) {
   const key = placeKey(location);
-  return Boolean(key && marks?.want?.[key]);
+  if (!key) return null;
+  if (map?.[key]) return key;
+  const here = asPlace(location);
+  return Object.keys(map ?? {}).find((other) => isDuplicatePlace(asPlace(map[other]), here)) ?? null;
+}
+
+export function isWanted(marks, location) {
+  return Boolean(keyOfMark(marks?.want, location));
 }
 
 export function visitOf(marks, location) {
-  const key = placeKey(location);
-  return (key && marks?.visited?.[key]) || null;
+  const key = keyOfMark(marks?.visited, location);
+  return key ? marks.visited[key] : null;
 }
 
 export function toggleWant(marks, location, now = Date.now()) {
   const key = placeKey(location);
   if (!key) return marks;
   const want = { ...marks.want };
-  if (want[key]) delete want[key];
+  const existing = keyOfMark(want, location);
+  if (existing) delete want[existing];
   else want[key] = markOf(location, now);
   return { ...marks, want };
+}
+
+function withoutWant(marks, location) {
+  const want = { ...marks.want };
+  const existing = keyOfMark(want, location);
+  if (existing) delete want[existing];
+  return want;
 }
 
 // fix: { coords: [lat, lng], accuracy } as the walk's watcher builds it.
@@ -89,6 +117,9 @@ export function checkIn(marks, location, fix, { isDemo = false, now = Date.now()
   const key = placeKey(location);
   const target = positionOf(location?.position);
   if (!key || !target) return { marks, result: { status: "no_place" } };
+  // A second visit is a visit, not a second reward: nothing is rewritten, so the first
+  // date and the points it earned stay what they were.
+  if (visitOf(marks, location)) return { marks, result: { status: "already_visited" } };
   if (isDemo) return { marks, result: { status: "demo_position" } };
   if (!positionOf(fix?.coords)) return { marks, result: { status: "no_position" } };
   if (!isUsableFix(fix)) return { marks, result: { status: "too_vague", accuracy: Math.round(fix.accuracy) } };
@@ -97,18 +128,64 @@ export function checkIn(marks, location, fix, { isDemo = false, now = Date.now()
   if (metres > CHECK_IN_RADIUS_M) return { marks, result: { status: "too_far", metres } };
 
   // Being here is also no longer wanting to be here.
-  const want = { ...marks.want };
-  delete want[key];
   return {
-    marks: { want, visited: { ...marks.visited, [key]: { ...markOf(location, now), metres } } },
+    marks: { want: withoutWant(marks, location), visited: { ...marks.visited, [key]: { ...markOf(location, now), metres } } },
     result: { status: "checked_in", metres },
   };
+}
+
+// The stage demo (#19): with the demo location switched on, a place can be checked into
+// without standing at it — and the visit says so for ever after. It is the only way a
+// visit is recorded without a position, and it is never mistaken for a real one.
+export function demoCheckIn(marks, location, { now = Date.now() } = {}) {
+  const key = placeKey(location);
+  if (!key) return { marks, result: { status: "no_place" } };
+  if (visitOf(marks, location)) return { marks, result: { status: "already_visited" } };
+  return {
+    marks: { want: withoutWant(marks, location), visited: { ...marks.visited, [key]: { ...markOf(location, now), demo: true } } },
+    result: { status: "checked_in", demo: true },
+  };
+}
+
+// What the visits add up to. Derived, never stored: points kept in a counter could drift
+// from the visits they were paid for, and a visit is keyed by its place, so the same
+// place can never pay twice.
+export const GLORY_PER_VISIT = 50;
+
+export function gloryOf(marks) {
+  return Object.keys(marks?.visited ?? {}).length * GLORY_PER_VISIT;
+}
+
+export const ACHIEVEMENTS = Object.freeze([
+  { id: "first-place", title: "First place", earnedBy: (visits) => visits.length >= 1 },
+]);
+
+export function achievementsOf(marks) {
+  const visits = Object.values(marks?.visited ?? {}).sort((left, right) => left.at - right.at);
+  return ACHIEVEMENTS.filter((achievement) => achievement.earnedBy(visits))
+    .map(({ id, title }) => ({ id, title, at: visits[0].at }));
+}
+
+// "Visited X of Y" over a set of places — the film's, on the card — counted by place,
+// so two rows of one place are one place.
+export function progressOf(marks, locations) {
+  const places = [];
+  for (const location of Array.isArray(locations) ? locations : []) {
+    if (!placeKey(location)) continue;
+    if (places.some((other) => placeKey(other) === placeKey(location) || isDuplicatePlace(asPlace(other), asPlace(location)))) continue;
+    places.push(location);
+  }
+  const visited = places.filter((location) => visitOf(marks, location)).length;
+  return { visited, total: places.length, percent: places.length ? Math.round((100 * visited) / places.length) : 0 };
 }
 
 // What the card says after the reader taps "I'm here".
 export function checkInMessage(result) {
   switch (result?.status) {
-    case "checked_in": return "Checked in — you were here.";
+    case "checked_in": return result.demo
+      ? `Demo check-in recorded · +${GLORY_PER_VISIT} Glory.`
+      : `Checked in — you were here · +${GLORY_PER_VISIT} Glory.`;
+    case "already_visited": return "Already visited — a place counts once.";
     case "too_far": return `Not yet: your phone puts you ${formatDistance(result.metres)} away.`;
     case "too_vague": return `Your position is only good to ${result.accuracy} m — try again in the open.`;
     case "demo_position": return "The demo location is not where you are. Use your own location to check in.";
