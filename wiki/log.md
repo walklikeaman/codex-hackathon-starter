@@ -7,6 +7,66 @@ Tip: `grep "^## \[" log.md | head -20` shows recent activity.
 
 ---
 
+## [2026-10-04] update | The map gets sections, visits, Glory — and "Add" stays on the device on purpose
+**Object**: `app/components/AppSections.jsx`, `app/lib/place-marks.mjs`, `app/lib/suggestions.mjs`, the place card.
+**Scenario**: feature
+**Outcome**: ✅ success
+**What happened**: #23, #19 and #22 closed. The place card has "Want to visit", "I'm here" and the distance from you. "I'm here" only counts within 150 m with a fix better than 120 m (the walk's own accuracy gate). The demo location never counts, except through the button labelled "I'm here · demo", whose visits stay marked demo. Glory (50 per place), level (every 150) and the "First place" achievement are **derived from the visits, never stored**, so a place cannot pay twice and the numbers cannot drift. A bottom bar on phones (a rail on desktop) opens Map / Routes / Add / Collection / Profile without resetting the city, the open place or the route.
+
+Gotcha worth keeping: one place reaches the map under several ids (Somerset House is Q1344889 on one film's row and another id on the next). Marks are matched by key **and** by `isDuplicatePlace`, or a place visited for one film reads unvisited for the next.
+
+**Open decision (owner's):** "Add a place" saves the suggestion on the device and says "review is not open yet". `location_submissions` is drawn on the public map as unchecked places, so a public write path into it is a spam/abuse decision, not a UI one. Wire it in `suggestions.mjs` / the `onSuggestions` handler once decided.
+**Code changes**: #319, #320, #321.
+**Updated**: `app/components/AppSections.jsx`, `app/lib/place-marks.mjs`, `app/lib/suggestions.mjs`, `app/components/SceneMapApp.jsx`, `app/globals.css`.
+
+## [2026-10-04] update | Re-measured on seven screens: on phones the place list had been 0 px tall
+**Object**: `app/globals.css` (#114).
+**Scenario**: bugfix
+**Outcome**: ⚠️ partial — the device-only checks remain
+**What happened**: The open phone sheet is a flex column, and the two sections that scroll themselves (film strip, location list) had `min-height: auto` = 0, so flex squeezed them to 4 px and 0 px. The list of places was simply not on a phone screen. Fixed with `flex-shrink: 0` on the open sheet's children. Also: a side sheet between 640 and 860 px (map visible with the panel open went 5% → 44% landscape, 21% → 48% tablet), the walk column no longer swallows drags (`pointer-events`), and ≥44 px touch targets under `pointer: coarse` (22 → 0 at 393 px).
+
+Rule worth keeping: measure with the audit (horizontal overflow, controls under 44 px, share of points where a touch lands on the map canvas), not by eye. Still open in #114: sheet swipe, soft keyboard, notch safe areas — they need a real phone.
+**Code changes**: #318.
+**Updated**: `app/globals.css`.
+
+## [2026-10-03] update | Tech debt #81–#88 cleared, and one identity on every outbound request
+**Object**: `app/lib/ai-route.mjs`, `app/lib/user-agent.mjs`, `app/lib/upstream-error.mjs`, `app/lib/timed-tour.mjs`, `app/lib/place-dedup.mjs`.
+**Scenario**: refactor
+**Outcome**: ✅ success
+**What happened**: Six tech-debt issues and #84 closed, behaviour unchanged (each checked against the old code where it mattered). Decisions worth keeping:
+- **User-Agent:** one version, two identities. The owner's e-mail goes **only** to the three Wikimedia clients that already sent it (Wikimedia 403s a placeholder contact). Overpass, OSRM, Nominatim, TMDB and OMDb get the site URL only. `test/user-agent.test.mjs` holds both rules.
+- **Model routes** log `{name, status}` of a failure, never the provider's message (it can carry the prompt or account details).
+- **`isDuplicatePlace`** (same entity, same name, or ≤ 50 m) is the one rule for "already on the map", used by discover and by the visit marks.
+- **The `routeRequestId` race:** two places cleared the route by hand without bumping the id, so a stale route could land. Always go through `invalidateRoute()`.
+**Code changes**: #310, #312–#317.
+**Updated**: as listed.
+
+## [2026-10-03] update | Place precision: what `none` really meant, and how a building or street confirms it
+**Object**: `places.geocode_precision`, `app/lib/building-snap.mjs`, `app/lib/street-confirm.mjs`, `scripts/snap-places.mjs`.
+**Scenario**: bugfix
+**Outcome**: ⚠️ partial — ~820 places still unconfirmed, waiting on Overpass
+**What happened**: 40 of the 164 places story trails stop at were `none`, i.e. never confirmed, **not** city centroids. Three causes:
+1. Promotion called a point `point` only for `wikidata_id`, missing `geocode_source = 'wikidata'` + Q-id; migration `a_wikidata_coordinate_is_a_point` fixed 162 places.
+2. Names carry their address after a comma, so the building never confirmed them; the head before the comma is compared now, plus `addr:housenumber`/`addr:street`, plus the one confirming building among neighbours.
+3. A street has no footprint; a vague pin within 30 m of the OSM road of that name becomes `street` without moving (`places.osm_street_id`).
+
+Gotchas: `namesMatch` lets any one extra word through, so "London" confirmed "Momento London" (rolled back from `pre_snap_*`). A vague place now needs an exact name, or one extra word that is "the" or a kind of building. Overpass `out geom tags` drops a relation's members, so relation buildings (Senate House) need `out geom`.
+
+Result: walkable London trail stops 80 → 97. To continue: `node --env-file=.env.local scripts/snap-places.mjs --limit 1000`, best at a quiet hour (two hours handled only 66 places).
+**Code changes**: #308, #309.
+**Updated**: as listed, plus two migrations under `supabase/migrations/20261003*`.
+
+## [2026-10-03] update | Story trails: plot order, walking order, city chapters
+**Object**: `app/api/trail/route.js`, `app/lib/plot-order.mjs`, `app/lib/trail-order.mjs`, `app/lib/trail-chapters.mjs`.
+**Scenario**: feature
+**Outcome**: ✅ success
+**What happened**: The order of scenes no longer comes from a model's memory, which was measured to give three orders in three runs. The model copies a verbatim quote from the Wikipedia plot, and the code orders scenes by where that quote sits. There are 3 passes, a union of the results, one stop per spot (40 m), and links are written by `place_scene_on_link`. `scripts/fill-story-trails.mjs` filled 40 London films. A switch between story and walking order follows (shortest path, routed per walkable run; legs over 3 km are rides). City chapters (stops chained within 50 km) mean no line runs between cities, and the walk happens one city at a time. #73, #74 and #97 are closed.
+
+Measured, worth remembering: 10 of 12 London trails with 3+ walkable stops have a leg over 3 km. A London story trail is a day out with rides, and the UI says so.
+The redo deleted 6 old unsourced "is set at" links (Skyfall ×5, Harry Potter ×1). They could be restored with a P840 source.
+**Code changes**: #304–#307, #311.
+**Updated**: as listed.
+
 ## [2026-09-22] update | 52 plaques read by hand: 26 were never filming locations
 
 **Object**: `work_place_links` (migration `20260922030000_a_plaque_says_what_kind_of_place_it_is.sql`, applied to production)
