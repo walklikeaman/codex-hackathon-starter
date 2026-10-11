@@ -156,7 +156,7 @@ function CollectionView({ marks, onMarks, onShow }) {
   );
 }
 
-function ProfileView({ marks, accountUser }) {
+function ProfileView({ marks, accountUser, onOpenInterests }) {
   const glory = gloryOf(marks);
   const { level, toNext } = levelOf(glory);
   const { visited } = collectionOf(marks);
@@ -200,6 +200,14 @@ function ProfileView({ marks, accountUser }) {
             ))}
           </ul>
         )}
+      </section>
+      <section className="section-block">
+        <h3>Your interests</h3>
+        <p className="section-note">Swipe through the best-known stories on the map; what you like fills &ldquo;Only my films&rdquo;.</p>
+        <button type="button" className="ghost-button" onClick={onOpenInterests}>
+          <Heart size={16} aria-hidden="true" />
+          Pick your interests
+        </button>
       </section>
       <p className="section-note">Kept on this device. {accountUser ? "" : "Signing in keeps your movie list, not these visits."}</p>
     </>

@@ -48,6 +48,10 @@ import {
 } from "../lib/nearby.mjs";
 import StoryTrail from "./StoryTrail.jsx";
 import { AppNav, SectionSheet } from "./AppSections.jsx";
+import Onboarding from "./Onboarding.jsx";
+import {
+  decide, emptyOnboarding, libraryFromDecisions, loadOnboarding, saveOnboarding, shouldOfferOnboarding, undoLast,
+} from "../lib/onboarding.mjs";
 import { loadSuggestions, saveSuggestions } from "../lib/suggestions.mjs";
 import WalkControls from "./WalkControls.jsx";
 import {
@@ -1051,6 +1055,39 @@ export default function SceneMapApp() {
   const [section, setSection] = useState("map");
   const [suggestions, setSuggestions] = useState([]);
   useEffect(() => { setSuggestions(loadSuggestions(window.localStorage)); }, []);
+  // The first run (#15). Offered by itself only to somebody new — no record of it, and no
+  // library anywhere on this device — and from the profile any time after.
+  const [onboarding, setOnboarding] = useState(emptyOnboarding);
+  const [onboardingOpen, setOnboardingOpen] = useState(null);
+  useEffect(() => {
+    const record = loadOnboarding(window.localStorage);
+    if (record) setOnboarding(record);
+    let stored = 0;
+    try {
+      stored = Object.keys(window.localStorage)
+        .filter((key) => key.startsWith(GUEST_LIBRARY_KEY))
+        .reduce((sum, key) => sum + readStoredLibrary(key).length, 0);
+    } catch {
+      // Storage refused: nothing is known about a library, so nothing is offered.
+      return;
+    }
+    if (shouldOfferOnboarding(record, stored)) setOnboardingOpen("intro");
+  }, []);
+
+  function updateOnboarding(next) {
+    setOnboarding(next);
+    saveOnboarding(window.localStorage, next);
+  }
+
+  function finishOnboarding() {
+    const entries = libraryFromDecisions(onboarding);
+    updateOnboarding({ ...onboarding, done: true });
+    setOnboardingOpen(null);
+    if (entries.length === 0) return;
+    // Into the library an import fills, and the map shows them — the same as an import.
+    setLibrary((current) => mergeLibraries(current, entries));
+    setMineOnly(true);
+  }
   const [copiedCoordinate, setCopiedCoordinate] = useState(false);
   const [routeStatus, setRouteStatus] = useState("idle");
   const [routeResult, setRouteResult] = useState(null);
@@ -4570,8 +4607,19 @@ export default function SceneMapApp() {
         mapCenter={mapCenter}
         userPosition={userPosition}
         userIsDemo={userIsDemo}
+        onOpenInterests={() => setOnboardingOpen("deck")}
       />
       <AppNav section={section} onSection={setSection} />
+      {onboardingOpen && (
+        <Onboarding
+          state={onboarding}
+          center={mapCenter}
+          startAt={onboardingOpen}
+          onDecide={(card, choice) => updateOnboarding(decide(onboarding, card, choice))}
+          onUndo={() => updateOnboarding(undoLast(onboarding))}
+          onFinish={finishOnboarding}
+        />
+      )}
     </main>
   );
 }
