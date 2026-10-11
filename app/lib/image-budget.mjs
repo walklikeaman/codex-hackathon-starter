@@ -127,6 +127,9 @@ export const SURFACES = Object.freeze({
   filmChip: Object.freeze({ shape: "poster", box: 28, phoneBox: 84, budgetBytes: 16_384 }),
   // .search-suggestion img — 34 px, the same on every screen.
   searchSuggestion: Object.freeze({ shape: "poster", box: 34, phoneBox: 34, budgetBytes: 8_192 }),
+  // .deck-card img — the interests deck (#15): a 200 px poster card, the same on every
+  // screen, so the phone's 390 px fits it with room for the buttons.
+  deckCard: Object.freeze({ shape: "poster", box: 200, phoneBox: 200, budgetBytes: 81_920 }),
   // .work-card-poster — 62 px, 52 px under 520.
   workCardPoster: Object.freeze({ shape: "poster", box: 62, phoneBox: 52, budgetBytes: 16_384 }),
   // .work-profile-poster — 76 px, 56 px under 860.
